@@ -1,5 +1,5 @@
-#include "ui/screen_stage_select.h"
-#include "ui/hud_atlas.h"
+#include "frontend/screen_stage_select.h"
+#include "hud/hud_atlas.h"
 
 namespace ui {
 namespace {

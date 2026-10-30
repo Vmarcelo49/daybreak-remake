@@ -7,9 +7,9 @@
 
 #include "assets/asset_source.h"
 #include "audio/audio_engine.h"
-#include "ui/frontend_settings.h"
-#include "ui/screen_opening.h"
-#include "gameplay/fixed_step.h"
+#include "frontend/frontend_settings.h"
+#include "frontend/screen_opening.h"
+#include "battle/fixed_step.h"
 
 namespace ui {
 namespace {

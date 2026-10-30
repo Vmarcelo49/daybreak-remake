@@ -1,12 +1,12 @@
-#include "ui/screen_vs.h"
+#include "frontend/screen_vs.h"
 #include <algorithm>
 #include <cstdio>
 #include <string>
 #include <vector>
 #include "ui/caption.h"
-#include "ui/hud.h"
-#include "ui/hud_atlas.h"
-#include "ui/participants.h"
+#include "hud/hud.h"
+#include "hud/hud_atlas.h"
+#include "frontend/participants.h"
 namespace ui {
 namespace {
 class VsScreen final : public Screen {

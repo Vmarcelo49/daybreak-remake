@@ -10,7 +10,7 @@
 //                                         so the file is data/movie/op.mpg)
 //     FUN_00655af0(spr, 0, 0, 0x280, 0x1e0) configure the blit: 640x480 at (0,0)
 //     FUN_00408250(0x3fa00000)            sprite scale = 1.25f -> 800x600 on screen
-//   0x6a14ec+0x0c is the update (the loop calls vtable slot 3, ui/screen.h:5-6), which is
+//   0x6a14ec+0x0c is the update (the loop calls vtable slot 3, frontend/screen.h:5-6), which is
 //   FUN_00404ff0 @0x404ff0, live-verified by disassembly; the factory's switch reaches the
 //   constructor at 0x402107 (FUN_004020a0).
 //
@@ -63,7 +63,7 @@
 #include "audio/audio_engine.h"
 #include "input/input_backend.h"
 #include "movie/movie_player.h"
-#include "ui/screen.h"
+#include "frontend/screen.h"
 
 namespace ui {
 

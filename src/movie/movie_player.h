@@ -13,7 +13,7 @@
 //     640x480 * 1.25 = 800x600, i.e. exactly the port's menu canvas, and its own black
 //     bars are inside the video (docs/reference/README.md:42).
 //   * the same constructor's update is vtable slot 3 of 0x6a14ec = FUN_00404ff0
-//     @0x404ff0; its skip/exit machine is transcribed in ui/screen_opening.cpp.
+//     @0x404ff0; its skip/exit machine is transcribed in frontend/screen_opening.cpp.
 //
 // What this class deliberately is NOT: no media framework, no background thread, no
 // plane/shader path, no decoder abstraction. pl_mpeg is one header; the player is one
@@ -34,7 +34,7 @@
 namespace fnd::movie {
 
 // 44.1 kHz stereo S16 — what fnd::audio::Sdl3Engine plays. The push feeds the player's
-// own engine instance; see ui/screen_opening.h for why the movie gets its own.
+// own engine instance; see frontend/screen_opening.h for why the movie gets its own.
 using AudioPush = std::function<size_t(const int16_t*, size_t)>;
 
 class MoviePlayer {

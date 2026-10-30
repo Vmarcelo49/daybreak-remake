@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include "gameplay/character_moves.h"
+#include "battle/character_moves.h"
 
 namespace gameplay {
 
@@ -112,7 +112,7 @@ struct BulletParameter {
     // (FUN_005f8d50 @0x5f8dc7) hands that same object to the shot, and the shot's own
     // render draws it (FUN_005f60b0: the matrix at 0x5f6185-0x5f61b6, the draw at
     // 0x5f640f). It is NOT the impact effect — that is `impactEffect` below, a data/effect
-    // descriptor spawned at the contact point. See game/shot_visual.h for the whole chain.
+    // descriptor spawned at the contact point. See render/shot_visual.h for the whole chain.
     // Empty when the block is blank, which is also the case the original loads no model for.
     std::string modelName;
     std::vector<MovePhase> phases;

@@ -6,7 +6,7 @@
 //   0 70 74 melee
 //
 // Tokens: x=N, z=N, jump, melee, shoot, target, guard. Spans on one slot merge.
-#include "sim/battle.h"
+#include "battle/battle.h"
 
 #include <istream>
 #include <sstream>

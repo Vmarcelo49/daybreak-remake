@@ -1,7 +1,7 @@
 // Exercise Windows automatic startup and settings discovery, without
 // distributing this developer-only executable in the release ZIP.
 #define SDL_MAIN_HANDLED 1
-#include "../src/main.cpp"
+#include "../src/app/main.cpp"
 #undef main
 #include <thread>
 #include <chrono>

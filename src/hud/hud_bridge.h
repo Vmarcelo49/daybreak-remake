@@ -3,7 +3,7 @@
 //
 // WHY this file exists separately from hud_values.h: the game side must stay
 // WebGPU-free, but producing a ui::HudState needs its definition
-// (ui/hud.h -> sprite.h includes webgpu.h). So hud_values.h is the
+// (hud/hud.h -> sprite.h includes webgpu.h). So hud_values.h is the
 // dependency-light contract gameplay implements against, and this header is
 // the render-side seam — the only game/ TU that includes ui. Field mapping
 // follows remake/src/core/scenes.cpp:818-893 term by term (balloon/LIMIT
@@ -18,8 +18,8 @@
 // float[16] — glm's storage order — so this header stays free of even glm.
 #include <string>
 
-#include "game/hud_values.h"
-#include "ui/hud.h"
+#include "hud/hud_values.h"
+#include "hud/hud.h"
 
 namespace game {
 

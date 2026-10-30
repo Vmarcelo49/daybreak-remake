@@ -1,10 +1,10 @@
-// ui/screen_title.cpp — scene 1: the three sheets and FUN_00410f60's cursor machine.
+// frontend/screen_title.cpp — scene 1: the three sheets and FUN_00410f60's cursor machine.
 // The header carries the provenance; this file is the transcription.
-#include "ui/screen_title.h"
+#include "frontend/screen_title.h"
 
 #include <cstdio>
 
-#include "ui/hud_atlas.h"
+#include "hud/hud_atlas.h"
 
 namespace ui {
 

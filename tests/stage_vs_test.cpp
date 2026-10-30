@@ -1,7 +1,7 @@
 #include <cstdio>
 #define CHECK(x) do { if (!(x)) { std::fprintf(stderr, "failure: %s\n", #x); return 1; } } while (0)
-#include "ui/screen_stage_select.h"
-#include "ui/screen_vs.h"
+#include "frontend/screen_stage_select.h"
+#include "frontend/screen_vs.h"
 int main() {
     ui::FrontendState state;
     ui::StageMenu menu(state);

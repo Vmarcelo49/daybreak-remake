@@ -1,7 +1,7 @@
-// gameplay/character_moves.cpp — the data/<char>/NN.dat move table, transcribed from
+// battle/character_moves.cpp — the data/<char>/NN.dat move table, transcribed from
 // FUN_0041e180 (0x41e180). See character_moves.h for the layout, the verification
 // against the shipped data, and what is deliberately absent (the melee chain).
-#include "gameplay/character_moves.h"
+#include "battle/character_moves.h"
 
 #include <cstring>
 

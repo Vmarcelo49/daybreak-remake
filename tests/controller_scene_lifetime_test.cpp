@@ -39,7 +39,7 @@
 // =============================================================================
 
 #define SDL_MAIN_HANDLED 1
-#include "../src/main.cpp"
+#include "../src/app/main.cpp"
 // main.cpp sets SDL_MAIN_USE_CALLBACKS, and SDL_main.h's callback block then renames
 // `main` to `SDL_main` for the rest of that translation unit. This TU is the entry point
 // (it never calls SDL_AppInit), so take the name back after the include.

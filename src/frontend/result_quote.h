@@ -1,5 +1,5 @@
 #pragma once
-// ui/result_quote.h — which victory script and voice a round ends on.
+// frontend/result_quote.h — which victory script and voice a round ends on.
 //
 // WHY this is a separate, device-free derivation: the original's choice is a small, fully
 // recovered rule over the round's outcome and the winning side's two selections

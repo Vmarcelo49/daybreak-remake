@@ -1,5 +1,5 @@
 #pragma once
-// game/effect_catalog.h — the effect table: which data/effect/NNN.dat descriptor an
+// render/effect_catalog.h — the effect table: which data/effect/NNN.dat descriptor an
 // effect id names, and how long an instance of it lives.
 //
 // Recovered (issue #17), all addresses in DaybreakDX.exe:

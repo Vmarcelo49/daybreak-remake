@@ -1,7 +1,7 @@
 #pragma once
 #include <array>
-#include "ui/screen.h"
-#include "ui/frontend_state.h"
+#include "frontend/screen.h"
+#include "frontend/frontend_state.h"
 namespace ui {
 // FUN_004115f0 / FUN_00411ae0: slide first, then 5→1 scale after frame 90.
 class VsTimeline {

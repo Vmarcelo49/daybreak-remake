@@ -1,5 +1,5 @@
 #pragma once
-// gameplay/result_title.h — the names of the earned titles. The core picks the title
+// frontend/result_title.h — the names of the earned titles. The core picks the title
 // (FUN_00430880, battle_awards); the report draws its name from the 41-entry string table at
 // VA 0x6b7308 (FUN_00430860 returns one, FUN_0063a740:64-85 draws row i).
 #include <cstdint>

@@ -1,7 +1,7 @@
 // tests/view_layout_test.cpp — device-free test for the split-screen plumbing of issue #12.
 //
 // What this pins, and why each half is worth a test:
-//   1. game/view_layout.h's recovered geometry (FUN_006396f0 @0x006396f0): one full-target
+//   1. hud/view_layout.h's recovered geometry (FUN_006396f0 @0x006396f0): one full-target
 //      cell, the two-view top-left/bottom-right pair, and the four-cell TL/BL/TR/BR grid,
 //      exact and disjoint at 4:3, 16:9, ultrawide, portrait and odd pixel sizes;
 //   2. the view assignment (FUN_0040d130 @0x0040d130's human-controller count): views are
@@ -24,13 +24,13 @@
 
 #include <glm/glm.hpp>
 
-#include "game/hud_bridge.h"
-#include "game/view_layout.h"
-#include "gameplay/arena_camera.h"
-#include "gameplay/fixed_step.h"
-#include "gameplay/hud_fill.h"
+#include "hud/hud_bridge.h"
+#include "hud/view_layout.h"
+#include "camera/arena_camera.h"
+#include "battle/fixed_step.h"
+#include "hud/hud_fill.h"
 #include "input/synthetic_pad.h"
-#include "ui/hud.h"
+#include "hud/hud.h"
 
 namespace {
 

@@ -15,7 +15,7 @@
 #include <memory>
 #include <string>
 
-#include "ui/screen.h"
+#include "frontend/screen.h"
 
 namespace ui {
 

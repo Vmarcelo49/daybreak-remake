@@ -110,7 +110,7 @@ enum class HudIcon : uint8_t {
 // extracted tree may carry second. The bytes come from assetSource() (bundle-first, the
 // exe's own order) and are decoded by xm::decodeCnvImage, the foundation's one CNV
 // decoder; `slot` receives the uploaded texture id (>= 0) on success. The front-end
-// screens load through this too (ui/screen_title.cpp), so ui/ has ONE bundle-first CNV
+// screens load through this too (frontend/screen_title.cpp), so ui/ has ONE bundle-first CNV
 // path per screen family rather than one per screen; HudAtlas::upload is the HUD's user.
 bool uploadCnvSheet(SpriteRenderer& batch, const char* stem, int& slot, std::string& error);
 // P13 multiplies the scene by its RGB (FUN_00643230 mode 3). The batch only blends by alpha, so

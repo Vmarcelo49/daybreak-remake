@@ -1,6 +1,6 @@
-#include "ui/frontend_launch.h"
+#include "frontend/frontend_launch.h"
 #include "assets/asset_source.h"
-#include "gameplay/weapon_definition.h"
+#include "battle/weapon_definition.h"
 #include "assets/stage_catalog.h"
 #include <cstdio>
 #include <vector>

@@ -3,8 +3,8 @@
 // on one channel, both must put each frame in the same place, or the renderer cannot take the
 // core's pose.
 #include "combo_fixture.h"
-#include "sim/battle.h"
-#include "sim/script.h"
+#include "battle/battle.h"
+#include "battle/script.h"
 
 #include <cstdio>
 #include <cstring>

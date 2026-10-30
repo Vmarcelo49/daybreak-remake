@@ -1,6 +1,6 @@
 #include "input/input_backend.h"
 #include "input/tick_input.h"
-#include "gameplay/fixed_step.h"
+#include "battle/fixed_step.h"
 #include <SDL3/SDL.h>
 #include <cstdio>
 #include <filesystem>

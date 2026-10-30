@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pin the pause overlay's rendered pixels (issue #50).
 
-Why a capture test and not a layout test: the layout rule (ui/pause_layout.h) and the
+Why a capture test and not a layout test: the layout rule (hud/pause_layout.h) and the
 overlay's own batching were both "correct" while the defect was live — the quads it pushed
 carried the right geometry, and `beginFrame` did clear its queue. What was wrong was the
 renderer it pushed them into: one SpriteRenderer hands every pass in a frame the same vertex
@@ -54,7 +54,7 @@ INK_MIN = 210
 # comparison allows.
 DIM = 0.45
 SLACK = 6
-# The backing panel (ui/pause_layout.h: kPausePanelGrey, kPausePanelAlpha) and the slack its
+# The backing panel (hud/pause_layout.h: kPausePanelGrey, kPausePanelAlpha) and the slack its
 # composite is measured with.
 PANEL_GREY = 0.16 * 255.0
 PANEL_ALPHA = 0.78
@@ -245,7 +245,7 @@ def check_case(name, demo, install, tmp, size, extra, failures):
 
     count, rect = panel_mask(px, w, h, rpx)
     fraction = count / float(w * h)
-    # The panel is "sized to the text" (ui/pause_layout.h), so this floor tracks the text. It
+    # The panel is "sized to the text" (hud/pause_layout.h), so this floor tracks the text. It
     # was 5% while the block carried the binding footer — the widest line, and the one that ran
     # past a 4:3 frame; without it the panel is legitimately smaller (measured 8% single-view
     # and 2.93% in a four-view frame, where the same panel sits over a busier background). The

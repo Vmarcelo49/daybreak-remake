@@ -1,5 +1,5 @@
 #pragma once
-// game/shot_visual.h — what a shot draws while it is in flight (issue #32).
+// render/shot_visual.h — what a shot draws while it is in flight (issue #32).
 //
 // WHAT THE ORIGINAL DRAWS, RECOVERED. The in-flight projectile is a real .X model, and
 // the file that describes the shot names it:

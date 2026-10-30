@@ -32,8 +32,8 @@
 #include <algorithm>
 #include <cstdint>
 
-#include "gameplay/weapon_definition.h"   // kWeaponIds / comboSlotLabel (header-only)
-#include "ui/frontend_state.h"
+#include "battle/weapon_definition.h"   // kWeaponIds / comboSlotLabel (header-only)
+#include "frontend/frontend_state.h"
 
 namespace ui {
 

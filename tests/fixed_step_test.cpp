@@ -1,4 +1,4 @@
-#include "gameplay/fixed_step.h"
+#include "battle/fixed_step.h"
 #include "input/tick_input.h"
 #include <cstdio>
 #include <limits>

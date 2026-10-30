@@ -1,5 +1,5 @@
 // Issue #43: the select screen's two recovered transitions, pinned against the recovered
-// constants. Device-free: both are plain state machines in ui/screen_select.h, so no screen,
+// constants. Device-free: both are plain state machines in frontend/screen_select.h, so no screen,
 // no GPU and no install are involved — the draw calls the same objects this test ticks.
 //
 //  1. The scene's ENTRY reveal — FUN_004090a0:24-26, the same loop in FUN_0041bae0:37-40:
@@ -31,7 +31,7 @@
 // (_DAT_006a1984), 1.0 = _DAT_006a16d0, the stagger's 5, 300.0 = 0x43960000, 20.0 =
 // _DAT_006a16c4, the > 0.0 guard's _DAT_006a16c8, the flash's 0xf/'\x18'/'\f' and the
 // 0x18/0x22/0x37 tick bounds.
-#include "ui/screen_select.h"
+#include "frontend/screen_select.h"
 #include <cmath>
 #include <cstdio>
 

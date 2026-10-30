@@ -1,7 +1,7 @@
-#include "ui/frontend_settings.h"
-#include "ui/frontend_state.h"
-#include "ui/soft_keyboard.h"
-#include "ui/screen_options.h"
+#include "frontend/frontend_settings.h"
+#include "frontend/frontend_state.h"
+#include "frontend/soft_keyboard.h"
+#include "frontend/screen_options.h"
 #include <cstdio>
 #define CHECK(x) do { if(!(x)) { std::fprintf(stderr,"failure: %s\n",#x); return 1; } } while(0)
 int main() {

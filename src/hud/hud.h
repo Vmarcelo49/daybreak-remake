@@ -27,7 +27,7 @@
 
 #include "ui/font.h"
 #include "ui/caption.h"
-#include "ui/hud_atlas.h"
+#include "hud/hud_atlas.h"
 #include "ui/sprite.h"
 #include "ui/text.h"
 
@@ -67,7 +67,7 @@ enum class HudFighterRole : uint8_t { Owner = 0, Ally = 1, Enemy = 2 };
 // com bar + 150 (:173), and the bar's y then drops another 32 px (0x6acf48). The
 // original divides by the transformed w — D3DXVec4Transform leaves w = 1 for its
 // affine matrix, so the divide is invisible there — and maps to
-// (x*400 + 400, -y*300 + 300) (FUN_00643230.c:56-58). game/hud_bridge.h's
+// (x*400 + 400, -y*300 + 300) (FUN_00643230.c:56-58). hud/hud_bridge.h's
 // projectFighterHud() is the port's version of that arithmetic.
 //
 // There is one entry per ACTIVE PARTICIPANT (issue #13), not per primary panel: the
@@ -130,7 +130,7 @@ inline int hudRingSecondCellColumn(int col) { return col + 1; }
 
 // The world lifts FUN_00643230 projects its two per-fighter anchors at (FUN_00643230.c:52
 // and :173) and the screen drop it applies to the com bar afterwards (0x6acf48 = 32.0f).
-// game/hud_bridge.h's projectFighterHud() is the arithmetic that uses them.
+// hud/hud_bridge.h's projectFighterHud() is the arithmetic that uses them.
 inline constexpr float kHudRingLift = 70.f;
 inline constexpr float kHudBarLift = 150.f;
 inline constexpr float kHudBarDrop = 32.f;

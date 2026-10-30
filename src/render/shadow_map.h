@@ -1,7 +1,7 @@
 #pragma once
 // The original's character shadow pass (issue #21 row 1), as pure glm: the light camera,
 // its projection and the receiver's lookup. No WebGPU, no device — the same split
-// render/arena_camera.h uses, so a host test can pin the recovered numbers with nothing
+// camera/arena_view.h uses, so a host test can pin the recovered numbers with nothing
 // but the standard library.
 //
 // All of it was read on the live original (DaybreakDX.exe, md5

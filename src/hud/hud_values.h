@@ -26,12 +26,12 @@ struct GameRgb {
 };
 
 // Who a fighter is from one view's point of view (issue #13). The gameplay side cannot
-// include ui/hud.h, so the enum is mirrored here and hud_bridge.h maps it 1:1.
+// include hud/hud.h, so the enum is mirrored here and hud_bridge.h maps it 1:1.
 enum class GameHudRole : unsigned char { Owner = 0, Ally = 1, Enemy = 2 };
 
 // One fighter's per-fighter HUD entry (FUN_00643230 @0x00643230). Screen-space
 // because the projection is the camera's business: whoever owns the view-projection
-// matrix fills these (game/hud_bridge.h's projectFighterHud does the arithmetic), and
+// matrix fills these (hud/hud_bridge.h's projectFighterHud does the arithmetic), and
 // the HUD layer only draws at the point it is handed.
 //
 // One entry per ACTIVE PARTICIPANT (issue #13): the roster decides how many exist, and

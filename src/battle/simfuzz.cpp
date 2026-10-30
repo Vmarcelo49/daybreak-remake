@@ -1,7 +1,7 @@
 // Random-input stress for one combo (docs/DIRECTION.md, M2): checks invariants every tick and
 // reports which of the combo's declared rows were reached. One JSON object on stdout; run per
 // combo through scripts/sim_trust.py. Same arguments, same result.
-#include "sim/battle.h"
+#include "battle/battle.h"
 
 #include <algorithm>
 #include <cmath>

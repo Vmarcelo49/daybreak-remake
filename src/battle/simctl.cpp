@@ -1,7 +1,7 @@
 // Headless driver for the vendored simulation: run any roster, optionally with a script, and
 // write per-tick traces. Runs at many times real time, with no window, audio or device.
-#include "sim/battle.h"
-#include "sim/script.h"
+#include "battle/battle.h"
+#include "battle/script.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -21,7 +21,7 @@ const char kUsage[] =
     "  --ticks N      updates to run (default 3600)\n"
     "  --seed N       battle RNG seed (default 1)\n"
     "  --time-limit S round time limit in seconds (default: the match's own)\n"
-    "  --script FILE  input plan (see src/sim/script.h)\n"
+    "  --script FILE  input plan (see src/battle/script.h)\n"
     "  --trace FILE   write one JSON line per tick\n"
     "  --list         print every legal combo and exit\n";
 

@@ -72,8 +72,8 @@
 #include <cstdio>
 #include <string>
 
-#include "game/battle_types.h"
-#include "gameplay/rng.h"
+#include "battle/battle_types.h"
+#include "battle/rng.h"
 
 namespace gameplay {
 
@@ -334,7 +334,7 @@ public:
     int    timeLimit() const { return m_timeLimit; }
     double timeLeft() const { return m_timeLimit > 0 ? m_timeLeft : 0.0; }
     bool   timed() const { return m_timeLimit > 0; }
-    // The deterministic generator the tiebreak consumes (gameplay/rng.h). Seeding it
+    // The deterministic generator the tiebreak consumes (battle/rng.h). Seeding it
     // makes a replayed match resolve the same tie.
     MatchRng&       rng()       { return m_rng; }
     const MatchRng& rng() const { return m_rng; }

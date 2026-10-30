@@ -1,6 +1,6 @@
-#include "ui/screen_options.h"
-#include "ui/frontend_settings.h"
-#include "ui/hud_atlas.h"
+#include "frontend/screen_options.h"
+#include "frontend/frontend_settings.h"
+#include "hud/hud_atlas.h"
 #include "ui/caption.h"
 #include <algorithm>
 #include <cstdio>

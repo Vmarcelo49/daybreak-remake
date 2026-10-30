@@ -2,8 +2,8 @@
 
 #include "assets/asset_source.h"
 #include "assets/xmodel.h"
-#include "gameplay/character_moves.h"
-#include "gameplay/weapon_definition.h"
+#include "battle/character_moves.h"
+#include "battle/weapon_definition.h"
 
 #include <array>
 #include <cstdlib>

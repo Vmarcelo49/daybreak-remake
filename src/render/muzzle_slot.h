@@ -1,5 +1,5 @@
 #pragma once
-// game/muzzle_slot.h — which data/aura muzzle-flash model an attack shows (issue #34).
+// render/muzzle_slot.h — which data/aura muzzle-flash model an attack shows (issue #34).
 //
 // WHAT THE ORIGINAL DOES, RECOVERED. FUN_004205e0 picks the attachment slot from
 // player+0x7d4; when that is out of range (FUN_0042e110 clears it to -1 every frame, :76)
@@ -38,7 +38,7 @@
 // in the original to recover — one fighter shows one muzzle model for a whole match.
 // The tier mapping below is the port's own, labelled as such; effect_catalog_test pins
 // both tables so neither can drift silently.
-#include "game/battle_types.h"   // game::ShotTier
+#include "battle/battle_types.h"   // game::ShotTier
 
 namespace game {
 

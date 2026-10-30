@@ -2,7 +2,7 @@
 #include <string>
 #include <cstdint>
 #include <array>
-#include "ui/frontend_state.h"
+#include "frontend/frontend_state.h"
 namespace ui {
 const char* frontendCharacterDirectory(int index);
 struct FrontendLaunch {

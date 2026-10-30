@@ -1,6 +1,6 @@
 #pragma once
-#include "ui/screen.h"
-#include "ui/frontend_state.h"
+#include "frontend/screen.h"
+#include "frontend/frontend_state.h"
 
 namespace ui {
 enum class StageAction { None, Start, Back };

@@ -37,21 +37,21 @@
 //  RECOVERED half (the bullet's own model, aimed by the original's own +X convention)
 //  beside the PORT RULE half (the aim direction comes from the port's velocity, because
 //  the per-weapon update that fills the shot's rotation fields is not recovered). See
-//  game/shot_visual.h.
+//  render/shot_visual.h.
 //
 //  Issue #34 adds one device-free section: the muzzle-flash slot. It pins the RECOVERED
 //  selector (the fighter's per-slot fire-mode byte +0x318 picks the attack start, and each
 //  attack start sets one latch that FUN_004205e0 turns into a slot) next to the PORT RULE
 //  the spawn path uses (the shot tier picks among the same three models), so neither can
-//  drift and the port rule cannot be mistaken for a recovery. See game/muzzle_slot.h.
+//  drift and the port rule cannot be mistaken for a recovery. See render/muzzle_slot.h.
 // =============================================================================
 #define XMODEL_IMPLEMENTATION
 #include "assets/xmodel.h"
-#include "game/aura_attach.h"
-#include "game/effect_catalog.h"
-#include "game/muzzle_slot.h"
-#include "game/shot_visual.h"
-#include "gameplay/fixed_step.h"
+#include "render/aura_attach.h"
+#include "render/effect_catalog.h"
+#include "render/muzzle_slot.h"
+#include "render/shot_visual.h"
+#include "battle/fixed_step.h"
 
 #include <cctype>
 #include <cstdio>
@@ -392,7 +392,7 @@ void testShotVisualRule() {
     // The PORT RULE half: the direction source. The original's per-weapon update writes the
     // shot's own rotation fields (FUN_005f7be0 dispatches to 46 of them); the port has none
     // of them, so the velocity is what the recovered convention is fed. Pinning the input
-    // here is what stops that from being an unexplained choice — game/shot_visual.h names
+    // here is what stops that from being an unexplained choice — render/shot_visual.h names
     // both halves.
     const glm::mat4 a = game::shotModelMatrix(glm::vec3(0.f), glm::vec3(10.f, 0.f, 0.f));
     const glm::mat4 b = game::shotModelMatrix(glm::vec3(0.f), glm::vec3(99.f, 0.f, 0.f));

@@ -8,13 +8,13 @@
 // the small structural facts the wiring in main.cpp relies on.
 #include <type_traits>
 
-#include "game/camera_collision.h"
-#include "game/effect_events.h"
-#include "game/fighter_pose.h"
-#include "game/hud_bridge.h"
-#include "game/hud_values.h"
-#include "game/match_view.h"
-#include "game/view_layout.h"
+#include "camera/camera_collision.h"
+#include "render/effect_events.h"
+#include "camera/fighter_pose.h"
+#include "hud/hud_bridge.h"
+#include "hud/hud_values.h"
+#include "battle/match_view.h"
+#include "hud/view_layout.h"
 
 static_assert(std::is_default_constructible<game::FighterPose>::value,
               "FighterPose must stay aggregate-constructible for arenaTargetFrom");

@@ -69,7 +69,7 @@ class Backend {
 
     // Raw keyboard state, by SDL_Scancode — the one read outside the Action map. The front
     // end's opening movie is skipped by the keys the ORIGINAL tests directly on its
-    // keyboard buffer (ui/screen_opening.h recovers them: VK_RETURN and the two Alt codes),
+    // keyboard buffer (frontend/screen_opening.h recovers them: VK_RETURN and the two Alt codes),
     // and those keys are deliberately not actions: routing them through the key-config
     // screen would let a player rebind away the only way to skip a movie, and a remapped
     // action would skip it on the wrong key. Fed by note_key like everything else, so the

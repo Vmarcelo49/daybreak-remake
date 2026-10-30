@@ -1,5 +1,5 @@
-#include "ui/hud.h"
-#include "game/hud_bridge.h"
+#include "hud/hud.h"
+#include "hud/hud_bridge.h"
 #include <cmath>
 #include <cstdio>
 

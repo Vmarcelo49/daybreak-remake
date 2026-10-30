@@ -32,7 +32,7 @@
 #include <glm/glm.hpp>
 #include <vector>
 
-#include "game/effect_events.h"
+#include "render/effect_events.h"
 
 namespace game {
 
@@ -56,7 +56,7 @@ struct LiveFxCard {
 //
 // This is RECOVERED, not a port rule (tier 2). The effect descriptor carries no lifetime of
 // its own: `EffectEntry::lifetimeSeconds` is `anims[0].duration / ticksPerSecond`
-// (game/effect_catalog.h, from FUN_0042eec0 -> FUN_0064e8b0(model, 0) / 0.016), and the
+// (render/effect_catalog.h, from FUN_0042eec0 -> FUN_0064e8b0(model, 0) / 0.016), and the
 // attachment cards use the same quotient. So the lifetime of every card that plays an
 // animation IS that animation's length, and with `animationSeconds` equal to the lifetime
 // this function reduces to `age` — the card plays from its spawn at the animation's own rate,

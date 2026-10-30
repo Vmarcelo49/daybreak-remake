@@ -1,6 +1,6 @@
 // =============================================================================
-//  screen_stack_test.cpp — host test for the front-end screen stack (ui/screen.h)
-//  and the title menu's cursor machine (ui/screen_title.h).
+//  screen_stack_test.cpp — host test for the front-end screen stack (frontend/screen.h)
+//  and the title menu's cursor machine (frontend/screen_title.h).
 //
 //  No WebGPU device, no window, no game data: the stack's factory is injected, so
 //  every transition runs against fake screens, and the title's cursor machine is
@@ -32,10 +32,10 @@
 #include <string>
 #include <vector>
 
-#include "ui/screen.h"
-#include "ui/frontend_state.h"
-#include "ui/screen_opening.h"
-#include "ui/screen_title.h"
+#include "frontend/screen.h"
+#include "frontend/frontend_state.h"
+#include "frontend/screen_opening.h"
+#include "frontend/screen_title.h"
 #include "ui/sprite.h"
 
 namespace {
@@ -207,7 +207,7 @@ void testMovieSkip() {
     checkTrue("nothing held does not skip", !ui::movieSkipHeld([&](int) { return false; }));
     checkTrue("a held key is not an edge", ui::movieSkipHeld(held));
 
-    std::printf("\nopening scene host seam (ui/screen.h setOpeningHost):\n");
+    std::printf("\nopening scene host seam (frontend/screen.h setOpeningHost):\n");
     ui::SpriteRenderer batch;   // no device: the id table is what is exercised
     ui::FrontendState state;
     std::string error;

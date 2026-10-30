@@ -1,4 +1,4 @@
-#include "sim/battle.h"
+#include "battle/battle.h"
 
 #include "basic_battle_roster_assets.hpp"
 #include "battle_animated_camera.hpp"

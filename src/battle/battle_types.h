@@ -1,5 +1,5 @@
 #pragma once
-// Plain data shared by the product and whichever simulation backs a battle (game/battle_view.h).
+// Plain data shared by the product and whichever simulation backs a battle (battle/battle_view.h).
 // Nothing here knows Fighter or Match, so these survive the legacy path's removal.
 #include <cstdint>
 #include <string>

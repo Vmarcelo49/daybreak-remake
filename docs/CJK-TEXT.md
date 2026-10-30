@@ -42,8 +42,8 @@ Read against `docs/reference/*.webp` (the ground-truth captures):
   `適当` in the boxed tactics/command cell (`battle-hud.webp`,
   `battle-stamina.webp`, `ko-moment.webp`, bottom-left above the OYASHIRO
   bar). That cell is atlas art, not a font string: it is the P03
-  `CommandLabel` cell (`src/ui/hud_atlas.h:77`, drawn at
-  `src/ui/hud.cpp:323-328`), and `HudComposer::compose` returns after the
+  `CommandLabel` cell (`src/hud/hud_atlas.h:77`, drawn at
+  `src/hud/hud.cpp:323-328`), and `HudComposer::compose` returns after the
   battle composition when the game's sheets resolve, never touching the
   text path. The text HUD below it is the asset-less fallback only. The
   GDI/Shift-JIS path serves result quote, chat and story mode only. The
@@ -63,15 +63,15 @@ Read against `docs/reference/*.webp` (the ground-truth captures):
   `通信対戦`, `環境設定`, `操作設定`, `終了`. Those six labels are pixels
   in `data/title/title.cnv`, not font text: scene 1 is all atlas art with
   no text path (the exe contains no menu label strings and creates no font
-  in scene 1 — `src/ui/screen_title.h:1-5`, cells at x=400/y=285/stride
+  in scene 1 — `src/frontend/screen_title.h:1-5`, cells at x=400/y=285/stride
   48). The front end renders today with zero font code — the screen stack
-  (`src/ui/screen.h:39-56` `ScreenId` list, `--screen=title` in
+  (`src/frontend/screen.h:39-56` `ScreenId` list, `--screen=title` in
   `src/main.cpp`) proves it. So the title menu argues nothing for this
   decision; its weight moves to the three real GDI consumers (result
   quote/report, chat, story ADV per FRONTEND-PLAN §4.2–4.3). (History: the
   scene named `title` in the deleted `remake/src` tree drew the
   select-screen background; see `docs/archive/placeholders.md` §13. The
-  live title evidence is `src/ui/screen_title.{h,cpp}` + FRONTEND-PLAN
+  live title evidence is `src/frontend/screen_title.{h,cpp}` + FRONTEND-PLAN
   §4.2.)
 - **Result screens** (`result-report.webp`) are a full page of Japanese
   dialogue with player-name lines.

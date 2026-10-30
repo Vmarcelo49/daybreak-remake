@@ -1,7 +1,7 @@
 #include <cstdio>
 #define CHECK(condition) do { if (!(condition)) { std::fprintf(stderr,"%s:%d: %s\n",__FILE__,__LINE__,#condition); return 1; } } while (false)
-#include "ui/screen_result.h"
-#include "ui/result_quote.h"
+#include "frontend/screen_result.h"
+#include "frontend/result_quote.h"
 int main() {
     ui::ResultTimeline result;
     CHECK(result.phase()==ui::ResultPhase::Quote);

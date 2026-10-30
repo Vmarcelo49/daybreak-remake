@@ -1,7 +1,7 @@
 #pragma once
 // HUD value computation: live gameplay state -> game::GameHudValues, the
-// WebGPU-free contract the HUD composer drains (src/game/hud_values.h; mapped
-// onto ui::HudState by game/hud_bridge.h). Reproduces the display rules of
+// WebGPU-free contract the HUD composer drains (src/hud/hud_values.h; mapped
+// onto ui::HudState by hud/hud_bridge.h). Reproduces the display rules of
 // Scene_Gameplay::render term by term (remake/src/core/scenes.cpp:818-893):
 // balloon % + LIMIT in both top corners, the bottom-right P1 resource block
 // (MAIN/CHARGE stocks + RELOAD tag, tier-coloured hold meter only while C is
@@ -19,12 +19,12 @@
 // is the ui seam and defines hudStateFor().
 #include <string>
 
-#include "game/hud_values.h"
-#include "gameplay/match_economy.h"
+#include "hud/hud_values.h"
+#include "battle/match_economy.h"
 
 // ui::HudState (hud_bridge.h) stays incomplete on purpose: declaring the return
 // type must not drag webgpu.h into this header. A caller of hudStateFor includes
-// game/hud_bridge.h, which completes it.
+// hud/hud_bridge.h, which completes it.
 namespace ui { struct HudState; }
 
 namespace gameplay {
@@ -67,7 +67,7 @@ struct HudFillInput {
 
 // One frame's game values: the economy (balloon / LIMIT / KO sting) plus P1's
 // resources. Pure — reads nothing but its arguments and formats nothing, so the
-// composer's own "%.0f%%" / "%.0fs" (ui/hud.cpp:77-104) round exactly as the
+// composer's own "%.0f%%" / "%.0fs" (hud/hud.cpp:77-104) round exactly as the
 // reference's printf did on the same floats. Pass raw values through; no
 // pre-rounding, or the text would round twice.
 inline game::GameHudValues fillHudValues(const MatchEconomy& eco, const HudFillInput& in) {

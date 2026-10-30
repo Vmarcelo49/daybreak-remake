@@ -17,8 +17,8 @@
 //    cmake --build build/linux --target weapon_definition_test
 //  Exit status: 0 when every check passes, 1 otherwise.
 // =============================================================================
-#include "gameplay/fixed_step.h"
-#include "gameplay/weapon_definition.h"
+#include "battle/fixed_step.h"
+#include "battle/weapon_definition.h"
 
 #include <algorithm>
 #include <cmath>
@@ -486,7 +486,7 @@ void testRepresentativeFamilies(const fs::path& install) {
 // 1d. Issue #32: the bullet's own model ships, for every pick the port can make.
 // ---------------------------------------------------------------------------
 // The in-flight shot draws the .X named by the 260-byte block of the bullet file it was
-// fired from (game/shot_visual.h). The port picks that file per (weapon, charge level)
+// fired from (render/shot_visual.h). The port picks that file per (weapon, charge level)
 // with main.cpp's loadBulletParameter rule — the smallest `type` among the bullets whose
 // magazine is that level's. This sweep is the check that the shipped roster never has to
 // draw a shot with an empty model slot: every one of the 92 picks must name a model the

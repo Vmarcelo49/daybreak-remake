@@ -44,7 +44,7 @@
 //
 // Exit status: 0 when every check passed, 1 otherwise.
 
-#include "gameplay/arena_camera.h"
+#include "camera/arena_camera.h"
 
 #include "assets/xmodel.h"   // the synthetic collision quads below are xm::Model/Mesh
 

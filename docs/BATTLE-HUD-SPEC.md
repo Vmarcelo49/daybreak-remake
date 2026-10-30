@@ -233,15 +233,15 @@ outline.
 
 Historical implementation priority list, written before the atlas HUD landed. It records
 why the original elements were prioritized, not a current work queue: the foundation now
-draws the atlas-backed corner and per-fighter HUD through `src/ui/hud_atlas.*` and
-`src/ui/hud.cpp`. "Size" was the original implementation estimate.
+draws the atlas-backed corner and per-fighter HUD through `src/hud/hud_atlas.*` and
+`src/hud/hud.cpp`. "Size" was the original implementation estimate.
 
 | # | Element | Why first | Size |
 |---|---|---|---|
-| 1 | **Sprite/atlas pipeline for `.cnv`** (P00/P01/P02/P03/P06) | Historical prerequisite; now implemented by `HudAtlas` | Assets and layout evidence are retained in §3 and `src/ui/hud_atlas.h` |
+| 1 | **Sprite/atlas pipeline for `.cnv`** (P00/P01/P02/P03/P06) | Historical prerequisite; now implemented by `HudAtlas` | Assets and layout evidence are retained in §3 and `src/hud/hud_atlas.h` |
 | 2 | **Bottom-right cluster**: MAIN bar + count, CHARGE bar + count, HP frame + yellow fill | High-visibility atlas art; now composed by `HudComposer` | Anchors and source art remain documented in §2–§3 |
 | 3 | **OYASHIRO fan gauge** (frame + gradient fill) | Distinctive atlas element; frame, fill and mode caption are now composed in `HudComposer` | Anchor (55,488); original fill behavior is documented in §1 and implemented through the atlas fill helper |
-| 4 | **Balloon `0%` / `LIMIT 100%` readouts + balloon sprites, both corners** | Both corners are now composed from the original atlas art | Anchors and growth rule remain recorded in §2–§3 and `src/ui/hud.cpp` |
+| 4 | **Balloon `0%` / `LIMIT 100%` readouts + balloon sprites, both corners** | Both corners are now composed from the original atlas art | Anchors and growth rule remain recorded in §2–§3 and `src/hud/hud.cpp` |
 | 5 | **Boxed command label** | The P03 cell and its anchor are resolved in §6 Q2; the current composer draws the selected cell | Ported with the P03 atlas; the full command-state mapping remains a gameplay question |
 | 6 | **Targeting brackets + `com` bar + alert balloon** (per-fighter) | Needs the world→screen projection and per-fighter state, not just corner constants | **assets found** (P03 rings, P06 balloons), **layout known for the projection** (`FUN_00643230.c:56-58`); medium |
 | 7 | **Round stings**: `3 2 1`, `開始!`, `撃破!`, `赤組/青組 大勝利` | Large full-screen art, but they are transients — the gate frame does not contain them | **assets found** (P09/P04/P05/P08), **layout known** (`FUN_00633ca0.c:77-86`); medium |
@@ -317,7 +317,7 @@ draws the atlas-backed corner and per-fighter HUD through `src/ui/hud_atlas.*` a
    y118-155/y175-215; two small: green y245-276 and yellow y280-308). The print uses small glyphs
    for `0%`/`100%` (measured 28x21) but they render white, and no *white small* set was found in
    P00. Either a fifth set exists outside the bands scanned, or `FUN_00431b50` recolours.
-   This print-level glyph identification remains an evidence question; the runtime HUD uses its own P00 glyph table (`src/ui/hud_atlas.h`).
+   This print-level glyph identification remains an evidence question; the runtime HUD uses its own P00 glyph table (`src/hud/hud_atlas.h`).
 6. **`FUN_00643230`'s sprite handles and cell indices.** The per-fighter draws use
    `FUN_00655830(x, y, local_30, local_28)` with `local_30 ∈ {0,2}` and `local_28 ∈ {0,1,2}`;
    the sprite is loaded into ECX earlier in the function and was not captured. The bracket/arrow

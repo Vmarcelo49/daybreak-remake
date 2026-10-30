@@ -1,5 +1,5 @@
 #pragma once
-// gameplay/rng.h — the simulation's one random source.
+// battle/rng.h — the simulation's one random source.
 //
 // WHY this exists (issue #11): the original resolves a timed-round tie with
 // FUN_0065d150 (0x65d150) — MT19937 (624-word state; the 0x26f/0x270 reload and the

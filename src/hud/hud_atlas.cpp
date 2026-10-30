@@ -1,7 +1,7 @@
-// ui/hud_atlas.cpp — the .cnv sheet loader (shared with the front-end screens) and the
+// hud/hud_atlas.cpp — the .cnv sheet loader (shared with the front-end screens) and the
 // battle HUD's sprite table. Header comment carries the provenance; this file is the
 // transcription.
-#include "ui/hud_atlas.h"
+#include "hud/hud_atlas.h"
 
 #include <cstdio>
 #include <vector>

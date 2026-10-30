@@ -1,11 +1,11 @@
 #pragma once
-// gameplay/arena_camera.h — the arena match camera: state and behaviour, ported
+// camera/arena_camera.h — the arena match camera: state and behaviour, ported
 // from the DX9 reference (remake/src/render/arena_camera.{h,cpp}; RE section 14,
 // fcn.006507c0 camera update + fcn.0042cb50 camera collision).
 //
 // WHY a port and not render::arenaViewProj: the reference camera is STATEFUL, and
 // Phase 3's gate is a foundation frame compared against a banked DX9 frame. The
-// one-shot path (render/arena_camera.h) computes the same desired eye but starts
+// one-shot path (camera/arena_view.h) computes the same desired eye but starts
 // converged and always smooths, so the eye lands elsewhere. This class owns the
 // reference's state machine — target pool, orbit nudges, the retained eye, the
 // collision snap — and calls render::arenaViewProj for the eye math, so the formula
@@ -62,7 +62,7 @@
 #include <glm/glm.hpp>
 
 #include "physics/raycast.h"       // game::physics::CameraCollision
-#include "render/arena_camera.h"   // render::ArenaTarget, render::arenaViewProj
+#include "camera/arena_view.h"   // render::ArenaTarget, render::arenaViewProj
 
 namespace gameplay {
 
@@ -146,7 +146,7 @@ struct ArenaCameraPreset {
 // (world-space Y-up position and the FUN_00420b30 actor yaw), inherited so the eye math
 // can hand this straight to render::arenaViewProj and so a caller that already holds an
 // ArenaTarget needs no conversion. `alive` is the DX9 CameraTarget field that
-// render::ArenaTarget dropped (render/arena_camera.h): cycle_target skips dead
+// render::ArenaTarget dropped (camera/arena_view.h): cycle_target skips dead
 // fighters, which is a lock-on policy, not render math.
 struct CameraTarget : render::ArenaTarget {
     bool alive = true;
@@ -310,7 +310,7 @@ private:
 
     ArenaCameraPreset m_preset{};
 
-    // render::arenaViewProj's own baseline orbit (render/arena_camera.h: angle =
+    // render::arenaViewProj's own baseline orbit (camera/arena_view.h: angle =
     // facingYaw - π/4 + nudge). Passing nudge + (this - preset.baselineOrbit) to it puts
     // the eye at the preset's azimuth while leaving the eye formula in exactly one place.
     static constexpr float kRenderBaselineOrbit = 0.7853982f;   // π/4

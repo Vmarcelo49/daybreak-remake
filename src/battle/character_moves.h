@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include "gameplay/combat_record.h"
+#include "battle/combat_record.h"
 
 namespace gameplay {
 

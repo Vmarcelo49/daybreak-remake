@@ -46,7 +46,7 @@
 #include <glm/glm.hpp>
 
 #include "assets/xmodel.h"        // xm::Vertex / xm::Mesh / xm::Model (read-only use)
-#include "game/camera_collision.h"
+#include "camera/camera_collision.h"
 
 namespace game::physics {
 
@@ -258,7 +258,7 @@ private:
     GroundHit nearestGround(float x, float z) const;
 };
 
-// The physics side of the arena camera clamp (game/camera_collision.h:36-40): the
+// The physics side of the arena camera clamp (camera/camera_collision.h:36-40): the
 // distance from the aim to the first collision_camera.x blocker along the
 // aim -> desired-eye segment.
 //
@@ -272,7 +272,7 @@ private:
 //     (remake/src/render/arena_camera.cpp:111-113); that comparison lives here so the
 //     caller's hitDist is exactly the reference's hit.dist.
 //   * The 20-unit pull-back is NOT applied here: it is arenaClampEye's margin
-//     (render/arena_camera.h), which keeps render tuning out of physics. Pair this
+//     (camera/arena_view.h), which keeps render tuning out of physics. Pair this
 //     with game::clampHitDistance() so a miss and an unblocked segment behave alike.
 class CameraCollision final : public game::ICameraCollision {
 public:

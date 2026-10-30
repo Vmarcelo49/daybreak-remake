@@ -1,5 +1,5 @@
 #pragma once
-#include "ui/screen.h"
+#include "frontend/screen.h"
 #include "input/input.h"
 namespace ui {
 // FUN_00404a50's label order — the original's twelve bindable actions, with no

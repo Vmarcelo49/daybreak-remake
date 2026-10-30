@@ -37,7 +37,7 @@ struct EffectEvent {
     // The direction the request posed the effect with (spawn only), zero when the
     // caller has none. FUN_00421aa0 builds it from the request's own (heading, pitch)
     // and the effect instance's draw composes it into its matrix (FUN_00436150:
-    // RotationZ then RotationY then translation — the same order game/shot_visual.h
+    // RotationZ then RotationY then translation — the same order render/shot_visual.h
     // recovers for the shots). Carrying it is what lets a posed effect keep its pose;
     // the port's draw used to translate only, which dropped it.
     glm::vec3 direction{0.f};

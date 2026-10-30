@@ -103,7 +103,7 @@ public:
 bool screenAvailable(ScreenId id);
 
 class MovieAudio;
-// Scene 0x00's host-owned seams (ui/screen_opening.h): the movie's audio output, the input
+// Scene 0x00's host-owned seams (frontend/screen_opening.h): the movie's audio output, the input
 // backend its recovered skip keys are read from, and which file it plays (--movie; empty
 // keeps the original's op.mpg). The host installs them before the first screen exists; with
 // either pointer left null, constructing the opening scene reports that instead of building
@@ -177,7 +177,7 @@ public:
     ScreenId pending() const { return target_; }
     const Screen* screen() const { return current_.get(); }
     // The same screen, non-const: one screen owns a one-shot the host has to drain (the
-    // opening scene's recovered BGM start, ui/screen_opening.h), and the stack is the host's
+    // opening scene's recovered BGM start, frontend/screen_opening.h), and the stack is the host's
     // only handle on the live screen.
     Screen*  mutableScreen() { return current_.get(); }
 

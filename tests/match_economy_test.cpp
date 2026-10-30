@@ -7,13 +7,13 @@
 //
 //  No WebGPU, no SDL, no device. The test links match_economy.cpp only: the
 //  mapping under test (fillHudValues) is inline in hud_fill.h, and hud_fill.cpp
-//  — the game/hud_bridge.h -> ui/ -> webgpu.h seam — is compiled by the real
+//  — the hud/hud_bridge.h -> ui/ -> webgpu.h seam — is compiled by the real
 //  target instead (see the deliverable report).
 //
 //    g++ -std=c++20 -Wall -Wextra -I src
 //        -I third_party/glm
 //        tests/match_economy_test.cpp
-//        src/gameplay/match_economy.cpp -o /tmp/match_economy_test
+//        src/battle/match_economy.cpp -o /tmp/match_economy_test
 //    /tmp/match_economy_test          # prints MATCH_ECONOMY: ok|FAIL, exit 1 on mismatch
 //
 //  Every case prints expected vs got. Comparisons are exact: the timings used at
@@ -28,9 +28,9 @@
 #include <cstdio>
 #include <string>
 
-#include "game/hud_values.h"
-#include "gameplay/hud_fill.h"
-#include "gameplay/match_economy.h"
+#include "hud/hud_values.h"
+#include "hud/hud_fill.h"
+#include "battle/match_economy.h"
 
 namespace {
 
@@ -1147,7 +1147,7 @@ void testHudLowHpHighBalloon() {
     checkBool("koVisible (4th KO landed this frame: sting running)", true, v.koVisible);
 
     // Text path: the composer's own conversions on the values filled above
-    // (ui/hud.cpp:77-83), which are the reference's printf conversions.
+    // (hud/hud.cpp:77-83), which are the reference's printf conversions.
     char text[48];
     std::snprintf(text, sizeof text, "%.0f%%", v.balloon[0]);
     checkStr("left-corner balloon text", "84%", text);
@@ -1208,7 +1208,7 @@ void testHudHyperAndStamina() {
     gameplay::HudFillInput in;
     in.p1 = freshFighter();
 
-    // Active: the composer writes "name %.0fs" in the aura colour (ui/hud.cpp:102-106).
+    // Active: the composer writes "name %.0fs" in the aura colour (hud/hud.cpp:102-106).
     in.p1.hyperName = "OYASHIRO";
     in.p1.hyperGauge = 1.0f;
     in.p1.hyperActive = true;
@@ -1223,7 +1223,7 @@ void testHudHyperAndStamina() {
     checkFloat("active: hyperGauge (drains with the timer)", 1.0f, v.hyperGauge);
     checkRgb("active: aura is the mode aura", in.p1.hyperAura, v.hyperAura);
 
-    // Ready: full gauge, S fires it -> "name  READY (S)" (ui/hud.cpp:107-111).
+    // Ready: full gauge, S fires it -> "name  READY (S)" (hud/hud.cpp:107-111).
     in.p1.hyperActive = false;
     in.p1.hyperReady = true;
     in.p1.hyperSecondsLeft = 0.0f;
@@ -1234,7 +1234,7 @@ void testHudHyperAndStamina() {
     std::snprintf(text, sizeof text, "%s  READY (S)", v.hyperName.c_str());
     checkStr("ready label text (two spaces, scenes.cpp:869)", "OYASHIRO  READY (S)", text);
 
-    // Idle: partial gauge -> bare name (ui/hud.cpp:112-116); the composer picks grey.
+    // Idle: partial gauge -> bare name (hud/hud.cpp:112-116); the composer picks grey.
     in.p1.hyperReady = false;
     in.p1.hyperGauge = 0.37f;
     in.p1.hyperName = "FRIENDSHIP";
@@ -1271,7 +1271,7 @@ void testHudHyperAndStamina() {
 void testHudRounding() {
     std::printf("\n-- rounding: raw floats reach the composer's own %%.0f\n");
     // The reference computes the HP bar fill as hp/100.0 (double, scenes.cpp:857)
-    // and the composer as hp/100.f (ui/hud.cpp:98). Identical for every legal HP.
+    // and the composer as hp/100.f (hud/hud.cpp:98). Identical for every legal HP.
     int mismatches = 0;
     for (int hp = 0; hp <= 100; ++hp) {
         const float viaFloat = static_cast<float>(hp) / 100.f;

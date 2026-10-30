@@ -11,7 +11,7 @@
 // lock-on target choice stay game-side. glm + std only: no WebGPU, no SDL.
 #include <glm/glm.hpp>
 
-#include "render/arena_camera.h"
+#include "camera/arena_view.h"
 
 namespace game {
 

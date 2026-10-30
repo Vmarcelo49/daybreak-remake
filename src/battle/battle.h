@@ -1,5 +1,5 @@
 #pragma once
-// The one door to the vendored simulation (src/sim/core). Nothing else includes the core, so
+// The one door to the vendored simulation (src/battle/core). Nothing else includes the core, so
 // its headers, its global names and its 284k lines stay out of every other translation unit.
 #include <array>
 #include <cstdint>

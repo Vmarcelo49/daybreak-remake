@@ -1,6 +1,6 @@
 // =============================================================================
 //  hud_sprite_table.cpp — host test for the battle HUD's sprite table and its
-//  draw geometry (ui/hud_atlas.h + the pure half of ui/sprite.h).
+//  draw geometry (hud/hud_atlas.h + the pure half of ui/sprite.h).
 //
 //  No WebGPU device, no window, no game data: everything here is arithmetic over
 //  the constants transcribed from the exe, so it runs anywhere.
@@ -27,8 +27,8 @@
 #include <cmath>
 #include <cstdio>
 
-#include "game/hud_bridge.h"
-#include "ui/hud_atlas.h"
+#include "hud/hud_bridge.h"
+#include "hud/hud_atlas.h"
 #include "ui/sprite.h"
 
 namespace {

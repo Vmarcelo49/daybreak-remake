@@ -1,5 +1,5 @@
-#include "ui/soft_keyboard.h"
-#include "ui/hud_atlas.h"
+#include "frontend/soft_keyboard.h"
+#include "hud/hud_atlas.h"
 #include <algorithm>
 namespace ui {
 namespace {

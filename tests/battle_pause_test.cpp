@@ -1,8 +1,8 @@
 // Issue #15's pause semantics, device-free: a held button must not survive the pause as a
 // stale edge, and the menu must resolve to the four documented choices. No SDL, no window,
 // no assets. pause_overlay_panel pins that a paused battle stays frozen.
-#include "gameplay/battle_pause.h"
-#include "gameplay/fixed_step.h"
+#include "battle/battle_pause.h"
+#include "battle/fixed_step.h"
 #include "input/tick_input.h"
 
 #include <cstdio>

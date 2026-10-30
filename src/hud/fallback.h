@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "ui/hud.h"
+#include "hud/hud.h"
 #include "ui/sprite.h"
 
 namespace ui {

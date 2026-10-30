@@ -3,8 +3,8 @@
 #include <deque>
 #include <string>
 #include <vector>
-#include "ui/screen.h"
-#include "ui/frontend_state.h"
+#include "frontend/screen.h"
+#include "frontend/frontend_state.h"
 
 namespace ui {
 // FUN_00409340: controller state differs from the selected panel's stored choices.

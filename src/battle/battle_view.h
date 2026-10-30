@@ -12,12 +12,12 @@
 #include <glm/glm.hpp>
 
 #include "assets/xmodel.h"
-#include "game/battle_types.h"
-#include "game/fighter_pose.h"
-#include "gameplay/character_moves.h"
-#include "gameplay/match_economy.h"
-#include "gameplay/weapon_definition.h"
-#include "gameplay/weapon_trail.h"
+#include "battle/battle_types.h"
+#include "camera/fighter_pose.h"
+#include "battle/character_moves.h"
+#include "battle/match_economy.h"
+#include "battle/weapon_definition.h"
+#include "battle/weapon_trail.h"
 #include "input/input.h"
 
 namespace game {

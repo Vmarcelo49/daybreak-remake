@@ -1,7 +1,7 @@
-// ui/screen.cpp — the screen ids, the factory and the 25-frame fade.
+// frontend/screen.cpp — the screen ids, the factory and the 25-frame fade.
 // The header carries the provenance; this file is the transcription of
 // FUN_00657c80 (switcher) and FUN_004020a0 (factory) as a host-side machine.
-#include "ui/screen.h"
+#include "frontend/screen.h"
 
 #include <cctype>
 #include <cstdio>
@@ -10,12 +10,12 @@
 #include <string>
 #include <utility>
 
-#include "ui/screen_title.h"
-#include "ui/screen_opening.h"
-#include "ui/screen_select.h"
-#include "ui/screen_vs.h"
-#include "ui/screen_options.h"
-#include "ui/screen_result.h"
+#include "frontend/screen_title.h"
+#include "frontend/screen_opening.h"
+#include "frontend/screen_select.h"
+#include "frontend/screen_vs.h"
+#include "frontend/screen_options.h"
+#include "frontend/screen_result.h"
 
 namespace ui {
 namespace {
@@ -45,7 +45,7 @@ bool equalsIgnoreCase(const char* a, const char* b) {
 }
 
 // Scene 0x00's host-owned seams: the movie's audio output, the input backend whose raw key
-// state the recovered skip reads (ui/screen_opening.h), and which file it plays. They arrive
+// state the recovered skip reads (frontend/screen_opening.h), and which file it plays. They arrive
 // through setOpeningHost instead of the factory's argument list because ui::makeScreen's
 // signature is deliberately the original factory's own (FUN_004020a0); the two pointers stay
 // null in a test, and the entry then reports the missing host rather than building a screen

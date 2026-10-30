@@ -1,4 +1,4 @@
-#include "sim/core_battle.h"
+#include "battle/core_battle.h"
 
 #include <algorithm>
 #include <cmath>
@@ -8,7 +8,7 @@
 #include "input/input.h"
 
 namespace gameplay { namespace input = fnd::input; }
-#include "gameplay/held_axis.h"
+#include "battle/held_axis.h"
 
 namespace sim {
 

@@ -1,5 +1,5 @@
 #pragma once
-// gameplay/battle_pause.h — the offline battle pause state (issue #15), device-free.
+// battle/battle_pause.h — the offline battle pause state (issue #15), device-free.
 //
 // RECOVERED, not invented. The original has a pause flag and a second toggle, both
 // cleared by the battle reset (FUN_00634760 @0x634877 / @0x634881), and toggles the flag

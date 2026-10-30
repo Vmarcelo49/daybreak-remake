@@ -25,9 +25,9 @@
 #include <memory>
 #include <string>
 
-#include "ui/frontend_settings.h"
-#include "ui/frontend_state.h"
-#include "ui/screen.h"
+#include "frontend/frontend_settings.h"
+#include "frontend/frontend_state.h"
+#include "frontend/screen.h"
 
 namespace {
 

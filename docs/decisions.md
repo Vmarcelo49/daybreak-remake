@@ -174,7 +174,7 @@ comments — when a decision changes.
   DirectPlay 8 is still replaced, not ported, but a LAN-first netcode
   (deterministic lockstep over UDP) is in scope.
 - Story mode is **not built**: the ids are registered
-  (`Prologue`/`StoryTeam`/`StoryAdv`, `foundation/src/ui/screen.h:43-47`)
+  (`Prologue`/`StoryTeam`/`StoryAdv`, `src/frontend/screen.h:43-47`)
   but their builders remain absent. The front end now builds title, selection,
   stage settings, options/key config, VS intro and result screens; its playable
   battle path now supports up to four selected fighters, and the Linux build
@@ -242,7 +242,7 @@ comments — when a decision changes.
 ## D9 — Live simulation is fixed at 64 Hz (2026-10-04)
 
 - The owner selected **64 Hz** for the playable port and its simulation tests.
-  `foundation/src/gameplay/fixed_step.h` is the shared rate/accumulator contract.
+  `src/battle/fixed_step.h` is the shared rate/accumulator contract.
   Rendering remains independently paced by the swapchain. Gameplay, bots, menu
   updates and frame-counted timers advance on logic ticks rather than presents.
 - Device polling happens once per render. Keyboard/gamepad button events and

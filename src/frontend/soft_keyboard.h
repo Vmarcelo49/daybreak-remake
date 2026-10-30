@@ -1,6 +1,6 @@
 #pragma once
 #include <array>
-#include "ui/screen.h"
+#include "frontend/screen.h"
 namespace ui {
 // FUN_00646bd0 stores eight packed (row << 4 | column) glyph coordinates.
 struct PlayerName { std::array<uint8_t,8> cells{}; std::array<uint8_t,8> pages{}; size_t length=0; };

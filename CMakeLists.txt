@@ -96,29 +96,30 @@ add_library(render STATIC
     src/render/debug_prims.cpp)
 target_link_libraries(render PUBLIC runtime assets)
 
-# The 2D/UI layer: sprite batch, bitmap font, HUD composition, diagnostics. Same
-# shape as render; verified headless before wiring (docs/UI-VERIFY.md).
+# The 2D presentation layer: sprite batch, bitmap font and text (src/ui/), the HUD
+# composition (src/hud/), the front-end screens (src/frontend/) and the fallback
+# diagnostics. Same shape as render; verified headless before wiring (docs/UI-VERIFY.md).
 add_library(ui STATIC
     src/ui/sprite.cpp
     src/ui/font.cpp
     src/ui/caption.cpp
-    src/ui/hud.cpp
-    src/ui/hud_atlas.cpp
+    src/hud/hud.cpp
+    src/hud/hud_atlas.cpp
     src/ui/text.cpp
-    src/ui/fallback.cpp
-    src/ui/screen.cpp
-    src/ui/screen_opening.cpp
-    src/ui/screen_title.cpp
-    src/ui/screen_select.cpp
-    src/ui/screen_stage_select.cpp
-    src/ui/screen_vs.cpp
-    src/ui/screen_result.cpp
-    src/ui/result_quote.cpp
-    src/ui/frontend_launch.cpp
-    src/ui/frontend_settings.cpp
+    src/hud/fallback.cpp
+    src/frontend/screen.cpp
+    src/frontend/screen_opening.cpp
+    src/frontend/screen_title.cpp
+    src/frontend/screen_select.cpp
+    src/frontend/screen_stage_select.cpp
+    src/frontend/screen_vs.cpp
+    src/frontend/screen_result.cpp
+    src/frontend/result_quote.cpp
+    src/frontend/frontend_launch.cpp
+    src/frontend/frontend_settings.cpp
     src/settings/user_settings.cpp
-    src/ui/screen_options.cpp
-    src/ui/soft_keyboard.cpp)
+    src/frontend/screen_options.cpp
+    src/frontend/soft_keyboard.cpp)
 target_include_directories(ui PUBLIC src)
 # hud_atlas.cpp decodes HUD sheets through xm::decodeCnvImage, which assets/ owns: state it
 # here so a target linking ui alone still links.
@@ -156,7 +157,7 @@ target_link_libraries(movie PUBLIC runtime media)
 # Game-facing interfaces: header-only (glm+std, plus hud_bridge.h over ui/), so
 # this library is a check TU that forces every target to compile them — the
 # same rationale as the pin TU above.
-add_library(game_interfaces STATIC src/game/game_check.cpp)
+add_library(game_interfaces STATIC src/app/game_check.cpp)
 target_include_directories(game_interfaces PUBLIC src)
 target_link_libraries(game_interfaces PUBLIC ui glm)
 
@@ -167,19 +168,19 @@ add_library(physics STATIC src/physics/raycast.cpp)
 target_include_directories(physics PUBLIC src)
 target_link_libraries(physics PUBLIC assets glm)
 
-# The ported game truth (FULL-REPLACEMENT-PLAN.md Phase 2): fighter/projectile
-# simulation, the match loop that composes them in the reference's order, the match
-# economy and the HUD value computation — lifted out of remake/src so the WebGPU path
-# runs the game's own rules instead of a scripted vignette. hud_fill.cpp is the one TU
-# here that reaches ui/ -> webgpu.h (through game/hud_bridge.h), which ui
-# supplies; the simulation half is std + glm + the ported raycast.
+# The ported game rules (docs/archive/FULL-REPLACEMENT-PLAN.md Phase 2): the arena camera,
+# the match economy, the character/weapon tables and the HUD value computation — lifted out
+# of the DX9 tree so the WebGPU path runs the game's own rules instead of a scripted
+# vignette. hud_fill.cpp is the one TU here that reaches ui/ -> webgpu.h (through
+# hud/hud_bridge.h), which the ui target supplies; the rest is std + glm + the ported
+# raycast.
 add_library(gameplay STATIC
-    src/gameplay/arena_camera.cpp
-    src/gameplay/match_economy.cpp
-    src/gameplay/character_moves.cpp
-    src/gameplay/weapon_definition.cpp
-    src/gameplay/hud_fill.cpp
-    src/gameplay/result_title.cpp)
+    src/camera/arena_camera.cpp
+    src/battle/match_economy.cpp
+    src/battle/character_moves.cpp
+    src/battle/weapon_definition.cpp
+    src/hud/hud_fill.cpp
+    src/frontend/result_title.cpp)
 target_include_directories(gameplay PUBLIC src)
 target_link_libraries(gameplay
     PUBLIC physics
@@ -188,49 +189,49 @@ target_link_libraries(gameplay
 # The vendored reference simulation (docs/DIRECTION.md). The core is third-party code kept
 # byte-identical, so its warnings are silenced, not fixed.
 add_library(battle_core_zlib STATIC
-    src/sim/core/zlib/adler32.c
-    src/sim/core/zlib/crc32.c
-    src/sim/core/zlib/inffast.c
-    src/sim/core/zlib/inflate.c
-    src/sim/core/zlib/inftrees.c
-    src/sim/core/zlib/zutil.c)
+    src/battle/core/zlib/adler32.c
+    src/battle/core/zlib/crc32.c
+    src/battle/core/zlib/inffast.c
+    src/battle/core/zlib/inflate.c
+    src/battle/core/zlib/inftrees.c
+    src/battle/core/zlib/zutil.c)
 target_compile_options(battle_core_zlib PRIVATE -w)
 
 add_library(battle_core STATIC
-    src/sim/battle.cpp
-    src/sim/core/compiled_native_bodies/dash.cpp
-    src/sim/core/compiled_native_bodies/full_charge.cpp
-    src/sim/core/compiled_native_bodies/jump.cpp
-    src/sim/core/compiled_native_bodies/remaining_melee.cpp
-    src/sim/core/compiled_native_bodies/shoot.cpp
-    src/sim/core/compiled_native_bodies/slot7.cpp
-    src/sim/core/compiled_native_bodies/special_strike.cpp)
+    src/battle/battle.cpp
+    src/battle/core/compiled_native_bodies/dash.cpp
+    src/battle/core/compiled_native_bodies/full_charge.cpp
+    src/battle/core/compiled_native_bodies/jump.cpp
+    src/battle/core/compiled_native_bodies/remaining_melee.cpp
+    src/battle/core/compiled_native_bodies/shoot.cpp
+    src/battle/core/compiled_native_bodies/slot7.cpp
+    src/battle/core/compiled_native_bodies/special_strike.cpp)
 target_include_directories(battle_core
     PUBLIC src
-    PRIVATE src/sim/core src/sim/core/zlib)
+    PRIVATE src/battle/core src/battle/core/zlib)
 # Bodies stay out of every other TU's compile: the core's public control headers then
 # declare them, as its own build does.
 target_compile_definitions(battle_core PRIVATE DAYBREAK_COMPILED_NATIVE_BODIES=1)
 target_compile_options(battle_core PRIVATE -w
-    "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/sim/core_prelude.h")
+    "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/battle/core_prelude.h")
 target_link_libraries(battle_core PRIVATE battle_core_zlib)
 if(EMSCRIPTEN)
     # Two core headers use SSE intrinsics; Emscripten maps those onto WebAssembly SIMD.
     target_compile_options(battle_core PRIVATE -msimd128 -msse)
 endif()
 
-# game::Battle over the core. Includes only sim/battle.h, never the core.
-add_library(battle_backend STATIC src/sim/core_battle.cpp)
+# game::Battle over the core. Includes only battle/battle.h, never the core.
+add_library(battle_backend STATIC src/battle/core_battle.cpp)
 target_link_libraries(battle_backend PUBLIC battle_core gameplay)
 
 if(NOT CMAKE_CROSSCOMPILING)
-    add_executable(simctl src/sim/simctl.cpp)
+    add_executable(simctl src/battle/simctl.cpp)
     target_link_libraries(simctl PRIVATE battle_core)
-    add_executable(simfuzz src/sim/simfuzz.cpp)
+    add_executable(simfuzz src/battle/simfuzz.cpp)
     target_link_libraries(simfuzz PRIVATE battle_core)
 endif()
 
-add_executable(daybreak src/main.cpp)
+add_executable(daybreak src/app/main.cpp)
 target_link_libraries(daybreak PRIVATE battle_backend)
 if(WIN32)
     set_target_properties(daybreak PROPERTIES WIN32_EXECUTABLE TRUE)
@@ -448,7 +449,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # hud_fill.cpp's bridge half needs webgpu.h, so the test includes just the
     # value header (the seam TU is compiled by gameplay).
     add_executable(match_economy_test tests/match_economy_test.cpp
-                   src/gameplay/match_economy.cpp)
+                   src/battle/match_economy.cpp)
     target_include_directories(match_economy_test PRIVATE src)
     add_test(NAME match_economy_test COMMAND match_economy_test)
 
@@ -512,7 +513,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
 
     # Device-free camera test; assets supplies the action-rig controller.
     add_executable(arena_camera_test tests/arena_camera_test.cpp
-                   src/gameplay/arena_camera.cpp src/physics/raycast.cpp)
+                   src/camera/arena_camera.cpp src/physics/raycast.cpp)
     target_include_directories(arena_camera_test PRIVATE src)
     target_link_libraries(arena_camera_test PRIVATE assets glm)
     add_test(NAME arena_camera_test COMMAND arena_camera_test)
@@ -531,14 +532,14 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # The vendored simulation: all 46 combos run, and the digest repeats and reacts (M1).
     add_executable(sim_core_test tests/sim_core_test.cpp)
     target_link_libraries(sim_core_test PRIVATE battle_core)
-    target_include_directories(sim_core_test PRIVATE src/sim src/sim/core)
+    target_include_directories(sim_core_test PRIVATE src/battle src/battle/core)
     add_test(NAME sim_core_test COMMAND sim_core_test)
     set_tests_properties(sim_core_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
     # The admission bodies against the original's recorded answers; skips without the bundle.
     add_executable(sim_oracle_test tests/sim_oracle_test.cpp)
     target_compile_definitions(sim_oracle_test PRIVATE DAYBREAK_COMPILED_NATIVE_BODIES=1)
     target_link_libraries(sim_oracle_test PRIVATE battle_core)
-    target_include_directories(sim_oracle_test PRIVATE src/sim src/sim/core)
+    target_include_directories(sim_oracle_test PRIVATE src/battle src/battle/core)
     add_test(NAME sim_oracle_test COMMAND sim_oracle_test)
     set_tests_properties(sim_oracle_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
@@ -599,7 +600,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME lighting_test COMMAND lighting_test)
 
     # Issue #46: the Controller/Model ownership across a scene swap. It compiles
-    # src/main.cpp into its own TU (SDL_MAIN_HANDLED, so the app's SDL_App* entry points
+    # src/app/main.cpp into its own TU (SDL_MAIN_HANDLED, so the app's SDL_App* entry points
     # do not collide with the test's main) to drive the real initScene/initMatch rather
     # than a copy of them, and it links what daybreak links because that is what
     # main.cpp needs. The cost is one more compile of the app's largest TU; the

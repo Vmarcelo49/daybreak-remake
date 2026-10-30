@@ -1,4 +1,4 @@
-#include "gameplay/result_title.h"
+#include "frontend/result_title.h"
 
 #include "assets/exe_strings.h"
 

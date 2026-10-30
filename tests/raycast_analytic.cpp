@@ -31,7 +31,7 @@
 #include "assets/xmodel.h"
 
 #include "physics/raycast.h"
-#include "render/arena_camera.h"   // arenaClampEye: the clamp consumer's math (read-only use)
+#include "camera/arena_view.h"   // arenaClampEye: the clamp consumer's math (read-only use)
 
 #include <algorithm>
 #include <chrono>

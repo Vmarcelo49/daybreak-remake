@@ -16,8 +16,8 @@
 // stepped once per tick (D9) and every view only reads it.
 #include <glm/glm.hpp>
 
-#include "gameplay/arena_camera.h"   // gameplay::ArenaCamera (per-view camera)
-#include "ui/hud.h"                  // ui::HudState (the per-view HUD frame)
+#include "camera/arena_camera.h"   // gameplay::ArenaCamera (per-view camera)
+#include "hud/hud.h"                  // ui::HudState (the per-view HUD frame)
 
 namespace game {
 

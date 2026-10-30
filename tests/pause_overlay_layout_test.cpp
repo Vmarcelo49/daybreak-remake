@@ -1,11 +1,11 @@
-// The pause overlay's layout rule (ui/pause_layout.h). The overlay is a port-only feature
+// The pause overlay's layout rule (hud/pause_layout.h). The overlay is a port-only feature
 // (#15, docs/PAUSE.md): the original draws a banner and a rematch prompt and has no readable
 // menu, so there is nothing to compare against and nothing here is "recovered". What this
 // pins is the contract issue #50's criteria state instead: the glyph size, the line pitch
 // and the backing panel all derive from the canvas, the panel is the measured text block
 // plus its margin, the block stays inside the frame at every size, and the same target gives
 // the same menu whether it is a single view or a 4-view split.
-#include "ui/pause_layout.h"
+#include "hud/pause_layout.h"
 
 #include <cmath>
 #include <cstdio>

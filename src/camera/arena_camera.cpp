@@ -1,8 +1,8 @@
-// gameplay/arena_camera.cpp — see arena_camera.h for the port's contract and why each
+// camera/arena_camera.cpp — see arena_camera.h for the port's contract and why each
 // piece of state exists. Structure follows the reference line for line so the two can
 // be diffed; the comments mark the two places where the reference's control flow is
 // load-bearing (the degenerate-segment early-out and the blocked/unblocked asymmetry).
-#include "gameplay/arena_camera.h"
+#include "camera/arena_camera.h"
 
 #include <algorithm>
 

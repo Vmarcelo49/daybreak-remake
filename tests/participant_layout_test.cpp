@@ -5,8 +5,8 @@
 #include <cstdio>
 #include <cstring>
 #define CHECK(condition) do { if (!(condition)) { std::fprintf(stderr,"%s:%d: %s\n",__FILE__,__LINE__,#condition); return 1; } } while (false)
-#include "ui/participants.h"
-#include "ui/screen_result.h"
+#include "frontend/participants.h"
+#include "frontend/screen_result.h"
 
 static ui::FrontendState twoVsTwo() {
     ui::FrontendState state;

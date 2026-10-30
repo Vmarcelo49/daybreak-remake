@@ -1,4 +1,4 @@
-#include "ui/hud.h"
+#include "hud/hud.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -282,7 +282,7 @@ void HudComposer::composeBattle(SpriteRenderer& batch, const HudState& st, const
         battleAtlas_.fill(batch, HudIcon::ChargeFill, st.chargeFrac, layout.charge.x, layout.charge.y);
         // The C-held tier meter rides the CHARGE pill's lower half (0x644b0d /
         // 0x644b48 at y 525). HudState carries the tier as its resolved colour
-        // (game/hud_bridge.h): the two real tiers are the surveyed red and yellow,
+        // (hud/hud_bridge.h): the two real tiers are the surveyed red and yellow,
         // and the idle grey is not a tier at all, so it draws nothing.
         if (st.holdVisible && st.holdColor.r > 0.9f)
             battleAtlas_.fill(batch, st.holdColor.g > 0.6f ? HudIcon::ChargeTierYellow

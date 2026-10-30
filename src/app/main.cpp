@@ -35,7 +35,7 @@
 #include "platform/platform.h"
 #include "platform/surface.h"
 #include "platform/web_pack.h"
-#include "render/arena_camera.h"
+#include "camera/arena_view.h"
 #include "render/debug_prims.h"
 #include "render/scene_renderer.h"
 // After the renderer on purpose: raycast.h includes assets/xmodel.h without
@@ -44,37 +44,37 @@
 // from scene_renderer.h further down.
 #include "physics/raycast.h"
 #include "movie/movie_player.h"
-#include "ui/hud.h"
-#include "ui/pause_layout.h"
+#include "hud/hud.h"
+#include "hud/pause_layout.h"
 #include "ui/sprite.h"
-#include "ui/screen.h"
-#include "ui/screen_vs.h"
-#include "ui/screen_opening.h"
-#include "ui/frontend_state.h"
-#include "ui/frontend_launch.h"
-#include "ui/participants.h"
-#include "ui/frontend_settings.h"
+#include "frontend/screen.h"
+#include "frontend/screen_vs.h"
+#include "frontend/screen_opening.h"
+#include "frontend/frontend_state.h"
+#include "frontend/frontend_launch.h"
+#include "frontend/participants.h"
+#include "frontend/frontend_settings.h"
 #include "settings/user_settings.h"
-#include "game/hud_bridge.h"
-#include "game/fighter_pose.h"
-#include "game/match_view.h"
-#include "game/view_layout.h"
-#include "gameplay/arena_camera.h"
-#include "gameplay/battle_pause.h"
-#include "game/battle_view.h"
-#include "sim/core_battle.h"
-#include "gameplay/fixed_step.h"
-#include "gameplay/hud_fill.h"
-#include "gameplay/result_title.h"
+#include "hud/hud_bridge.h"
+#include "camera/fighter_pose.h"
+#include "battle/match_view.h"
+#include "hud/view_layout.h"
+#include "camera/arena_camera.h"
+#include "battle/battle_pause.h"
+#include "battle/battle_view.h"
+#include "battle/core_battle.h"
+#include "battle/fixed_step.h"
+#include "hud/hud_fill.h"
+#include "frontend/result_title.h"
 #include "audio/audio.h"
 #include "audio/audio_engine.h"
 #include "audio/combat_audio.h"
-#include "game/effect_events.h"
-#include "game/effect_catalog.h"
-#include "game/aura_attach.h"
-#include "game/fx_cards.h"
-#include "game/muzzle_slot.h"
-#include "game/shot_visual.h"
+#include "render/effect_events.h"
+#include "render/effect_catalog.h"
+#include "render/aura_attach.h"
+#include "render/fx_cards.h"
+#include "render/muzzle_slot.h"
+#include "render/shot_visual.h"
 #include "input/input_backend.h"
 #include "input/tick_input.h"
 #include "input/input_sdl3.h"
@@ -1078,7 +1078,7 @@ struct App {
     // B1/issue #17: the live effect cards the renderer draws from the event queues
     // above. A card's `asset` is a scene-model index (the catalog's, or an attachment
     // slot's); `liveFx` is this frame's card set, owned here — the set itself
-    // (game::LiveFxCard) and its update rules live in game/fx_cards.h, unit-tested in
+    // (game::LiveFxCard) and its update rules live in render/fx_cards.h, unit-tested in
     // tests/fx_cards_test.cpp.
     // Issue #17: the effect table. `fxCatalog` maps an effect id (type*10+variant,
     // data/effect/%03d.dat) to its loaded card and its recovered lifetime; `fxAttach`
@@ -1090,16 +1090,16 @@ struct App {
     // Issue #32: the in-flight shot's own model, [fighter][chargeLevel-1]. The path is the
     // 260-byte model block of that level's data/bullet/<weaponId>/<type>.dat, resolved by
     // bindShotModels() once the scene is loaded; -1 when the level has no bullet file or
-    // its block names a model the install does not ship. See game/shot_visual.h.
+    // its block names a model the install does not ship. See render/shot_visual.h.
     std::array<std::array<int,64>,4> fxShotModel{};
     std::array<std::array<int,2>,4> trailModels{{{{-1,-1}},{{-1,-1}},{{-1,-1}},{{-1,-1}}}};
     xm::Model actionCameraModel;
     uint64_t fxShotNoModel = 0;      // live-shot placements with no model to draw
-    // The eleven attach points of game/aura_attach.h, resolved once per fighter on its own
+    // The eleven attach points of render/aura_attach.h, resolved once per fighter on its own
     // rig: the aura attachment draws one instance per resolved point (FUN_004205e0).
     game::AuraAttach auraAttach[4];
     // One instance id per spawned card, monotonic for the whole run: two hits in the
-    // same tick are two instances and neither can retire the other (game/fx_cards.h).
+    // same tick are two instances and neither can retire the other (render/fx_cards.h).
     uint32_t fxNextInstance = 1;
     game::FxCardTally fxTally;       // cumulative spawn/drop/expire/kill counts
     uint64_t fxBadEffect = 0;        // impact ids the install ships no descriptor for
@@ -1355,7 +1355,7 @@ static bool initMatch(App& app);
 // fighter/economy/camera step) and is toggled from the per-fighter pause action while the
 // live battle phase runs (@0x634fb3-0x635006, playing system SE 0x11). What the port adds
 // is the readable four-row menu, its captions and the leave-battle actions — see
-// gameplay/battle_pause.h for the full provenance and docs/PAUSE.md for the policy.
+// battle/battle_pause.h for the full provenance and docs/PAUSE.md for the policy.
 
 // Pause is a live-battle feature of the interactive frontend only. Every capture and
 // replay path keeps its historical behaviour — --match, --versus, --hud-test,
@@ -1607,7 +1607,7 @@ static bool drawBattlePauseOverlay(App& app, WGPUCommandEncoder encoder, WGPUTex
     if (!app.pauseText.load(app.pauseUi, kPauseFontCellPx, textError) ||
         !app.pauseText.prepare(app.pauseUi, lines, textError))
         return true;
-    // Title and rows: the sizes are ratios of the canvas (ui/pause_layout.h — a port
+    // Title and rows: the sizes are ratios of the canvas (hud/pause_layout.h — a port
     // decision, the original has no readable menu), and each line's measured width is what
     // sizes the panel.
     const auto lineScale = [](size_t i) { return i == 0 ? ui::kPauseTitleScale : 1.f; };
@@ -1689,7 +1689,7 @@ void driveSyntheticLocalPads(App& app) {
             // there. The VS presentation and the result beats advance on their own or on the
             // run's own script taps, so the pads never skip them either: an evidence run sees
             // the whole four-portrait assembly and the full victory -> quote -> report
-            // sequence instead of a single faded frame (ui/screen_vs.h, ui/screen_result.h).
+            // sequence instead of a single faded frame (frontend/screen_vs.h, frontend/screen_result.h).
             if (app.frontend.stagePage) pad = fnd::input::SyntheticPadState{};
             if (app.screens.current() == ui::ScreenId::VsIntro ||
                 app.screens.current() == ui::ScreenId::Result)
@@ -2645,7 +2645,7 @@ static bool initMatch(App& app) {
         view.fighter = viewList[v].fighter;
         view.followed = viewList[v].fighter;
         // The camera starts pristine: eye (0,0,0), converging at 10% per update exactly
-        // like the reference's ArenaCamera (gameplay/arena_camera.cpp). That seed is what
+        // like the reference's ArenaCamera (camera/arena_camera.cpp). That seed is what
         // makes the first trace line comparable — the DX9's own frame-1 eye is one 10%
         // step from the origin, not the converged position.
         view.camera = gameplay::ArenaCamera{};
@@ -2736,7 +2736,7 @@ struct FrameView {
     ui::HudState       hud;
 };
 
-// Fills `out` with this frame's views: the cell each one occupies (game/view_layout.h's
+// Fills `out` with this frame's views: the cell each one occupies (hud/view_layout.h's
 // recovered FUN_006396f0 geometry), the camera pose for it — interpolated for presentation,
 // or the exact camera when nothing is interpolated (alpha 1), exactly as the single-view
 // path did — and that view's HUD with its markers projected through its own view-projection
@@ -2858,7 +2858,7 @@ static void placeMatchFighters(App& app) {
     app.renderer.setTextureOverrides(textures);
 }
 
-// The effect asset table the gameplay events index into (game/effect_events.h:
+// The effect asset table the gameplay events index into (render/effect_events.h:
 // `asset` is a table index, never a path). Slot 0 is the melee-hit card, resolved
 // through the effect manager's descriptor (FUN_0042eec0: version plus a
 // fixed 260-byte model path); the auras are
@@ -2950,7 +2950,7 @@ static void buildFxAssets(App& app) {
 // Issue #32: resolve the in-flight shot's own model for every bound weapon, once per
 // scene. The model is the 260-byte block of the level's data/bullet/<weaponId>/<type>.dat
 // (gameplay::BulletParameter::modelName), which the original loads into the weapon's
-// per-variant model object and the shot's own render draws — see game/shot_visual.h for
+// per-variant model object and the shot's own render draws — see render/shot_visual.h for
 // the chain. Called after the bullet parameters exist and before setScene(), because a
 // card is a scene model. A level whose model the install does not ship keeps -1, which is
 // the empty model slot that same failed load leaves in the original; placeFxCards counts
@@ -3056,12 +3056,12 @@ static void bindAnimationMaterials(App& app) {
 }
 
 // Drains the gameplay's event queue into the live card set. The spawn /
-// kill-by-id / ttl-expiry rules live in game/fx_cards.h (unit-tested there);
+// kill-by-id / ttl-expiry rules live in render/fx_cards.h (unit-tested there);
 // this only moves the drained events over and counts them.
 static void updateFxCards(App& app, game::EffectEventQueue& q, uint64_t& events, float dt) {
     const std::vector<game::EffectEvent> ev = q.drain();
     events += ev.size();
-    // The cap and the drop count live in game/fx_cards.h; the tally is cumulative so a
+    // The cap and the drop count live in render/fx_cards.h; the tally is cumulative so a
     // run's log can prove the population stayed bounded (issue #17).
     const game::FxCardTally t = game::updateLiveFxCards(app.liveFx, ev, dt);
     if (app.liveFx.size() > app.fxPeakLive) app.fxPeakLive = app.liveFx.size();
@@ -3124,7 +3124,7 @@ static void placeFxCards(App& app) {
             if (c.asset < 0 || (size_t)c.asset >= app.scene.models.size()) continue;
             // The request's own pose, composed with the original's order
             // (FUN_00436150's RotationZ then RotationY then translation — the same
-            // helper and order game/shot_visual.h recovers for the shots). A zero
+            // helper and order render/shot_visual.h recovers for the shots). A zero
             // direction composes to the translation-only matrix this used to build,
             // so the unposed callers (muzzle, impact, aura puffs) are unchanged.
             render::SceneRenderer::EffectInstance instance;
@@ -3132,8 +3132,8 @@ static void placeFxCards(App& app) {
             instance.model = game::shotModelMatrix(c.position, c.direction);
             // A card's model ships an AnimationSet — RECOVERED: FUN_00436150 drives it with
             // age * 0.016, and the descriptor lifetime is derived from the clip's own length
-            // (game/effect_catalog.h) — and the port used to draw every card in its bind
-            // pose. See game/fx_cards.h's cardAnimationSeconds: the clock is the card's age
+            // (render/effect_catalog.h) — and the port used to draw every card in its bind
+            // pose. See render/fx_cards.h's cardAnimationSeconds: the clock is the card's age
             // at the animation's own rate, not a rescale.
             const xm::Model& cardModel = app.scene.models[(size_t)c.asset].model;
             // The same guard the catalog uses when it derives a descriptor's lifetime
@@ -3160,7 +3160,7 @@ static void placeFxCards(App& app) {
         // data/aura model once per attach point, on each of the eleven bone matrices at
         // player+0x38c that FUN_00421010 refreshed from the rig's own Bip frames. The port
         // does the same — one instance per resolved point, in the fighter's model space,
-        // which is where a bone-attached weapon already goes. See game/aura_attach.h for
+        // which is where a bone-attached weapon already goes. See render/aura_attach.h for
         // the enumeration that settles the instance count.
         for (int i = 0; i < 2; ++i) {
             const game::FighterView& f = app.battle->fighter(i);
@@ -3189,7 +3189,7 @@ static void placeFxCards(App& app) {
         // orientation instead of being yawed at the camera. RECOVERED: which model (the
         // bullet record's 260-byte block, gameplay::BulletParameter::modelName). PORT RULE:
         // the aim direction, because the per-weapon update that fills the shot's own
-        // rotation fields is not recovered — game/shot_visual.h has both. A level whose
+        // rotation fields is not recovered — render/shot_visual.h has both. A level whose
         // model the install does not ship draws nothing here, which is what the original
         // does with the empty model slot that same missing file leaves behind; the tally
         // below makes that visible instead of silent.
@@ -3243,7 +3243,7 @@ static void printFxSummary(const App& app) {
                 app.renderer.stats().effects);
 }
 
-// One fighter's HUD-side values (gameplay/hud_fill.h's HudFighterValues), sampled from the
+// One fighter's HUD-side values (hud/hud_fill.h's HudFighterValues), sampled from the
 // live fighter and the input that drives it. Split out of tickMatch because each view
 // samples its OWN fighter and controller with the same rules (issue #12).
 static void sampleHudFill(gameplay::HudFighterValues& out, const game::FighterView& f,
@@ -3372,7 +3372,7 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
         // two silently disagree the day anything re-points a camera again.
         if (view.camera.active_target_index() >= 0) view.followed = view.camera.active_target_index();
 
-        // This view's HUD: the ported value computation (gameplay/hud_fill.h, unchanged),
+        // This view's HUD: the ported value computation (hud/hud_fill.h, unchanged),
         // fed from the view's own fighter. Which side goes where is the DX9 layout's:
         // the balloon corners are the only two-side readout (side 0 left, side 1 right),
         // every other field belongs to the viewer's fighter.
@@ -3566,7 +3566,7 @@ static void tickMatch(App& app, double dt) {
         }
     }
     // The in-flight shot is NOT a card: it is the bullet's own model, drawn at the shot's
-    // own transform by placeFxCards() (issue #32). See game/shot_visual.h.
+    // own transform by placeFxCards() (issue #32). See render/shot_visual.h.
     updateFxCards(app, app.matchFx, app.matchFxEvents, (float)dt);
 
     updateMatchViews(app, inputs, dt);
@@ -4653,7 +4653,7 @@ static bool enterFrontendBattle(App& app) {
 
 // --screen: the front end's entry point. The stack is built with the app's own
 // makeScreen factory, so an id the port has not implemented is the factory's `default`
-// — no scene, no fake transition (ui/screen.h) — and the input backend is the same one
+// — no scene, no fake transition (frontend/screen.h) — and the input backend is the same one
 // --match uses, so a script drives the menu through the vocabulary the DX9 suite speaks.
 bool initScreens(App& app) {
     ui::ScreenId id = ui::ScreenId::Quit;
@@ -5570,7 +5570,7 @@ static SDL_AppResult tickFrontend(App& state) {
             ++app->menuSoundPlays[cue];
     }
     // 終了 reaches here: its item returns 0x16, the factory has no such scene, and
-    // the switcher reads the null scene as "no scene: quit" (ui/screen.h).
+    // the switcher reads the null scene as "no scene: quit" (frontend/screen.h).
     if (app->screens.finished()) return app->error.empty() ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
 
     return SDL_APP_CONTINUE;

@@ -1,11 +1,11 @@
-#include "ui/screen_result.h"
+#include "frontend/screen_result.h"
 #include <algorithm>
 #include <cstdio>
 #include "assets/asset_source.h"
 #include "assets/cnv.h"
-#include "ui/hud_atlas.h"
-#include "ui/participants.h"
-#include "ui/result_quote.h"
+#include "hud/hud_atlas.h"
+#include "frontend/participants.h"
+#include "frontend/result_quote.h"
 #include "ui/text.h"
 #include "ui/caption.h"
 

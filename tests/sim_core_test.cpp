@@ -1,8 +1,8 @@
 // The vendored simulation behind sim::Battle (docs/DIRECTION.md, M1): every legal combo runs,
 // and the digest is both repeatable and sensitive. This proves execution on real game data,
 // tier 4 at most: nothing here says the behaviour matches the original.
-#include "sim/battle.h"
-#include "sim/script.h"
+#include "battle/battle.h"
+#include "battle/script.h"
 
 #include <climits>
 #include <cmath>

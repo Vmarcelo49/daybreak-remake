@@ -1,10 +1,10 @@
-#include "ui/screen_select.h"
+#include "frontend/screen_select.h"
 #include "assets/asset_source.h"
 #include "assets/exe_strings.h"
-#include "gameplay/weapon_definition.h"
-#include "ui/frontend_launch.h"
-#include "ui/hud_atlas.h"
-#include "ui/screen_stage_select.h"
+#include "battle/weapon_definition.h"
+#include "frontend/frontend_launch.h"
+#include "hud/hud_atlas.h"
+#include "frontend/screen_stage_select.h"
 #include <algorithm>
 #include <cstdio>
 

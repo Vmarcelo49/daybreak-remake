@@ -1,4 +1,4 @@
-// gameplay/weapon_definition.cpp — the data/item/NNN.dat reader, transcribed from
+// battle/weapon_definition.cpp — the data/item/NNN.dat reader, transcribed from
 // FUN_00433eb0 (0x433eb0). See weapon_definition.h for the field-by-field layout and
 // for what is deliberately NOT here.
 //
@@ -6,7 +6,7 @@
 // ReadFile/`FUN_00663030` wrapper: sequential, fixed-size, no seeking. This translation
 // keeps that discipline — a fixed cursor, every read bounds-checked, and a short file
 // reported rather than read past.
-#include "gameplay/weapon_definition.h"
+#include "battle/weapon_definition.h"
 
 #include <cstring>
 #include <new>

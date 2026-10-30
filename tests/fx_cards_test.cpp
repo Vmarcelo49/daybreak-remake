@@ -1,5 +1,5 @@
 // =============================================================================
-//  fx_cards_test.cpp — host test for game/fx_cards.h (ROADMAP-PENDING.md B1,
+//  fx_cards_test.cpp — host test for render/fx_cards.h (ROADMAP-PENDING.md B1,
 //  issue #17): the live effect-card set — spawn replaces by id, kill retires by
 //  id, ttl expiry retires the rest, every card ages once per call, and the set is
 //  bounded with a counted drop. Per-instance identity is pinned directly: two
@@ -23,8 +23,8 @@
 #include <string>
 #include <vector>
 
-#include "game/effect_events.h"
-#include "game/fx_cards.h"
+#include "render/effect_events.h"
+#include "render/fx_cards.h"
 
 namespace {
 
@@ -221,7 +221,7 @@ int main() {
         check_int("an unknown kill counts nothing", 0, (long long)t.killed);
     }
 
-    // 12. The card animation clock (game/fx_cards.h). RECOVERED rule: a card's lifetime IS
+    // 12. The card animation clock (render/fx_cards.h). RECOVERED rule: a card's lifetime IS
     // its clip's length (EffectEntry::lifetimeSeconds comes from the model's own
     // AnimationSet), and the original drives the clip with age * 0.016 — so at birth the
     // card is on its first frame, halfway through its life on the middle of the clip, and

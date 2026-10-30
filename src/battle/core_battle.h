@@ -7,8 +7,8 @@
 #include <string>
 #include <vector>
 
-#include "game/battle_view.h"
-#include "sim/battle.h"
+#include "battle/battle_view.h"
+#include "battle/battle.h"
 
 namespace sim {
 

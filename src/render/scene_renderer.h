@@ -407,7 +407,7 @@ public:
         int renderMode = -1; // current projectile record +0x7c (FUN_005f60b0)
         // Pre-evaluated node matrices for an instance whose pose is not persistent — an
         // effect card is sampled from its own model at its age and dropped at the end of the
-        // frame, so there is no controller to hold (game/fx_cards.h's cardAnimationSeconds
+        // frame, so there is no controller to hold (render/fx_cards.h's cardAnimationSeconds
         // owns the clock). Takes precedence over `pose` when both are set.
         const std::vector<glm::mat4>* poseWorld = nullptr;
     };

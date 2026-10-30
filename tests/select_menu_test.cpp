@@ -1,5 +1,5 @@
-#include "ui/screen_select.h"
-#include "ui/frontend_launch.h"
+#include "frontend/screen_select.h"
+#include "frontend/frontend_launch.h"
 #include "assets/asset_source.h"
 #include <cstdlib>
 #include <filesystem>

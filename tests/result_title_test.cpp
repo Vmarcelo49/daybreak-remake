@@ -10,8 +10,8 @@
 #include <vector>
 #define CHECK(condition) do { if (!(condition)) { std::fprintf(stderr,"%s:%d: %s\n",__FILE__,__LINE__,#condition); return 1; } } while (false)
 
-#include "gameplay/result_title.h"
-#include "ui/result_quote.h"
+#include "frontend/result_title.h"
+#include "frontend/result_quote.h"
 
 namespace fs = std::filesystem;
 
