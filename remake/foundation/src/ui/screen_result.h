@@ -2,17 +2,15 @@
 #include "ui/screen.h"
 #include "ui/frontend_state.h"
 namespace ui {
-enum class ResultPhase { Victory, Quote, Report, Done };
-// FUN_00635d40 case 3 holds the victory layers for 180 frames; later beats await Z.
+enum class ResultPhase { Quote, Report, Done };
+// The core plays FUN_00635d40 case 3's victory layers in the battle; the later beats await Z.
 class ResultTimeline {
 public:
-    explicit ResultTimeline(bool draw = false) : phase_(draw ? ResultPhase::Report : ResultPhase::Victory) {}
+    explicit ResultTimeline(bool draw = false) : phase_(draw ? ResultPhase::Report : ResultPhase::Quote) {}
     bool update(bool confirm) {
         if (phase_ == ResultPhase::Done) return true;
         ++frame_;
-        if (phase_ == ResultPhase::Victory && frame_ >= 180) {
-            phase_ = ResultPhase::Quote; frame_ = 0;
-        } else if (phase_ != ResultPhase::Victory && confirm) {
+        if (confirm) {
             phase_ = phase_ == ResultPhase::Quote ? ResultPhase::Report : ResultPhase::Done;
             frame_ = 0;
         }
@@ -20,13 +18,8 @@ public:
     }
     ResultPhase phase() const { return phase_; }
     int frame() const { return frame_; }
-    // The team sting's second layer (FUN_0063a130:89-98 draws the two halves at (400,200)
-    // and (400,400)): FUN_00635d40:196-205 arms it when the first layer's 0xb4-frame timer
-    // has 0x78 left — 60 frames in — and gives it 0x78 frames of its own, so both end
-    // together at 180.
-    bool victorySecondLayer() const { return frame_ >= 60; }
 private:
-    ResultPhase phase_ = ResultPhase::Victory;
+    ResultPhase phase_ = ResultPhase::Quote;
     int frame_ = 0;
 };
 struct ResultQuote { std::string text, voice; };

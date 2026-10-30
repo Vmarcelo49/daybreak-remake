@@ -59,10 +59,9 @@ public:
         // The quote pair repeats a one-member side's fighter (planWinnerQuote), so the evidence
         // line reports that member's persona for both pair slots.
         if (winnerCount == 1) winners[1].persona = winners[0].persona;
-        const char* stems[] = {side ? "data/object/P08" : "data/object/P05", "data/object/system"};
-        for (int i = 0; i < 2; ++i) {
+        {
             std::string failure;
-            if (!uploadCnvSheet(batch, stems[i], sheets_[i], failure) && error.empty())
+            if (!uploadCnvSheet(batch, "data/object/system", systemSheet_, failure) && error.empty())
                 error = failure;
         }
         if (state.resultWinner >= 0 && winnerCount > 0) {
@@ -137,8 +136,8 @@ public:
     // `error` names the reason a screen the port cannot present was refused: a silent null
     // here used to end the run as a successful quit with the result screen missing.
     bool loaded(std::string& error) const {
-        if (sheets_[0] < 0 || sheets_[1] < 0) {
-            if (error.empty()) error = "the result screen's sting/report art did not load";
+        if (systemSheet_ < 0) {
+            if (error.empty()) error = "the result screen's report art did not load";
             return false;
         }
         for (int i = 0; i < winnerSlots_; ++i) {
@@ -169,25 +168,12 @@ public:
     }
     int takeSound() override { const int sound = sound_; sound_ = -1; return sound; }
     void draw(SpriteRenderer& batch) const override {
-        batch.pushSolid({0,0,800,600},{.05f,.05f,.05f,1});
-        if (timeline_.phase() == ResultPhase::Victory) {
-            // The team sting is TWO layers at (400,200) and (400,400) (FUN_0063a130:89-98);
-            // the second is armed when the first has 0x78 of its 0xb4 frames left
-            // (FUN_00635d40:196-205), which is the transition ResultTimeline exposes.
-            const float scale = std::max(1.f,8.f-timeline_.frame()*.5f);
-            batch.pushSprite(sheets_[0],{0,0,512,256},256,128,400,200,scale);
-            if (timeline_.victorySecondLayer()) {
-                const float secondScale = std::max(1.f,8.f-(timeline_.frame()-60)*.5f);
-                batch.pushSprite(sheets_[0],{0,256,512,256},256,128,400,400,secondScale);
-            }
-            return;
-        }
         if (state_.resultWinner >= 0) {
             // Both winners, at the recovered settled positions (FUN_0063a740's sub-phases 1/5
             // draw them at (progress-32,60) and (progress+352,60)); the port slides them in over
             // the quote phase instead of following that progress counter, whose rate the corpus
             // does not pin. PORT RULE, animation only.
-            const float slide = std::min(1.f, (float)timeline_.frame() / 24.f);
+            const float slide = timeline_.phase() == ResultPhase::Quote ? std::min(1.f, (float)timeline_.frame() / 24.f) : 1.f;
             if (winnerSlots_ == 1) {
                 // A one-member side (the port's 1v1) has no recovered layout — the original
                 // always fields two winners — so its portrait keeps the centred position the
@@ -201,27 +187,28 @@ public:
                 if (winnerSheets_[1] >= 0) batch.pushTextured(winnerSheets_[1],{x1,60,512,512},{0,0,1,1},{});
             }
             // FUN_0063a740's quote bands: the black strip above and the black band below.
-            batch.pushSolid({0,0,800,60},{0,0,0,1});
-            batch.pushSolid({0,424,800,176},{0,0,0,1});
+            batch.pushSolid({-800,0,2400,60},{0,0,0,1});
+            batch.pushSolid({-800,424,2400,176},{0,0,0,1});
             drawText(batch,quoteLayout_,75,440);
             // Which TEAM won, as a caption (D7): the sting's own art says 青組/赤組, but the
             // report needs it in words once the bands are gone.
             if (!winnerLayout_.items.empty()) drawText(batch,winnerLayout_,560,28,.7f);
         }
-        if (timeline_.phase() == ResultPhase::Report) {
-            batch.pushSolid({0,0,800,600},{0,0,0,.75f});
+        // Done is the fade out of the report, which must stay as it was.
+        if (timeline_.phase() != ResultPhase::Quote) {
+            batch.pushSolid({-800,0,2400,600},{0,0,0,.75f});
             // FUN_00633ca0: activity report header at (0,320,288,64).
-            batch.pushSprite(sheets_[1],{0,320,288,64},144,32,400,28);
+            batch.pushSprite(systemSheet_,{0,320,288,64},144,32,400,28);
             if (state_.resultWinner < 0) drawText(batch,drawLayout_,350,440);
             // FUN_0063a740:64-85: rows i = 0..3 at y = 100 + 72*i, the controller/COM badge
             // (system sheet, cell (controller,0)) at x = 200, the earned title at (300, y+32),
             // revealed one row per 30 frames after a 30-frame lead-in. The combo and the
             // statistics are the port's additions, placed around the recovered title line.
-            const int revealed = resultRowsRevealed(timeline_.frame());
+            const int revealed = timeline_.phase() == ResultPhase::Done ? participantCount_ : resultRowsRevealed(timeline_.frame());
             for (int i = 0; i < participantCount_ && i < revealed; ++i) {
                 const ResultRow row = resultRow(i);
                 const int controller = std::clamp(participants_[i].controller,0,4);
-                batch.pushSprite(sheets_[1],{controller*64.f,384,64,32},0,0,row.badgeX,row.badgeY);
+                batch.pushSprite(systemSheet_,{controller*64.f,384,64,32},0,0,row.badgeX,row.badgeY);
                 drawText(batch,rowLayout_[i],row.textX,row.textY,.5f);
                 drawText(batch,titleLayout_[i],row.textX,row.titleY,.8f);
                 drawText(batch,statsLayout_[i],row.textX,row.statsY,.5f);
@@ -245,7 +232,7 @@ private:
     Participant participants_[kParticipantCount];
     int participantCount_ = 0;
     mutable int bitmapSlot_ = -1;
-    int sheets_[2] = {-1,-1};
+    int systemSheet_ = -1;
     int winnerSheets_[2] = {-1,-1};
     int winnerSlots_ = 0;    // portraits the winning side draws (1 for the port's 1v1)
     int textSlot_=-1, sound_=-1;

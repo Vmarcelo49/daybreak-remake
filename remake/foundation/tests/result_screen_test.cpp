@@ -4,8 +4,7 @@
 #include "ui/result_quote.h"
 int main() {
     ui::ResultTimeline result;
-    for (int i=0;i<179;++i) { CHECK(!result.update(true)); CHECK(result.phase()==ui::ResultPhase::Victory); }
-    CHECK(!result.update(false)); CHECK(result.phase()==ui::ResultPhase::Quote);
+    CHECK(result.phase()==ui::ResultPhase::Quote);
     CHECK(!result.update(false)); CHECK(result.phase()==ui::ResultPhase::Quote);
     CHECK(!result.update(true)); CHECK(result.phase()==ui::ResultPhase::Report);
     CHECK(!result.update(false)); CHECK(result.phase()==ui::ResultPhase::Report);

@@ -185,6 +185,8 @@ ScreenId ScreenStack::update(const ScreenInput& in) {
                 return currentId_;
             }
             currentId_ = target_;
+            if (instant_) fade_ = 0;
+            instant_ = false;
         }
         return currentId_;
     }
@@ -226,6 +228,21 @@ bool drawScreenFrame(const ScreenStack& stack, SpriteRenderer& batch, uint32_t w
     // menu path's established pixels, unchanged.
     stack.draw(batch);
     batch.resetCanvasTransform();
+    return batch.render(encoder, view, format, error);
+}
+
+bool drawScreenOverlay(const ScreenStack& stack, SpriteRenderer& batch, uint32_t w, uint32_t h,
+                       WGPUCommandEncoder encoder, WGPUTextureView view, WGPUTextureFormat format,
+                       std::string& error) {
+    batch.beginFrame(w, h);
+    const UiCanvasTransform canvas = fitCanvas({w, h});
+    batch.setCanvasTransform(canvas.scale, canvas.x, canvas.y);
+    stack.drawContent(batch);
+    batch.resetCanvasTransform();
+    // FUN_00657c80 fades the whole frame, so the ramp covers the target, not the canvas.
+    if (stack.fadeFrame() > 0)
+        batch.pushSolid({0.f, 0.f, float(w), float(h)},
+                        UiColor{0.f, 0.f, 0.f, ScreenStack::fadeAlpha8(stack.fadeFrame()) / 255.f});
     return batch.render(encoder, view, format, error);
 }
 

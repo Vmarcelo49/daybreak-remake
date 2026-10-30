@@ -952,6 +952,8 @@ struct App {
     ui::SpriteRenderer           uiRenderer;
     ui::ScreenStack              screens;          // front end: current screen + fade
     bool                         screensMode = false;
+    // The result screen draws over the battle it concludes (FUN_0063a740), which keeps running.
+    bool                         resultOverScene = false;
     bool                         frontendMatch = false;
     bool                         frontendBattleReady = false;
     bool                         rendererReady = false;
@@ -3457,6 +3459,18 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
 }
 
 // ---------------------------------------------------------------------------------------
+// The battle behind the result screen: the core keeps animating, with no input and no sound,
+// because the screen has taken over the audio.
+static void tickResultScene(App& app, double dt) {
+    for (int i = 0; i < app.battle->fighter_count(); ++i)
+        app.previousFighter[i] = app.battle->fighter(i).pose();
+    const fnd::input::PlayerState* none[4] = {};
+    const game::BattleFrame f = app.battle->step(none, dt);
+    for (const auto& spawn : f.effectSpawns) spawnEffect(app, app.matchFx, spawn.id, spawn.position, spawn.direction);
+    updateFxCards(app, app.matchFx, app.matchFxEvents, (float)dt);
+    updateMatchViews(app, none, dt);
+}
+
 static void tickMatch(App& app, double dt) {
     for (int i = 0; i < app.battle->fighter_count(); ++i)
         app.previousFighter[i] = app.battle->fighter(i).pose();
@@ -4247,7 +4261,7 @@ void advanceAnimation(App& app, double delta) {
         xm::Controller& c = app.controllers[i];
         if (!c.model()) continue;
         bool matchRig = false;
-        if (app.matchMode)
+        if (app.matchMode || app.resultOverScene)
             for (int fighter = 0; fighter < app.battle->fighter_count(); ++fighter)
                 matchRig = matchRig || i == app.matchRig[fighter];
         if (matchRig) continue;
@@ -4255,7 +4269,7 @@ void advanceAnimation(App& app, double delta) {
         moved = true;
     }
     // A match still needs the pose refreshed: the fighters moved their own tracks.
-    if (app.matchMode) moved = true;
+    if (app.matchMode || app.resultOverScene) moved = true;
     if (!moved) return;
     for (size_t i = 0; i < app.controllers.size(); ++i)
         if (app.controllers[i].model()) app.controllers[i].evalWorld(app.worlds[i]);
@@ -5385,12 +5399,15 @@ struct ScreenCaptureHook {
     const ui::ScreenStack* screens = nullptr;
     ui::SpriteRenderer*    ui = nullptr;
     std::string*           error = nullptr;
+    bool                   overlay = false;   // over a rendered scene, not a menu frame
 };
 
 bool screenCaptureHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat format,
                        uint32_t w, uint32_t h, void* ud) {
     auto* sk = static_cast<ScreenCaptureHook*>(ud);
-    return ui::drawScreenFrame(*sk->screens, *sk->ui, w, h, enc, view, format, *sk->error);
+    return sk->overlay
+        ? ui::drawScreenOverlay(*sk->screens, *sk->ui, w, h, enc, view, format, *sk->error)
+        : ui::drawScreenFrame(*sk->screens, *sk->ui, w, h, enc, view, format, *sk->error);
 }
 
 // The overlay's line set: a pure function of loaded state (bounds, aim, desired eye), so
@@ -5848,14 +5865,17 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 // (issue #16's repeated-match cleanup). The decoded sample cache stays.
                 reportCombatAudio(*app);
                 stopCombatAudio(*app);
-                app->screens.request(ui::ScreenId::Result);
+                app->screens.requestInstant(ui::ScreenId::Result);
+                app->resultOverScene = true;
                 app->screensMode = true;
                 const SDL_AppResult result = tickFrontend(*app);
                 if (result != SDL_APP_CONTINUE) return result;
             }
         } else if (app->screensMode) {
+            if (app->resultOverScene) tickResultScene(*app, capturing ? app->opts.dt : gameplay::FixedStep::seconds);
             const SDL_AppResult result = tickFrontend(*app);
             if (result != SDL_APP_CONTINUE) return result;
+            app->resultOverScene = app->resultOverScene && app->screens.current() == ui::ScreenId::Result;
             // Loading a new battle must not turn asset-load time into combat ticks.
             if (app->matchMode) {
                 app->lastTime = plat::now();
@@ -5864,12 +5884,12 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         }
     }
 
-    if (app->matchMode) {
+    if (app->matchMode || app->resultOverScene) {
         placeFxCards(*app);
         placeMatchFighters(*app);
     }
 
-    if (app->screensMode) {
+    if (app->screensMode && !app->resultOverScene) {
 
         if (capturing) {
             if (app->frames >= (uint64_t)app->opts.frames) {
@@ -5920,7 +5940,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         // Not in match mode: tickMatch already stepped the ported reference camera,
         // and this block's spring would overwrite its eye with the demo's own framing.
         // The countdown is the same case (issue #47): its views carry the arena camera.
-        if (app->opts.camera == "arena" && !app->matchMode) {
+        if (app->opts.camera == "arena" && !app->matchMode && !app->resultOverScene) {
             // First frame seeds from the desired eye, so single-frame captures stay
             // exactly deterministic; longer runs converge through the dt-correct
             // spring instead of snapping.
@@ -5960,7 +5980,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         // A countdown frame takes the match's own camera path (issue #47): the match is
         // built and its per-view cameras are already converging on the spawns, so the digit
         // is drawn over the real arena, at the real split-screen cells.
-        if (app->matchMode) {
+        if (app->matchMode || app->resultOverScene) {
             buildFrameViews(*app, w, h, frameViews);
             for (const FrameView& view : frameViews) frameCameras.push_back(view.camera);
             vp = frameCameras.front().viewProj;
@@ -5986,7 +6006,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         // review). The HUD draws one pass per view plus the separator, and a countdown frame
         // adds the overlay and possibly the clip-browser caption.
         {
-            const size_t uiPasses = frameCameras.size() + 1 /*separator*/;
+            const size_t uiPasses = frameCameras.size() + 1 /*separator*/ + (app->resultOverScene ? 1u : 0u);
             if (uiPasses > ui::SpriteRenderer::kMaxPassesPerFrame) {
                 std::fprintf(stderr,
                              "[ui] %zu passes on one renderer exceed the %u-region budget; "
@@ -6029,11 +6049,13 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 // Only more than one view takes the split-screen scene pass; a single view
                 // keeps render()'s exact commands (and the banked captures' pixels).
                 const std::vector<render::ViewCamera>* viewArg =
-                    app->matchMode && frameCameras.size() > 1
+                    (app->matchMode || app->resultOverScene) && frameCameras.size() > 1
                         ? &frameCameras : nullptr;
+                ScreenCaptureHook overlay{&app->screens, &app->uiRenderer, &app->error, true};
                 render::SceneRenderer::UiHook uiHook = nullptr;
                 void* uiData = nullptr;
-                if (useHook) { uiHook = captureHook; uiData = &cap; }
+                if (app->resultOverScene) { uiHook = screenCaptureHook; uiData = &overlay; }
+                else if (useHook) { uiHook = captureHook; uiData = &cap; }
                 if (!app->renderer.capture((uint32_t)app->opts.sizeW,
                                            (uint32_t)app->opts.sizeH, rgba, app->error,
                                            uiHook, uiData, viewArg))
@@ -6121,7 +6143,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         target.format = app->sc.format;
         target.width = app->sc.width;
         target.height = app->sc.height;
-        const bool multiView = app->matchMode && frameCameras.size() > 1;
+        const bool multiView = (app->matchMode || app->resultOverScene) && frameCameras.size() > 1;
         const bool sceneOk = multiView ? app->renderer.renderViews(target, frameCameras, app->error)
                                        : app->renderer.render(target, app->error);
         if (!sceneOk) {
@@ -6198,6 +6220,12 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 gpu::endFrame(app->ctx,app->sc,frame);
                 return SDL_APP_FAILURE;
             }
+        }
+        if (app->resultOverScene &&
+            !ui::drawScreenOverlay(app->screens, app->uiRenderer, app->sc.width, app->sc.height,
+                                   frame.encoder, frame.view, app->sc.format, app->error)) {
+            gpu::endFrame(app->ctx, app->sc, frame);
+            return SDL_APP_FAILURE;
         }
         if (!gpu::endFrame(app->ctx, app->sc, frame)) return SDL_APP_FAILURE;
     } else {

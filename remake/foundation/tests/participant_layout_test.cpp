@@ -97,16 +97,6 @@ int main() {
     CHECK(ui::resultRowsRevealed(120) == 3);
     CHECK(ui::resultRowsRevealed(150) == 4 && ui::resultRowsRevealed(1000) == 4);
 
-    // The victory sting's second layer is armed when the first has 0x78 of its 0xb4 frames
-    // left, i.e. 60 frames in (FUN_00635d40:196-205, drawn at (400,400) by FUN_0063a130).
-    ui::ResultTimeline timeline;
-    for (int frame = 0; frame < 60; ++frame) {
-        CHECK(!timeline.victorySecondLayer());
-        CHECK(!timeline.update(false));
-    }
-    CHECK(timeline.victorySecondLayer());
-    CHECK(timeline.phase() == ui::ResultPhase::Victory);
-
-    std::puts("participant_layout_test: roster, VS slots, result rows and victory layers ok");
+    std::puts("participant_layout_test: roster, VS slots, and result rows ok");
     return 0;
 }

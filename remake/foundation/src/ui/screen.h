@@ -148,6 +148,8 @@ public:
     // after the frame (Quit once the stack has finished).
     ScreenId update(const ScreenInput& in);
     void request(ScreenId id) { target_ = id; fade_ = 1; }
+    // The swap with no fade, for a screen that continues the scene already on screen.
+    void requestInstant(ScreenId id) { target_ = id; fade_ = kFadeFrames - 1; instant_ = true; }
 
     // Current screen, then the fade overlay in the 800x600 menu canvas.
     // Call between beginFrame and render.
@@ -184,6 +186,7 @@ private:
     ScreenId currentId_ = ScreenId::Quit;
     ScreenId target_    = ScreenId::Quit;   // latched request while fading out
     int      fade_      = 0;                // FUN_00657c80's +0x60 counter
+    bool     instant_ = false;
     bool     finished_  = false;
     Factory  factory_;
 };
@@ -193,6 +196,12 @@ private:
 // app and by capture harnesses so neither can drift from the other. It paints the opaque
 // menu background first: a menu frame has no scene, so the screen is composited over a
 // defined black.
+// The current screen over a scene already rendered in this frame: no background and no clip,
+// so what a screen draws past the 800x600 canvas reaches a wider target.
+bool drawScreenOverlay(const ScreenStack& stack, SpriteRenderer& batch, uint32_t w, uint32_t h,
+                       WGPUCommandEncoder encoder, WGPUTextureView view, WGPUTextureFormat format,
+                       std::string& error);
+
 bool drawScreenFrame(const ScreenStack& stack, SpriteRenderer& batch, uint32_t w, uint32_t h,
                      WGPUCommandEncoder encoder, WGPUTextureView view, WGPUTextureFormat format,
                      std::string& error);
