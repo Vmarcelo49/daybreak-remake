@@ -451,6 +451,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_executable(match_economy_test tests/match_economy_test.cpp
                    src/battle/match_economy.cpp)
     target_include_directories(match_economy_test PRIVATE src)
+    target_link_libraries(match_economy_test PRIVATE glm)
     add_test(NAME match_economy_test COMMAND match_economy_test)
 
 
