@@ -34,12 +34,12 @@ input ─► sim::Battle (wrapper) ─► vendored core
 
 | Location | Role |
 |---|---|
-| `src/battle/core/` | Vendored files, attributed. Every local change is listed in its `PATCHES.md`. Generated bodies are never reformatted |
+| `src/battle/core/` | Vendored files, attributed. Every local change is listed in its `src/battle/core/PATCHES.md`. Generated bodies are never reformatted |
 | `src/battle/battle.{h,cpp}` | The only product code that includes the core. Owns the update order recovered in `RuntimeBattle::update` |
 | `game::BattleView` (M3) | The read interface the product consumes |
 | `src/battle/simctl.cpp` | Headless runs, scripted input and per-tick traces |
 
-Roster indices at the `sim::` boundary are the core's (`character_names.hpp`), which differ
+Roster indices at the `sim::` boundary are the core's (`src/battle/core/character_names.hpp`), which differ
 from our data-directory order. Every combo is still a character **and** a weapon.
 
 ## 4. Milestones
@@ -51,7 +51,7 @@ where marked. The task list is [`DIRECTION-STATUS.md`](DIRECTION-STATUS.md).
 |---|---|---|
 | **M1** | `foundation_sim` in CMake and a headless `simctl` with scripted input and per-tick JSONL traces | `simctl` runs any roster and script; CTest pins 46/46 runs and determinism; a seeded mutation changes the hash |
 | **M2** | Trust report: fuzzed input, invariants, a state coverage map per combo, and comparison with the bundle's original-derived tables and traces and with `research/decompiled` on a sample | Report lists covered and unreached states, every crash or soft-lock, and each disagreement. Crashes and soft-locks are fixed in `PATCHES.md` or named |
-| **M3** | `game::BattleView` extracted over the **legacy** path, no behaviour change | All current tests pass; `main.cpp` and the renderer read gameplay only through the view |
+| **M3** | `game::BattleView` extracted over the **legacy** path, no behaviour change | All current tests pass; `src/app/main.cpp` and the renderer read gameplay only through the view |
 | **M4** | Core backend behind `--sim=core`: fighters, weapons, stage collision, input, projectiles, effects, HUD, audio | Scripted captures show correct poses on Rena+0, then all 46 load and fight. **Owner playtest** on a chosen set |
 | **M5** | Core becomes the default; the legacy path is deleted in its own reviewed commit | Owner approves after playtest; full front-end loop passes; pre-cleanup revision recorded |
 | **M6** | Product work: story, netplay, ARM and web, polish | Ordered by the owner after M5 |
@@ -91,7 +91,7 @@ fixtures keep guarding the legacy default.
 | Risk | Response |
 |---|---|
 | The core is dense and hard to read | Keep it behind the wrapper; document what we learn; patch narrowly |
-| The core is wrong in places | M2 finds what it can; fixes cite evidence and go in `PATCHES.md` |
+| The core is wrong in places | M2 finds what it can; fixes cite evidence and go in `src/battle/core/PATCHES.md` |
 | A hidden platform or global dependency appears | M1 and M3 surface it; patch or stop and ask |
 | Pose mapping fails in M4 | Stop and re-plan before more wiring. M4 starts with Rena+0 poses alone |
 | Hash stable only per architecture | Accepted for now; re-test before promising cross-platform netplay |
