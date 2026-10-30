@@ -83,14 +83,15 @@ void section(const char* title) { std::printf("\n-- %s\n", title); }
 // One tick's attack evidence for a fighter: an attack or fire state, or a live projectile it
 // owns. Both are things a fighter that is not being driven at all cannot produce.
 int fighterAttackingOrFiring(const App& app, int fighter) {
-    const gameplay::FighterState s = app.match.fighter(fighter).state();
+    if (fighter < 0) return 0;   // run() passes -1 when a phase observes nobody
+    const gameplay::FighterState s = app.legacyBattle.match().fighter(fighter).state();
     int n = (s == gameplay::FighterState::AttackA || s == gameplay::FighterState::AttackC ||
              s == gameplay::FighterState::ShootA || s == gameplay::FighterState::ShootB ||
              s == gameplay::FighterState::ShootC || s == gameplay::FighterState::ShotFinal)
                 ? 1
                 : 0;
-    for (const gameplay::Projectile& p : app.match.shots().shots())
-        if (p.alive && p.owner == &app.match.fighter(fighter)) ++n;
+    for (const gameplay::Projectile& p : app.legacyBattle.match().shots().shots())
+        if (p.alive && p.owner == &app.legacyBattle.match().fighter(fighter)) ++n;
     return n;
 }
 
@@ -321,7 +322,7 @@ struct Fixture {
     App app;
 
     Fixture() {
-        resetMatch(app.match, 0.0f);
+        resetMatch(app.legacyBattle.match(), 0.0f);
         app.frontendMatch = true;
         app.battleLaunch.fighterCount = 4;
         const int controller[4] = {0, 1, 2, 4};
@@ -394,7 +395,10 @@ struct Fixture {
         return w;
     }
 
-    const glm::vec3& pos(int fighter) const { return app.match.fighter(fighter).position(); }
+    // run() passes -1 when a phase observes nobody; fighter(-1) is out of bounds.
+    glm::vec3 pos(int fighter) const {
+        return fighter < 0 ? glm::vec3(0.f) : app.legacyBattle.match().fighter(fighter).position();
+    }
 };
 
 void testCriteriaThroughTickMatch() {
@@ -412,7 +416,7 @@ void testCriteriaThroughTickMatch() {
     // Phase 2: F2 on the very next tick, then 400 ticks of measurement.
     f.tap(gameplay::kDikF2, f.app.matchFrame + 1);
     f.tick(-1);   // the F2 tick itself
-    check(!f.app.match.ai_enabled(3), "the COM slot's AI flag is off on F2's own tick");
+    check(!f.app.legacyBattle.match().ai_enabled(3), "the COM slot's AI flag is off on F2's own tick");
     {
         // A shot the COM fired BEFORE F2 keeps flying and its firing state keeps the fighter
         // sliding for a few ticks (the port's velocity decay; the original's F2 zeroes the
@@ -434,8 +438,8 @@ void testCriteriaThroughTickMatch() {
     }
     // F2's write is the recovered one: all four slots. The human slots are driven by their
     // controllers, so their flag is never consulted — and they keep playing.
-    check(!f.app.match.ai_enabled(0) && !f.app.match.ai_enabled(1) &&
-              !f.app.match.ai_enabled(2),
+    check(!f.app.legacyBattle.match().ai_enabled(0) && !f.app.legacyBattle.match().ai_enabled(1) &&
+              !f.app.legacyBattle.match().ai_enabled(2),
           "F2 also cleared the human slots' flags (the recovered write is all four)");
     {
         const Fixture::Window walk = f.run(100, 1, 1, -1);
@@ -450,9 +454,9 @@ void testCriteriaThroughTickMatch() {
     section("F3 re-enables exactly the COM slots, and a human slot stays human");
     f.tap(gameplay::kDikF3, f.app.matchFrame + 1);
     f.tick(-1);   // the F3 tick itself
-    check(f.app.match.ai_enabled(3), "F3 re-enabled the COM slot");
-    check(!f.app.match.ai_enabled(0) && !f.app.match.ai_enabled(1) &&
-              !f.app.match.ai_enabled(2),
+    check(f.app.legacyBattle.match().ai_enabled(3), "F3 re-enabled the COM slot");
+    check(!f.app.legacyBattle.match().ai_enabled(0) && !f.app.legacyBattle.match().ai_enabled(1) &&
+              !f.app.legacyBattle.match().ai_enabled(2),
           "and did not hand any human slot to the AI");
     {
         const Fixture::Window resumed = f.run(100, 3, 1, 0);
@@ -463,37 +467,37 @@ void testCriteriaThroughTickMatch() {
         check(resumed.brainTicks > 0, "its brain is deciding again too");
         check(resumed.events > 0, "and it is attacking again");
     }
-    check(!f.app.match.ai_enabled(2), "the other human slot is still not AI-driven");
+    check(!f.app.legacyBattle.match().ai_enabled(2), "the other human slot is still not AI-driven");
 
     section("F1 and F4 change the state the HUD reads");
     {
         // A fresh battle, nobody fighting: the keys' own effect, measured without a brawl.
         Fixture q;
         q.run(120, -1, -1, -1);   // out of the round-start pose, into the live battle
-        q.app.match.fighter(1).take_damage(60, &q.app.match.fighter(0));
-        q.app.match.fighter(2).take_damage(1000, &q.app.match.fighter(0));
+        q.app.legacyBattle.match().fighter(1).take_damage(60, &q.app.legacyBattle.match().fighter(0));
+        q.app.legacyBattle.match().fighter(2).take_damage(1000, &q.app.legacyBattle.match().fighter(0));
         q.tick(-1);   // let the KO credit reach the balloon
-        checkInt(40, q.app.match.fighter(1).hp(), "fighter 1 is damaged");
-        checkInt(0, q.app.match.fighter(2).hp(), "fighter 2 is down");
-        check(q.app.match.economy().balloon(0) > 0.f, "the balloon moved with the KO");
+        checkInt(40, q.app.legacyBattle.match().fighter(1).hp(), "fighter 1 is damaged");
+        checkInt(0, q.app.legacyBattle.match().fighter(2).hp(), "fighter 2 is down");
+        check(q.app.legacyBattle.match().economy().balloon(0) > 0.f, "the balloon moved with the KO");
         std::printf("  measured: before F1 slot 1 hp=%d/%d, slots 2/3 hp=%d,%d, balloons "
-                    "%.0f/%.0f\n", q.app.match.fighter(1).hp(), q.app.match.fighter(1).max_hp(),
-                    q.app.match.fighter(2).hp(), q.app.match.fighter(3).hp(),
-                    (double)q.app.match.economy().balloon(0),
-                    (double)q.app.match.economy().balloon(1));
-        const float display = q.app.match.economy().balloonDisplay(0);
+                    "%.0f/%.0f\n", q.app.legacyBattle.match().fighter(1).hp(), q.app.legacyBattle.match().fighter(1).max_hp(),
+                    q.app.legacyBattle.match().fighter(2).hp(), q.app.legacyBattle.match().fighter(3).hp(),
+                    (double)q.app.legacyBattle.match().economy().balloon(0),
+                    (double)q.app.legacyBattle.match().economy().balloon(1));
+        const float display = q.app.legacyBattle.match().economy().balloonDisplay(0);
         q.tap(gameplay::kDikF1, q.app.matchFrame + 1);
         q.tick(-1);
         for (int i = 0; i < 4; ++i)
-            checkInt(q.app.match.fighter(i).max_hp(), q.app.match.fighter(i).hp(),
+            checkInt(q.app.legacyBattle.match().fighter(i).max_hp(), q.app.legacyBattle.match().fighter(i).hp(),
                      "F1 restored slot " + std::to_string(i) + " to full");
-        checkFloat(0.0, q.app.match.economy().balloon(0), "F1 zeroed the balloons");
+        checkFloat(0.0, q.app.legacyBattle.match().economy().balloon(0), "F1 zeroed the balloons");
         std::printf("  measured: after F1 slot 1 hp=%d/%d, slots 2/3 hp=%d,%d, balloons "
-                    "%.0f/%.0f\n", q.app.match.fighter(1).hp(), q.app.match.fighter(1).max_hp(),
-                    q.app.match.fighter(2).hp(), q.app.match.fighter(3).hp(),
-                    (double)q.app.match.economy().balloon(0),
-                    (double)q.app.match.economy().balloon(1));
-        checkFloat(display, q.app.match.economy().balloonDisplay(0),
+                    "%.0f/%.0f\n", q.app.legacyBattle.match().fighter(1).hp(), q.app.legacyBattle.match().fighter(1).max_hp(),
+                    q.app.legacyBattle.match().fighter(2).hp(), q.app.legacyBattle.match().fighter(3).hp(),
+                    (double)q.app.legacyBattle.match().economy().balloon(0),
+                    (double)q.app.legacyBattle.match().economy().balloon(1));
+        checkFloat(display, q.app.legacyBattle.match().economy().balloonDisplay(0),
                    "F1 left the HUD's eased display value to the economy");
 
         // Drain MAIN and CHARGE through the fighter's own fire path: a tap draws MAIN, a
@@ -502,40 +506,40 @@ void testCriteriaThroughTickMatch() {
         q.tick(0, fnd::input::Shoot);
         q.tick(-1);                                // the release fires the tap
         for (int i = 0; i < 20; ++i) q.tick(-1);   // out of the firing state, into recharge
-        check(q.app.match.fighter(0).main_frac() < 1.f, "the tap spent MAIN");
+        check(q.app.legacyBattle.match().fighter(0).main_frac() < 1.f, "the tap spent MAIN");
         for (int i = 0; i < 45; ++i) q.tick(0, fnd::input::Shoot);
         q.tick(-1);                                // the release fires the charged tier
         for (int i = 0; i < 20; ++i) q.tick(-1);
-        check(q.app.match.fighter(0).charge_frac() < 1.f, "the charged tier spent CHARGE");
+        check(q.app.legacyBattle.match().fighter(0).charge_frac() < 1.f, "the charged tier spent CHARGE");
         // The gauge the fight left alone is put below full through the same launch-time seam
         // the visual suite uses, so the "before" arm of F4's check is not a full bar.
-        q.app.match.fighter(0).set_hyper_gauge(0.25f);
-        checkFloat(0.25, q.app.match.fighter(0).hyper_gauge(), "the hyper gauge starts short");
+        q.app.legacyBattle.match().fighter(0).set_hyper_gauge(0.25f);
+        checkFloat(0.25, q.app.legacyBattle.match().fighter(0).hyper_gauge(), "the hyper gauge starts short");
         std::printf("  measured: before F4 main=%.3f charge=%.3f hyper=%.3f\n",
-                    (double)q.app.match.fighter(0).main_frac(),
-                    (double)q.app.match.fighter(0).charge_frac(),
-                    (double)q.app.match.fighter(0).hyper_gauge());
+                    (double)q.app.legacyBattle.match().fighter(0).main_frac(),
+                    (double)q.app.legacyBattle.match().fighter(0).charge_frac(),
+                    (double)q.app.legacyBattle.match().fighter(0).hyper_gauge());
         q.tap(gameplay::kDikF4, q.app.matchFrame + 1);
         q.tick(-1);
-        checkFloat(1.0, q.app.match.fighter(0).main_frac(), "F4 filled MAIN");
-        checkFloat(1.0, q.app.match.fighter(0).charge_frac(), "F4 filled CHARGE");
-        checkFloat(1.0, q.app.match.fighter(0).hyper_gauge(), "F4 filled the hypermode gauge");
+        checkFloat(1.0, q.app.legacyBattle.match().fighter(0).main_frac(), "F4 filled MAIN");
+        checkFloat(1.0, q.app.legacyBattle.match().fighter(0).charge_frac(), "F4 filled CHARGE");
+        checkFloat(1.0, q.app.legacyBattle.match().fighter(0).hyper_gauge(), "F4 filled the hypermode gauge");
         std::printf("  measured: after F4 main=%.3f charge=%.3f hyper=%.3f (HUD hyper=%.3f)\n",
-                    (double)q.app.match.fighter(0).main_frac(),
-                    (double)q.app.match.fighter(0).charge_frac(),
-                    (double)q.app.match.fighter(0).hyper_gauge(),
+                    (double)q.app.legacyBattle.match().fighter(0).main_frac(),
+                    (double)q.app.legacyBattle.match().fighter(0).charge_frac(),
+                    (double)q.app.legacyBattle.match().fighter(0).hyper_gauge(),
                     (double)q.app.matchViews[0].hud.hyperGauge);
-        check(q.app.match.fighter(0).hyper_ready(), "so hypermode is ready");
+        check(q.app.legacyBattle.match().fighter(0).hyper_ready(), "so hypermode is ready");
         // The HUD values tickMatch pushed for the views are what the composer draws.
         const ui::HudState& hud = q.app.matchViews[0].hud;
         checkFloat(1.0, hud.hyperGauge, "the HUD's hyper bar reads full after F4");
-        checkInt(q.app.match.fighter(0).main_whole(), hud.mainWhole,
+        checkInt(q.app.legacyBattle.match().fighter(0).main_whole(), hud.mainWhole,
                  "the HUD's MAIN stocks are the fighter's own");
-        checkInt(q.app.match.fighter(0).charge_whole(), hud.chargeWhole,
+        checkInt(q.app.legacyBattle.match().fighter(0).charge_whole(), hud.chargeWhole,
                  "the HUD's CHARGE stocks are the fighter's own");
         // Every measurement above is a LIVE battle: if the fixture's round had ended, the host
         // would have left for the result screen and the numbers would be of a frozen match.
-        check(!q.app.match.economy().roundOver(),
+        check(!q.app.legacyBattle.match().economy().roundOver(),
               "the round stayed live (no time limit, 200% balloons)");
     }
 
@@ -587,19 +591,19 @@ void testCriteriaThroughTickMatch() {
         g.tap(gameplay::kDikF3, at);
         g.tap(gameplay::kDikF4, at);
         g.tap(gameplay::kDikEscape, at);
-        g.app.match.fighter(2).take_damage(1000, &g.app.match.fighter(0));
+        g.app.legacyBattle.match().fighter(2).take_damage(1000, &g.app.legacyBattle.match().fighter(0));
         g.tick(-1);   // let the KO credit reach the balloon
-        const int hp1 = g.app.match.fighter(1).hp();
-        const float gauge = g.app.match.fighter(0).hyper_gauge();
-        const float main = g.app.match.fighter(0).main_frac();
-        const float balloon = g.app.match.economy().balloon(0);
+        const int hp1 = g.app.legacyBattle.match().fighter(1).hp();
+        const float gauge = g.app.legacyBattle.match().fighter(0).hyper_gauge();
+        const float main = g.app.legacyBattle.match().fighter(0).main_frac();
+        const float balloon = g.app.legacyBattle.match().economy().balloon(0);
         for (int t = 0; t < 30; ++t) check(!g.tick(-1), "a gated Escape never asks to leave");
-        checkInt(hp1, g.app.match.fighter(1).hp(), "gated: F1 did not restore HP");
+        checkInt(hp1, g.app.legacyBattle.match().fighter(1).hp(), "gated: F1 did not restore HP");
         for (int i = 0; i < 4; ++i)
-            check(g.app.match.ai_enabled(i), "gated: F2 did not clear the flag");
-        checkFloat(gauge, g.app.match.fighter(0).hyper_gauge(), "gated: F4 changed no gauge");
-        checkFloat(main, g.app.match.fighter(0).main_frac(), "gated: MAIN unchanged");
-        checkFloat(balloon, g.app.match.economy().balloon(0), "gated: the balloon unchanged");
+            check(g.app.legacyBattle.match().ai_enabled(i), "gated: F2 did not clear the flag");
+        checkFloat(gauge, g.app.legacyBattle.match().fighter(0).hyper_gauge(), "gated: F4 changed no gauge");
+        checkFloat(main, g.app.legacyBattle.match().fighter(0).main_frac(), "gated: MAIN unchanged");
+        checkFloat(balloon, g.app.legacyBattle.match().economy().balloon(0), "gated: the balloon unchanged");
     }
 
     section("the injection itself: --debug-keys parses to tick-keyed taps");
@@ -642,7 +646,7 @@ void testSpectatorPause() {
         edge(controller, fnd::input::Pause);
         check(battlePausePressed(app), "a spectator can open a COM-only pause");
         enterBattlePause(app, "COM-only test");
-        check(app.battlePaused && app.match.paused(), "the authoritative match is paused");
+        check(app.battlePaused && app.legacyBattle.match().paused(), "the authoritative match is paused");
         edge(controller, fnd::input::Down);
         tickBattlePause(app);
         checkInt(1, app.pauseMenu.row, "Down navigates to Rematch");
@@ -651,7 +655,7 @@ void testSpectatorPause() {
         checkInt(0, app.pauseMenu.row, "Up navigates to Resume");
         edge(controller, fnd::input::Jump);
         tickBattlePause(app);
-        check(!app.battlePaused && !app.match.paused(), "confirm resumes the match");
+        check(!app.battlePaused && !app.legacyBattle.match().paused(), "confirm resumes the match");
         enterBattlePause(app, "COM-only toggle test");
         edge(controller, fnd::input::Pause);
         tickBattlePause(app);

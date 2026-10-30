@@ -177,6 +177,7 @@ target_link_libraries(foundation_physics PUBLIC foundation_assets glm)
 add_library(foundation_gameplay STATIC
     src/gameplay/arena_camera.cpp
     src/gameplay/fighter.cpp
+    src/gameplay/legacy_battle.cpp
     src/gameplay/projectile.cpp
     src/gameplay/match.cpp
     src/gameplay/match_economy.cpp
@@ -708,6 +709,10 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(sim_oracle_test PRIVATE src/sim src/sim/core)
     add_test(NAME sim_oracle_test COMMAND sim_oracle_test)
     set_tests_properties(sim_oracle_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
+
+    # M3's boundary: the product reaches the legacy simulation only at its named seams.
+    add_test(NAME battle_seam_test COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/battle_seam_test.sh
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
     # The input seed that threw before PATCHES.md's trig entry, at tick 797.
     add_test(NAME sim_fuzz_regression COMMAND simfuzz 8 2 1 1000 9)

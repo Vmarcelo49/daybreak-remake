@@ -46,6 +46,7 @@
 #include <string>
 
 #include "assets/xmodel.h"          // xm::Model / xm::Controller (non-owning)
+#include "game/battle_view.h"
 #include "game/fighter_pose.h"      // game::IFighterPose / game::FighterPose
 #include "gameplay/character_moves.h"  // CharacterMoves (borrowed move table)
 #include "gameplay/melee_admission.h"   // recovered attack admission tables
@@ -62,6 +63,11 @@
 #include "render/arena_camera.h"    // for render::ArenaTarget
 
 namespace gameplay {
+
+using game::CombatStats;
+using game::FighterState;
+using game::Hypermode;
+using game::state_to_anim_name;
 
 // The foundation's device-free input model has the same 13-action layout as the
 // DX9 build's input/input_manager.h (verified field-by-field in the port
@@ -89,28 +95,6 @@ struct HitReaction {
 
 // Fighter states are port labels. The executable stores move IDs directly in
 // `[player+0xadec]`; only recovered port-state selectors map to those IDs.
-enum class FighterState : int {
-    Idle        = 0,   // standing, no input
-    Walk        = 1,   // moving (stick/d-pad)
-    Run         = 2,   // dashing (double-tap)
-    AttackA     = 3,   // melee (the original's single attack bit; see input.h)
-    AttackC     = 4,   // special attack (not yet mapped to input)
-    // 5 is the removed heavy stand-in's slot (issue #10). The values are labels, not
-    // persisted state, and keeping them stable avoids renumbering the remaining states.
-    Guard       = 6,   // blocking (block key held)
-    Hit         = 7,   // taking damage (stun)
-    Knockdown   = 8,   // knocked down
-    KO          = 9,   // defeated
-    BattleStart = 10,  // round start pose
-    TagOut      = 11,  // reserved, never entered: no character swap exists —
-                        // the reticle only changes targets (FUN_00421e30), and the
-                        // "tag" voice cluster is partner callouts (see below)
-    ShootA      = 12,  // provisional firing-state label
-    ShootB      = 13,  // provisional firing-state label
-    ShootC      = 14,  // provisional firing-state label
-    Jump        = 15,  // airborne (leap, fly, or falling out of an air dash)
-    ShotFinal   = 16,  // provisional port label for the EX firing state
-};
 
 // The executable binds a move's first phase to the animation controller
 // (FUN_00421080 → FUN_00421100 → FUN_00421410). The phase section tag is the
@@ -170,35 +154,6 @@ inline bool state_has_animation_selector(FighterState s) {
 // has no set to print, and compare_match_traces.py asserts these names match exactly.
 // The set actually bound is exposed by Fighter::anim_set_index()/anim_set_name();
 // the shot labels below do not assert links to the executable's numeric move states.
-inline const char* state_to_anim_name(FighterState s) {
-    switch (s) {
-        case FighterState::Idle:        return "idle";
-        case FighterState::Walk:        return "walk";
-        case FighterState::Run:         return "run";
-        case FighterState::AttackA:     return "attackA";
-        case FighterState::AttackC:     return "attackC";
-        case FighterState::Guard:       return "guard";
-        case FighterState::Hit:         return "damage";
-        case FighterState::Knockdown:   return "damagedown";
-        case FighterState::KO:          return "damageKO";
-        case FighterState::BattleStart: return "battlestart";
-        case FighterState::TagOut:      return "recovery";
-        case FighterState::ShootA:      return "shotA";
-        case FighterState::ShootB:      return "shotB";
-        case FighterState::ShootC:      return "shotC";
-        case FighterState::Jump:        return "jump";
-        case FighterState::ShotFinal:   return "shotFinal"; // provisional port label
-        default: return nullptr;
-    }
-}
-
-// Hypermode pick (spec §3.4). Index order matches the versus setup list and
-// the -hyper CLI argument: Friendship, Oyashiro, Kakera (DX's third mode).
-enum class Hypermode : int {
-    Friendship = 0,
-    Oyashiro   = 1,
-    Kakera     = 2,
-};
 
 // The executable's own mode numbering (+0x318) runs the other way round:
 // Oyashiro 0, Friendship 1, Kakera 2. Established across five independent
@@ -412,9 +367,8 @@ struct ShootingContext {
 // same reason m_holdRule is type-erased).
 struct MoveRule;
 
-struct CombatStats { int kos = 0, deaths = 0, damageDealt = 0, damageTaken = 0; };
 
-class Fighter : public game::IFighterPose {
+class Fighter : public game::FighterView {
 public:
     Fighter() = default;
     ~Fighter() override = default;
@@ -453,7 +407,7 @@ public:
     // column-vector convention. The half turn maps the rigs' own front (-Z, measured
     // on the shipped SkinWeights — see fighter.cpp) onto the movement facing. The
     // foundation renderer passes this to xm::DrawUniform::model.
-    glm::mat4 modelMatrix() const;
+    glm::mat4 modelMatrix() const override;
 
     // game::IFighterPose: position / facing / animation time / alive, for the
     // camera lock-on and the renderer's pose lookup.
@@ -462,10 +416,10 @@ public:
     // Hypermode aura (the DX9 render's second, additive cube pass): drawn in
     // the model's own space at aura_center_local(), sized aura_radius(), in
     // aura_color() (mode colour, alpha pulsed by the fighter clock).
-    bool      aura_active() const { return m_hyperActive; }
-    glm::vec3 aura_center_local() const { return glm::vec3(0.0f, 58.0f, 0.0f); }
-    float     aura_radius() const;
-    Rgb       aura_color() const;
+    bool      aura_active() const override { return m_hyperActive; }
+    glm::vec3 aura_center_local() const override { return glm::vec3(0.0f, 58.0f, 0.0f); }
+    float     aura_radius() const override;
+    Rgb       aura_color() const override;
 
     // --- combat ---
     // What one damage event did (issue #11). The scene reads it to credit the balloon
@@ -673,10 +627,10 @@ public:
     const PilotMeter* pilot_meter() const { return m_pilotMeter; }
 
     void set_moves(const CharacterMoves* moves);
-    const CharacterMoves* moves() const { return m_moves; }
+    const CharacterMoves* moves() const override { return m_moves; }
     // The character-.dat move currently used for melee tuning. Exposed for
     // combo-bound evidence checks.
-    int attack_move_id() const { return m_attackMoveId; }
+    int attack_move_id() const override { return m_attackMoveId; }
     // The numeric action row this fighter is in, as the original's dispatcher reads
     // it (+0xadec): an attack row during AttackA, a dash row during Run, the air-dash
     // row 30 or the jump chain airborne, and 10/0 for locomotion. Match reads it for
@@ -695,7 +649,7 @@ public:
     input::Action dash_input_direction() const { return m_dashInputDirection; }
     // Firing move the current shot plays, keyed off the charge tier and whether the
     // fighter was airborne at the release (move_behavior.h's MoveProgram::shot).
-    int shot_move_id() const { return m_shotMoveId; }
+    int shot_move_id() const override { return m_shotMoveId; }
 
     // ---- selected weapon (gameplay/weapon_definition.h, issue #9) ----
     // Binds the parsed data/item/NNN.dat for the selected weapon. Borrowed, like the
@@ -703,7 +657,7 @@ public:
     // --match trace path passes. A non-null weapon sizes this fighter's magazines and
     // charge thresholds from the file instead of the shared 6/2 constants.
     void set_weapon(const WeaponDefinition* weapon);
-    const WeaponDefinition* weapon() const { return m_weapon; }
+    const WeaponDefinition* weapon() const override { return m_weapon; }
 
     // Binds the decoded data/bullet/<id>/<type>.dat scalars for a charge level, taken
     // from the weapon's own bullet table. These ARE recovered — FUN_005f8510's verbatim
@@ -742,7 +696,7 @@ public:
     // The tier of the last shot this fighter armed. The armed flag is drained by
     // take_pending_shot(); the tier stays, which is what the muzzle-flash selector needs
     // on the tick the frame reports shotFired (issue #17).
-    ShotTier last_shot_tier() const { return m_pending.tier; }
+    ShotTier last_shot_tier() const override { return m_pending.tier; }
 
     // The recovered charge thresholds in SECONDS. FUN_00433eb0's per-magazine
     // chargeMax is a tick count (the shipped values run 60..1200, and 180 is the same
@@ -797,14 +751,14 @@ public:
         restore_ammo();
         set_hyper_gauge(1.0f);
     }
-    int max_hp() const { return m_maxHP; }
-    const CombatStats& stats() const { return m_stats; }
+    int max_hp() const override { return m_maxHP; }
+    const CombatStats& stats() const override { return m_stats; }
     void clear_stats() { m_stats = {}; }
-    Hypermode hypermode() const { return m_hypermode; }
-    bool  hyper_active() const { return m_hyperActive; }
-    bool  hyper_ready() const { return m_gauge >= 1.0f && !m_hyperActive; }
-    float hyper_gauge() const { return m_gauge; }
-    float hyper_seconds_left() const { return m_hyperTimer; }
+    Hypermode hypermode() const override { return m_hypermode; }
+    bool  hyper_active() const override { return m_hyperActive; }
+    bool  hyper_ready() const override { return m_gauge >= 1.0f && !m_hyperActive; }
+    float hyper_gauge() const override { return m_gauge; }
+    float hyper_seconds_left() const override { return m_hyperTimer; }
 
     // Scene drains the shot armed by C-release into the ProjectilePool.
     // Disarms on read (at most one pending shot ever queues).
@@ -861,7 +815,7 @@ public:
     // and the awakened-melee spend threshold (`500 < +0x834`). This is NOT the
     // item-data magazine: the rounds-counted 0x44-byte magazine (FUN_00433eb0) is a
     // separate per-request cost the launch path already pays.
-    int  charge_gauge() const { return m_pilotMeter ? m_actionMeter : m_chargeGauge; }
+    int  charge_gauge() const override { return m_pilotMeter ? m_actionMeter : m_chargeGauge; }
 
     // Melee hit test for ONE candidate, called once per attacker→candidate pair while
     // the swing is active. Rejects a candidate that is out of reach vertically, outside
@@ -904,7 +858,7 @@ public:
     }
     const MoveEntry* current_move_record() const;
     int move_phase() const { return m_phaseIndex; }
-    int phase_elapsed() const { return m_moveElapsedTicks; }
+    int phase_elapsed() const override { return m_moveElapsedTicks; }
     int move_counter() const { return m_moveCounter; }
     // The horizontal per-tick channel the movement rules/bodies drive (u/tick).
     float move_speed() const { return m_moveSpeed; }
@@ -934,8 +888,8 @@ public:
     // FUN_00435000 launches from the bound slot's item muzzle anchor and falls back to
     // the bone origin only when the slot's prop id is -1 (FUN_00434a70's clear).
     bool weapon_slot_bound(int slot) const;
-    int action_camera() const { return m_actionCamera; }
-    const WeaponTrail& trail(int hand) const { return m_trails[static_cast<size_t>(hand)]; }
+    int action_camera() const override { return m_actionCamera; }
+    const WeaponTrail& trail(int hand) const override { return m_trails[static_cast<size_t>(hand)]; }
     // P2-7 (2e) shot family: the recovered shot body clears both held item-model slots at its
     // frame 12 (`battle_rena_ground_shot.hpp:37`), and this port's consumer already reads a
     // negative model as "no prop in that slot" (fighter.cpp:751-755). The pilot drives the
@@ -943,7 +897,7 @@ public:
     void set_item_model_slot(int slot, int model) {
         if (slot >= 0 && slot < 2) m_trailItemModel[static_cast<size_t>(slot)] = model;
     }
-    int trail_item_model(int hand) const {
+    int trail_item_model(int hand) const override {
         return hand >= 0 && hand < static_cast<int>(m_trailItemModel.size())
                    ? m_trailItemModel[static_cast<size_t>(hand)] : -1;
     }
@@ -952,7 +906,7 @@ public:
     // is drawn exactly when a bound prop slot names it. The render gate and the tests
     // share this predicate: a correct launch origin alone does not prove the visible
     // weapon is right (Rena 1's 450/460 move slot 0 from model 0 = 11.x to model 2 = 12.x).
-    bool draws_item_model(int model) const {
+    bool draws_item_model(int model) const override {
         for (int slot = 0; slot < 2; ++slot)
             if (weapon_slot_bound(slot) && trail_item_model(slot) == model) return true;
         return false;
@@ -991,16 +945,8 @@ public:
     // sphere FUN_0063b470 tests, present only while a swing is in its active window.
     // The same anchors and radius try_melee_hit() uses, so what this draws is what the
     // simulation actually tests rather than a second description of it.
-    struct HitboxDebug {
-        glm::vec3 anchors[2]{};
-        float     anchorRadius = 0.f;
-        bool      attacking    = false;
-        glm::vec3 attackCenter{};
-        glm::vec3 attackEnd{};
-        bool      capsule = false;
-        float     attackRadius = 0.f;
-    };
-    HitboxDebug hitbox_debug() const;
+    using HitboxDebug = game::HitboxDebug;
+    HitboxDebug hitbox_debug() const override;
 
     // The victim's two hurtbox anchor OFFSETS from the fighter root, in model space,
     // as FUN_0063dad0:241-245 builds them:
@@ -1017,56 +963,56 @@ public:
     bool aerial_attack() const { return m_aerialAttack; }
 
     // --- getters ---
-    const glm::vec3&   position()   const { return m_position; }
-    float              facing_yaw() const { return m_facing; }
-    int                hp()         const { return m_hp; }
-    int                stamina()    const { return m_pilotMeter ? m_actionMeter / 10
+    const glm::vec3&   position()   const override { return m_position; }
+    float              facing_yaw() const override { return m_facing; }
+    int                hp()         const override { return m_hp; }
+    int                stamina()    const override { return m_pilotMeter ? m_actionMeter / 10
                                                               : static_cast<int>(m_stamina); }
-    FighterState       state()      const { return m_state; }
-    bool               is_alive()   const { return m_hp > 0; }
+    FighterState       state()      const override { return m_state; }
+    bool               is_alive()   const override { return m_hp > 0; }
     bool               airborne()   const { return !m_grounded; }
     const xm::Model*   model()      const { return m_model; }
     // Which set is bound right now, and whether it is the fallback. The index
     // comes from the bound move table's phase tag; -1 means nothing is bound.
     // anim_set_name() is the model's own set name ("Anim-124" at index 0 on a
     // shipped rig), or "" when none is bound.
-    int                anim_set_index() const { return m_animSetIdx; }
-    const char*        anim_set_name() const;
+    int                anim_set_index() const override { return m_animSetIdx; }
+    const char*        anim_set_name() const override;
     // True when a state selector or table row is unresolved, or its set index
     // does not fit the model: the fighter then plays set 0. Exposed so the fallback
     // is not silent —
     // the trace wiring in main.cpp and tests/fighter_script_test.cpp read it.
-    bool               anim_fallback() const { return m_animFallback; }
+    bool               anim_fallback() const override { return m_animFallback; }
     // True when the state has no selector at all and the playing clip is held on
     // purpose (Guard; see state_has_animation_selector). Distinct from
     // anim_fallback(): holding a clip is the source behaviour, while a fallback is
     // a selector or table row this port has not recovered.
-    bool               anim_no_selector() const { return m_animNoSelector; }
+    bool               anim_no_selector() const override { return m_animNoSelector; }
     // Activation-overlay clock (issue #71): ticks since the move-500 clip was
     // bound, or -1 when no overlay is playing. The overlay set's own texture
     // events (e.g. Rena set 69's face swap) key off this, not the state's move
     // clock, which belongs to a different row while the overlay plays.
-    int                hyper_activation_elapsed() const {
+    int                hyper_activation_elapsed() const override {
         return m_hyperActivationSet >= 0 ? m_hyperActivationElapsed : -1;
     }
     // True while the activation overlay's own clip is still what's bound: a
     // superseding action's rebind ends the overlay even before its window lapses.
-    bool               hyper_activation_playing() const {
+    bool               hyper_activation_playing() const override {
         return m_hyperActivationSet >= 0 && m_animSetIdx == m_hyperActivationSet;
     }
     // Activation flash alpha (0 when idle): FUN_0063a130 fills the viewport
     // with (alpha << 24) | mode-colour while nonzero. The renderer reads it
     // per view (issue #71).
-    int                hyper_flash_alpha() const { return m_hyperFlash; }
+    int                hyper_flash_alpha() const override { return m_hyperFlash; }
     // Bound weapon digits count rounds; bars include the original refill progress.
-    float main_frac() const { return m_weapon ? m_shootingMagazines[0].fraction() : m_main.frac(); }
-    float charge_frac() const { return m_weapon ? m_shootingMagazines[1].fraction() : m_charge.frac(); }
-    int main_whole() const { return m_weapon ? static_cast<int>(m_shootingMagazines[0].rounds) : m_main.whole(); }
-    int charge_whole() const { return m_weapon ? static_cast<int>(m_shootingMagazines[1].rounds) : m_charge.whole(); }
+    float main_frac() const override { return m_weapon ? m_shootingMagazines[0].fraction() : m_main.frac(); }
+    float charge_frac() const override { return m_weapon ? m_shootingMagazines[1].fraction() : m_charge.frac(); }
+    int main_whole() const override { return m_weapon ? static_cast<int>(m_shootingMagazines[0].rounds) : m_main.whole(); }
+    int charge_whole() const override { return m_weapon ? static_cast<int>(m_shootingMagazines[1].rounds) : m_charge.whole(); }
     // 0..1 across the full hold (red threshold = 1); colors the HUD meter.
-    float charge_hold_frac() const;
-    ShotTier charge_tier() const;
-    bool reload_ok() const {
+    float charge_hold_frac() const override;
+    ShotTier charge_tier() const override;
+    bool reload_ok() const override {
         return m_weapon ? m_shootingMagazines[m_pending.tier == ShotTier::Tap ? 0 : 1].can_consume()
                         : m_reloadTimer <= 0;
     }

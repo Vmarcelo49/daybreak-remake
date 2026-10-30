@@ -117,8 +117,8 @@ struct Fixture {
         }
         const xm::Model* models[4] = {};
         xm::Controller* anims[4] = {};
-        app.match.reset(config, models, anims, nullptr, nullptr);
-        app.match.economy().setLogFile(nullptr);
+        app.legacyBattle.match().reset(config, models, anims, nullptr, nullptr);
+        app.legacyBattle.match().economy().setLogFile(nullptr);
 
         // The front-end battle's input keying: fighter i sits on panel i and is driven by
         // controller i, which is what gives every view its own input (tickMatch reads
@@ -150,7 +150,7 @@ struct Fixture {
     // criterion 1 ("the camera eye stays nearest the player's own fighter").
     float eyeDistance(int view, int fighter) const {
         return glm::length(app.matchViews[view].camera.eye() -
-                           app.match.fighter(fighter).position());
+                           app.legacyBattle.match().fighter(fighter).position());
     }
 
     // The camera is on its own fighter: both follow indices name it, and its eye is nearer
@@ -159,7 +159,7 @@ struct Fixture {
         const game::MatchView& v = app.matchViews[view];
         if (v.followed != v.fighter || v.camera.active_target_index() != v.fighter) return false;
         const float own = eyeDistance(view, v.fighter);
-        for (int j = 0; j < app.match.config().fighterCount; ++j)
+        for (int j = 0; j < app.legacyBattle.match().config().fighterCount; ++j)
             if (j != v.fighter && eyeDistance(view, j) <= own) return false;
         return true;
     }
@@ -193,18 +193,18 @@ void testOneVersusOneTapKeepsTheCamera() {
     // calls at the reference's 10% blend is converged for a 2000-unit separation).
     for (int i = 0; i < 80; ++i) tick(f.app, -1, false);
     f.reportCameras("settled");
-    checkInt(gameplay::kNoTarget, f.app.match.locked_target(0),
+    checkInt(gameplay::kNoTarget, f.app.legacyBattle.match().locked_target(0),
              "round start: no lock until a gesture (issue #49)");
     check(f.cameraOnItsOwnFighter(0), "view 0's camera is on fighter 0 and nearest it");
     check(f.cameraOnItsOwnFighter(1), "view 1's camera is on fighter 1 and nearest it");
     const float beforeOwn = f.eyeDistance(0, 0);
 
     tap(f.app, 0);
-    checkInt(1, f.app.match.locked_target(0), "the tap selects the enemy");
+    checkInt(1, f.app.legacyBattle.match().locked_target(0), "the tap selects the enemy");
     // The tap raises the recovered 15-tick pulse (FUN_00421e30's +0x30c). Match::step is
     // what decrements it (FUN_004201a0), so the release tick of the tap has already spent
     // one; what matters here is that the pulse is live after the gesture.
-    check(f.app.match.lock_pulse(0) > 0, "and raises the recovered switch pulse");
+    check(f.app.legacyBattle.match().lock_pulse(0) > 0, "and raises the recovered switch pulse");
     checkInt(0, f.app.matchViews[0].followed, "the view's followed fighter is unchanged");
     checkInt(0, f.app.matchViews[0].camera.active_target_index(),
              "the camera's own active target is unchanged");
@@ -219,7 +219,7 @@ void testOneVersusOneTapKeepsTheCamera() {
     // stay put through it too.
     const float afterTapOwn = f.eyeDistance(0, 0);
     tap(f.app, 0);
-    checkInt(1, f.app.match.locked_target(0), "a second tap with one enemy is a no-op");
+    checkInt(1, f.app.legacyBattle.match().locked_target(0), "a second tap with one enemy is a no-op");
     checkInt(0, f.app.matchViews[0].camera.active_target_index(),
              "and still does not move the camera");
     check(std::fabs(f.eyeDistance(0, 0) - afterTapOwn) < 20.f,
@@ -229,7 +229,7 @@ void testOneVersusOneTapKeepsTheCamera() {
     // camera is untouched either way. The press tick is the tap, and the ally aim fires on
     // the kLockHoldTicks-th tick AFTER it, so the hold is 1 + kLockHoldTicks pressed ticks.
     for (int i = 0; i <= kLockHoldTicks; ++i) tick(f.app, 0, true);
-    checkInt(1, f.app.match.locked_target(0), "holding with no living ally leaves the lock");
+    checkInt(1, f.app.legacyBattle.match().locked_target(0), "holding with no living ally leaves the lock");
     checkInt(0, f.app.matchViews[0].camera.active_target_index(),
              "the hold gesture does not move the camera");
     tick(f.app, 0, false);
@@ -261,15 +261,15 @@ void testFourViewsKeepTheirOwnCameras() {
             const int enemyB = v < 2 ? 3 : 1;
             const int want = (round % 2 == 0) ? enemyA : enemyB;
             tap(f.app, v);
-            checkInt(want, f.app.match.locked_target(v),
+            checkInt(want, f.app.legacyBattle.match().locked_target(v),
                      "the tap cycles this view's combat target");
-            check(f.app.match.lock_pulse(v) > 0, "and raises its own switch pulse");
+            check(f.app.legacyBattle.match().lock_pulse(v) > 0, "and raises its own switch pulse");
             for (int w = 0; w < 4; ++w)
                 check(f.cameraOnItsOwnFighter(w), "every view's camera is still its own");
         }
     }
-    checkInt(2, f.app.match.locked_target(0), "blue 0's cycle wrapped back to 2");
-    checkInt(0, f.app.match.locked_target(2), "red 2's cycle wrapped back to 0");
+    checkInt(2, f.app.legacyBattle.match().locked_target(0), "blue 0's cycle wrapped back to 2");
+    checkInt(0, f.app.legacyBattle.match().locked_target(2), "red 2's cycle wrapped back to 0");
     f.reportCameras("after twelve taps");
 
     // The hold gesture: aim the ally, arm the recovered 180-tick hold, never the camera.
@@ -280,33 +280,33 @@ void testFourViewsKeepTheirOwnCameras() {
     checkInt(16, kLockHoldTicks, "ally hold keeps its 16 ticks (~267 ms at 60 Hz)");
     for (int i = 0; i < kLockHoldTicks - 1; ++i) {
         tick(f.app, 2, true);
-        check(f.app.match.locked_target(2) == 0 || f.app.match.locked_target(2) == 1,
+        check(f.app.legacyBattle.match().locked_target(2) == 0 || f.app.legacyBattle.match().locked_target(2) == 1,
               "before the threshold the target remains hostile");
     }
     tick(f.app, 2, true);
-    checkInt(3, f.app.match.locked_target(2), "holding picks the ally (red 3)");
-    check(f.app.match.lock_holds_ally(2), "and arms the recovered ally hold");
+    checkInt(3, f.app.legacyBattle.match().locked_target(2), "holding picks the ally (red 3)");
+    check(f.app.legacyBattle.match().lock_holds_ally(2), "and arms the recovered ally hold");
     check(f.cameraOnItsOwnFighter(2), "the camera stays on red 2 through the hold");
     for (int w = 0; w < 4; ++w)
         check(f.cameraOnItsOwnFighter(w), "and no other view's camera moved");
     tick(f.app, 2, false);
-    check(!f.app.match.lock_holds_ally(2) || f.app.match.locked_target(2) == 3,
+    check(!f.app.legacyBattle.match().lock_holds_ally(2) || f.app.legacyBattle.match().locked_target(2) == 3,
           "the ally aim survives the release (FUN_0041f580:243-244 re-pins it)");
     for (int duration : {1, 3, 6, kLockHoldTicks - 1}) {
         for (int tickIndex = 0; tickIndex < duration; ++tickIndex) {
             tick(f.app, 2, true);
-            check(f.app.match.locked_target(2) == 0 || f.app.match.locked_target(2) == 1,
+            check(f.app.legacyBattle.match().locked_target(2) == 0 || f.app.legacyBattle.match().locked_target(2) == 1,
                   "a short press leaves the ally and stays on an enemy");
         }
         tick(f.app, 2, false);
         for (int tickIndex = 0; tickIndex < 32; ++tickIndex) {
             tick(f.app, 2, false);
-            check(f.app.match.locked_target(2) == 0 || f.app.match.locked_target(2) == 1,
+            check(f.app.legacyBattle.match().locked_target(2) == 0 || f.app.legacyBattle.match().locked_target(2) == 1,
                   "after release no stale hold returns the target to the ally");
         }
     }
     for (int i = 0; i < kLockHoldTicks; ++i) tick(f.app, 2, true);
-    checkInt(3, f.app.match.locked_target(2), "a new full hold can select the ally again");
+    checkInt(3, f.app.legacyBattle.match().locked_target(2), "a new full hold can select the ally again");
     tick(f.app, 2, false);
     f.reportCameras("after the hold");
 }

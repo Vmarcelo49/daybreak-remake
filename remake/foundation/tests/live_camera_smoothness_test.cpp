@@ -186,7 +186,7 @@ struct Combo {
 // mid-test.
 // ---------------------------------------------------------------------------
 struct Fixture {
-    Combo combo;   // declared first: app.match borrows its weapon/move table
+    Combo combo;   // declared first: app.legacyBattle.match() borrows its weapon/move table
     App   app;
 
     Fixture(int fighters, const int side[4], const glm::vec3 spawn[4]) {
@@ -201,8 +201,8 @@ struct Fixture {
         }
         const xm::Model* models[4] = {};
         xm::Controller* anims[4] = {};
-        app.match.reset(config, models, anims, nullptr, nullptr);
-        app.match.economy().setLogFile(nullptr);
+        app.legacyBattle.match().reset(config, models, anims, nullptr, nullptr);
+        app.legacyBattle.match().economy().setLogFile(nullptr);
 
         app.frontendMatch = true;
         app.battleLaunch.fighterCount = fighters;
@@ -271,8 +271,8 @@ struct Sweep {
 Sweep sweep(Fixture& f, double delta, int frameCount) {
     Sweep s;
     std::vector<glm::vec3> previousRendered, previousCamera;
-    const glm::vec3 fighterStart = f.app.match.fighter(0).position();
-    const float facingStart = f.app.match.fighter(0).facing_yaw();
+    const glm::vec3 fighterStart = f.app.legacyBattle.match().fighter(0).position();
+    const float facingStart = f.app.legacyBattle.match().fighter(0).facing_yaw();
     for (int frame = 0; frame < frameCount; ++frame) {
         const FrameSample sample = liveFrame(f.app, delta);
         if (previousRendered.size() != sample.renderedEye.size()) {
@@ -295,8 +295,8 @@ Sweep sweep(Fixture& f, double delta, int frameCount) {
         if (sample.ticks > 1) ++s.multiTickFrames;
         ++s.frames;
     }
-    s.fighterDrift = glm::length(f.app.match.fighter(0).position() - fighterStart);
-    s.facingDrift = std::fabs(std::remainder(f.app.match.fighter(0).facing_yaw() - facingStart,
+    s.fighterDrift = glm::length(f.app.legacyBattle.match().fighter(0).position() - fighterStart);
+    s.facingDrift = std::fabs(std::remainder(f.app.legacyBattle.match().fighter(0).facing_yaw() - facingStart,
                                              glm::two_pi<float>()));
     return s;
 }

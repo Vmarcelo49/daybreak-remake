@@ -15,10 +15,20 @@
 
 #include <glm/glm.hpp>
 
+#include "game/battle_types.h"
 #include "assets/xmodel.h"        // xm::Model (read-only use)
 #include "physics/raycast.h"      // game::physics::ModelIndex / raycastModel
 
 namespace gameplay {
+
+using game::packArgb;
+using game::packRgb;
+using game::Rgb;
+using game::rgbA;
+using game::rgbB;
+using game::rgbG;
+using game::rgbR;
+using game::ShotTier;
 
 class Fighter;  // update() damages fighters; defined in gameplay/fighter.h.
 struct BulletParameter;
@@ -31,44 +41,11 @@ struct ProjectileBehavior;
 // into every TU that includes it (debug_prims.h:40-47), and this simulation must
 // stay device-free; tests/fighter_script_test.cpp static_asserts that the two
 // layouts agree, so the renderer can consume these values directly.
-using Rgb = std::uint32_t;
-
-// D3DCOLOR_XRGB(r, g, b): opaque.
-inline constexpr Rgb packRgb(std::uint8_t r, std::uint8_t g, std::uint8_t b,
-                             std::uint8_t a = 0xffu) {
-    return (static_cast<Rgb>(a) << 24) | (static_cast<Rgb>(r) << 16) |
-           (static_cast<Rgb>(g) << 8) | static_cast<Rgb>(b);
-}
-
-// D3DCOLOR_ARGB(a, r, g, b) — alpha first, unlike packRgb.
-inline constexpr Rgb packArgb(std::uint8_t a, std::uint8_t r, std::uint8_t g,
-                              std::uint8_t b) {
-    return packRgb(r, g, b, a);
-}
-
-inline constexpr std::uint8_t rgbR(Rgb c) {
-    return static_cast<std::uint8_t>((c >> 16) & 0xffu);
-}
-inline constexpr std::uint8_t rgbG(Rgb c) {
-    return static_cast<std::uint8_t>((c >> 8) & 0xffu);
-}
-inline constexpr std::uint8_t rgbB(Rgb c) {
-    return static_cast<std::uint8_t>(c & 0xffu);
-}
-inline constexpr std::uint8_t rgbA(Rgb c) {
-    return static_cast<std::uint8_t>((c >> 24) & 0xffu);
-}
 
 // Tap/Yellow/Red and their hold thresholds are port tiers; the string-table labels
 // below are provisional names, not a recovered tier-to-firing-animation mapping.
 // Ex follows the remake's Hypermode path; the original has a move-503 finisher, but
 // the label "shotFinal" does not by itself prove an animation binding.
-enum class ShotTier : std::uint8_t {
-    Tap    = 0,
-    Yellow = 1,
-    Red    = 2,
-    Ex     = 3,
-};
 
 // Per-tier tuning (all provisional — only the 6/2 stock counts are pinned).
 struct ShotParams {

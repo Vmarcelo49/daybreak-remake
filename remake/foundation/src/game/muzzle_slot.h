@@ -38,7 +38,7 @@
 // in the original to recover — one fighter shows one muzzle model for a whole match.
 // The tier mapping below is the port's own, labelled as such; effect_catalog_test pins
 // both tables so neither can drift silently.
-#include "gameplay/projectile.h"   // gameplay::ShotTier
+#include "game/battle_types.h"   // game::ShotTier
 
 namespace game {
 
@@ -72,12 +72,12 @@ inline constexpr bool isMuzzleSlot(int slot) {
 // the EX move -> 3. Nothing in the original maps a tier to a slot (header note above), so
 // this must never be presented as recovered; it is the port's existing behaviour under a
 // name, and it keeps all three shipped muzzle models reachable.
-inline constexpr int muzzleSlotForTier(gameplay::ShotTier tier) {
+inline constexpr int muzzleSlotForTier(game::ShotTier tier) {
     switch (tier) {
-        case gameplay::ShotTier::Tap:    return kMuzzleSlots[0];
-        case gameplay::ShotTier::Yellow: return kMuzzleSlots[1];
-        case gameplay::ShotTier::Red:
-        case gameplay::ShotTier::Ex:     return kMuzzleSlots[2];
+        case game::ShotTier::Tap:    return kMuzzleSlots[0];
+        case game::ShotTier::Yellow: return kMuzzleSlots[1];
+        case game::ShotTier::Red:
+        case game::ShotTier::Ex:     return kMuzzleSlots[2];
     }
     // A new tier must decide its own slot; -Wswitch is what asks.
     return kMuzzleSlots[2];

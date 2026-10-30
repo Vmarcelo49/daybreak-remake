@@ -325,21 +325,21 @@ void testMuzzleSlotRule() {
           "the three stored modes are injective: one fighter mode, one muzzle model");
 
     // The port's own rule, through the function the spawn path calls.
-    checkInt(0, game::muzzleSlotForTier(gameplay::ShotTier::Tap),
+    checkInt(0, game::muzzleSlotForTier(game::ShotTier::Tap),
              "PORT RULE: tap -> slot 0 (マズルフラッシュ1)");
-    checkInt(1, game::muzzleSlotForTier(gameplay::ShotTier::Yellow),
+    checkInt(1, game::muzzleSlotForTier(game::ShotTier::Yellow),
              "PORT RULE: yellow -> slot 1 (マズルフラッシュ2)");
-    checkInt(5, game::muzzleSlotForTier(gameplay::ShotTier::Red),
+    checkInt(5, game::muzzleSlotForTier(game::ShotTier::Red),
              "PORT RULE: red -> slot 5 (マズルフラッシュ3)");
-    checkInt(5, game::muzzleSlotForTier(gameplay::ShotTier::Ex),
+    checkInt(5, game::muzzleSlotForTier(game::ShotTier::Ex),
              "PORT RULE: the EX move -> slot 5 (マズルフラッシュ3)");
     static const struct {
-        gameplay::ShotTier tier;
+        game::ShotTier tier;
         const char* name;
-    } kTiers[] = {{gameplay::ShotTier::Tap, "tap"},
-                  {gameplay::ShotTier::Yellow, "yellow"},
-                  {gameplay::ShotTier::Red, "red"},
-                  {gameplay::ShotTier::Ex, "the EX move"}};
+    } kTiers[] = {{game::ShotTier::Tap, "tap"},
+                  {game::ShotTier::Yellow, "yellow"},
+                  {game::ShotTier::Red, "red"},
+                  {game::ShotTier::Ex, "the EX move"}};
     for (const auto& t : kTiers)
         check(game::isMuzzleSlot(game::muzzleSlotForTier(t.tier)),
               std::string(t.name) +
@@ -350,8 +350,8 @@ void testMuzzleSlotRule() {
     // whole match — while the port's maps four tiers onto three slots, so red and EX
     // collide on slot 5. That collision is the shape a per-fighter selector cannot produce,
     // and it is what makes presenting the tier map as "recovered" a false claim.
-    checkInt(game::muzzleSlotForTier(gameplay::ShotTier::Red),
-             game::muzzleSlotForTier(gameplay::ShotTier::Ex),
+    checkInt(game::muzzleSlotForTier(game::ShotTier::Red),
+             game::muzzleSlotForTier(game::ShotTier::Ex),
              "the port rule collides (red and EX share slot 5), unlike the recovered table");
     std::printf("        recovered selector: fighter+0x318, per slot from scene+0x5328+slot\n"
                 "        (FUN_0064ab30:36-38 -> FUN_0041dc80:12; rand()%%3 for the CPU slots,\n"

@@ -37,7 +37,7 @@
 namespace gameplay::native {
 
 // The pilot flag names one equipped combo, not whichever actor happens to occupy P1.
-inline bool is_rena0_pilot_combo(const Fighter& fighter) {
+inline bool is_rena0_pilot_combo(const game::FighterView& fighter) {
     const CharacterMoves* moves = fighter.moves();
     const WeaponDefinition* weapon = fighter.weapon();
     return moves && weapon && weapon->valid() && moves->character_index() == 0 &&

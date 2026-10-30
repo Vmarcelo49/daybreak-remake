@@ -91,7 +91,7 @@ size_t staleControllers(const App& app, const std::string& stage) {
 
 std::string rigList(const App& app) {
     std::string out;
-    for (int i = 0; i < app.match.config().fighterCount; ++i) {
+    for (int i = 0; i < app.legacyBattle.match().config().fighterCount; ++i) {
         if (!out.empty()) out += ",";
         out += std::to_string(app.matchRig[i]);
     }
@@ -99,7 +99,7 @@ std::string rigList(const App& app) {
 }
 
 bool isNewMatchRig(const App& app, size_t controller) {
-    for (int i = 0; i < app.match.config().fighterCount; ++i)
+    for (int i = 0; i < app.legacyBattle.match().config().fighterCount; ++i)
         if (app.matchRig[i] == controller) return true;
     return false;
 }
@@ -216,7 +216,7 @@ int main(int argc, char** argv) {
         for (const xm::Model* m : boundModels(app)) bound += m ? 1 : 0;
         std::printf("   scene %s: %zu models, %d controller(s) bound, rigs %s\n",
                     stages[round], app.scene.models.size(), bound, rigList(app).c_str());
-        if (app.match.config().fighterCount < 2 || bound < 2) {
+        if (app.legacyBattle.match().config().fighterCount < 2 || bound < 2) {
             // The scene loaded but the standalone match did not (a missing move table
             // or item on this install): there is no rig binding to check, and a test
             // that quietly passed here would claim coverage it does not have.
@@ -224,36 +224,36 @@ int main(int argc, char** argv) {
                         app.error.c_str());
             return 77;
         }
-        check(bound == app.match.config().fighterCount,
+        check(bound == app.legacyBattle.match().config().fighterCount,
               "initMatch bound exactly its fighters' controllers");
 
         app.roundCountdown = true;
-        app.match.begin_round_entry();
-        const float entryY = app.match.fighter(0).position().y;
-        const double timeLeft = app.match.economy().timeLeft();
+        app.legacyBattle.match().begin_round_entry();
+        const float entryY = app.legacyBattle.match().fighter(0).position().y;
+        const double timeLeft = app.legacyBattle.match().economy().timeLeft();
         const uint64_t entryFrame = app.matchFrame;
-        check(app.match.fighter(0).airborne() && !app.match.fighter(0).actionable(),
+        check(app.legacyBattle.match().fighter(0).airborne() && !app.legacyBattle.match().fighter(0).actionable(),
               "round entry starts above the floor with actions locked");
         app.tickInput[0].down[fnd::input::Right] = true;
         app.tickInput[0].down[fnd::input::AttackA] = true;
         app.tickInput[0].just_pressed[fnd::input::AttackA] = true;
         tickRoundEntry(app, gameplay::FixedStep::seconds);
-        check(app.match.fighter(0).position().y < entryY &&
-                  entryY - app.match.fighter(0).position().y < 1.f,
+        check(app.legacyBattle.match().fighter(0).position().y < entryY &&
+                  entryY - app.legacyBattle.match().fighter(0).position().y < 1.f,
               "the first countdown tick falls under gravity without a ceiling teleport");
         for (int tick = 1; tick < 3 * gameplay::FixedStep::tickRate; ++tick)
             tickRoundEntry(app, gameplay::FixedStep::seconds);
-        for (int i = 0; i < app.match.config().fighterCount; ++i) {
-            check(!app.match.fighter(i).airborne() && app.match.fighter(i).actionable(),
+        for (int i = 0; i < app.legacyBattle.match().config().fighterCount; ++i) {
+            check(!app.legacyBattle.match().fighter(i).airborne() && app.legacyBattle.match().fighter(i).actionable(),
                   "every character+weapon combo is ready by the end of the countdown");
-            const glm::vec3 position = app.match.fighter(i).position();
-            const glm::vec3 spawn = app.match.config().spawn[i];
+            const glm::vec3 position = app.legacyBattle.match().fighter(i).position();
+            const glm::vec3 spawn = app.legacyBattle.match().config().spawn[i];
             check(glm::distance(glm::vec2(position.x, position.z), glm::vec2(spawn.x, spawn.z)) < .01f,
                   "entrance preserves spawn XZ without accepting held movement");
-            check(app.match.fighter(i).stats().damageDealt == 0,
+            check(app.legacyBattle.match().fighter(i).stats().damageDealt == 0,
                   "held attack cannot deal damage during the countdown");
         }
-        check(app.match.economy().timeLeft() == timeLeft && app.matchFrame == entryFrame,
+        check(app.legacyBattle.match().economy().timeLeft() == timeLeft && app.matchFrame == entryFrame,
               "countdown does not advance the battle clock or match tick counter");
         app.tickInput[0] = {};
         app.roundCountdown = false;
@@ -265,22 +265,22 @@ int main(int argc, char** argv) {
             app.battleLaunch.fighters[1].panel = 2;
             app.frontend.slots[0].controller = 0;
             app.frontend.slots[2].controller = 4;
-            const glm::vec3 human = app.match.fighter(0).position();
-            const glm::vec3 com = app.match.fighter(1).position();
+            const glm::vec3 human = app.legacyBattle.match().fighter(0).position();
+            const glm::vec3 com = app.legacyBattle.match().fighter(1).position();
             app.matchInput.note_key(fnd::input::sdl3::kScRight, true);
             for (int tick = 0; tick < 256; ++tick) {
                 sampleInput();
                 tickMatch(app, gameplay::FixedStep::seconds);
             }
-            const glm::vec3 humanDelta = app.match.fighter(0).position() - human;
-            const glm::vec3 comDelta = app.match.fighter(1).position() - com;
+            const glm::vec3 humanDelta = app.legacyBattle.match().fighter(0).position() - human;
+            const glm::vec3 comDelta = app.legacyBattle.match().fighter(1).position() - com;
             check(glm::length(glm::vec2(humanDelta.x, humanDelta.z)) > 1.f,
                   "keyboard actions move the asset-backed Rena 0 through tickMatch");
             check(app.botBrains[1].stats().ticks > 0 &&
                       glm::length(glm::vec2(comDelta.x, comDelta.z)) > 1.f,
                   "COM actions move the asset-backed Keiichi 0 through tickMatch");
-            app.match.cycle_locked_target(0, true);
-            app.match.cycle_locked_target(1, true);
+            app.legacyBattle.match().cycle_locked_target(0, true);
+            app.legacyBattle.match().cycle_locked_target(1, true);
             const fnd::input::PlayerState* neutral[4] = {};
             updateMatchViews(app, neutral, gameplay::FixedStep::seconds);
             bool mutualOpponent = false;
@@ -291,15 +291,15 @@ int main(int argc, char** argv) {
                     check(!ui::hudRingCounterRotates(marker), "the active player never gets a second reticle");
             }
             check(mutualOpponent, "mutual locks attach the second reticle to the opponent");
-            app.match.set_ai_enabled(1, false);
+            app.legacyBattle.match().set_ai_enabled(1, false);
             app.matchInput.note_key(fnd::input::sdl3::kScRight, false);
             app.matchInput.note_key(fnd::input::sdl3::kScDown, true);
             for (int tick = 0; tick < 256; ++tick) {
                 sampleInput();
                 tickMatch(app, gameplay::FixedStep::seconds);
             }
-            const auto& player = app.match.fighter(0);
-            const glm::vec3 bearing = app.match.fighter(1).position() - player.position();
+            const auto& player = app.legacyBattle.match().fighter(0);
+            const glm::vec3 bearing = app.legacyBattle.match().fighter(1).position() - player.position();
             const float targetYaw = std::atan2(bearing.x, bearing.z);
             check(std::abs(std::remainder(app.arenaTargets[0].facingYaw - targetYaw,
                                          glm::two_pi<float>())) < .001f,

@@ -72,6 +72,7 @@
 #include <cstdio>
 #include <string>
 
+#include "game/battle_types.h"
 #include "gameplay/rng.h"
 
 namespace gameplay {
@@ -80,7 +81,7 @@ namespace gameplay {
 // FUN_00637950 @0x638d21), LIMIT 100% by default. The +1 that the reference prints as 21%
 // is not a constant: it is the reaction bonus below.
 inline constexpr int    kSideCount    = 2;
-inline constexpr int    kMatchFighterCount = 4;
+using game::kMatchFighterCount;
 // The battle's legal participant count. ONE pair of bounds: Match::reset and
 // TargetLocks::reset clamp the configured count to it, and the fighter-indexed flat
 // arrays are sized by kMatchFighterCount.
