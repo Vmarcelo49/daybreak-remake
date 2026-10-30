@@ -193,6 +193,42 @@ target_link_libraries(foundation_gameplay
     PUBLIC foundation_physics
     PRIVATE foundation_ui)
 
+# The vendored reference simulation (docs/DIRECTION.md). Native host only until M4 wires it
+# into the product; ARM and WebAssembly need its two SSE headers replaced first (M6). The
+# core is third-party code kept byte-identical, so its warnings are silenced, not fixed.
+if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
+    add_library(foundation_sim_zlib STATIC
+        src/sim/core/zlib/adler32.c
+        src/sim/core/zlib/crc32.c
+        src/sim/core/zlib/inffast.c
+        src/sim/core/zlib/inflate.c
+        src/sim/core/zlib/inftrees.c
+        src/sim/core/zlib/zutil.c)
+    target_compile_options(foundation_sim_zlib PRIVATE -w)
+
+    add_library(foundation_sim STATIC
+        src/sim/battle.cpp
+        src/sim/core/compiled_native_bodies/dash.cpp
+        src/sim/core/compiled_native_bodies/full_charge.cpp
+        src/sim/core/compiled_native_bodies/jump.cpp
+        src/sim/core/compiled_native_bodies/remaining_melee.cpp
+        src/sim/core/compiled_native_bodies/shoot.cpp
+        src/sim/core/compiled_native_bodies/slot7.cpp
+        src/sim/core/compiled_native_bodies/special_strike.cpp)
+    target_include_directories(foundation_sim
+        PUBLIC src
+        PRIVATE src/sim/core src/sim/core/zlib)
+    # Bodies stay out of every other TU's compile: the core's public control headers then
+    # declare them, as its own build does.
+    target_compile_definitions(foundation_sim PRIVATE DAYBREAK_COMPILED_NATIVE_BODIES=1)
+    target_compile_options(foundation_sim PRIVATE -w
+        "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/sim/core_prelude.h")
+    target_link_libraries(foundation_sim PRIVATE foundation_sim_zlib)
+
+    add_executable(simctl src/sim/simctl.cpp)
+    target_link_libraries(simctl PRIVATE foundation_sim)
+endif()
+
 option(FOUNDATION_LIVE_DEBUG "Enable local Linux development match control" OFF)
 add_executable(foundation_demo src/main.cpp)
 if(FOUNDATION_LIVE_DEBUG)
@@ -656,6 +692,12 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_executable(melee_rules_test tests/melee_rules_test.cpp)
     target_link_libraries(melee_rules_test PRIVATE foundation_gameplay)
     add_test(NAME melee_rules_test COMMAND melee_rules_test)
+
+    # The vendored simulation: all 46 combos run, and the digest repeats and reacts (M1).
+    add_executable(sim_core_test tests/sim_core_test.cpp)
+    target_link_libraries(sim_core_test PRIVATE foundation_sim)
+    add_test(NAME sim_core_test COMMAND sim_core_test)
+    set_tests_properties(sim_core_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
     # The per-fighter combat target (issue #8): cycling, hold-for-ally, the 15-tick
     # switch pulse, the KO/invalid-index fallbacks and the Match wiring that makes
