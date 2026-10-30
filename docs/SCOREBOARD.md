@@ -1,9 +1,11 @@
 # Scoreboard — the port's only progress metric
 
-> **Headline: `0/46` running under `--sim=core`** (the metric from
-> [`DIRECTION.md`](DIRECTION.md) §6; reported from M4). **Original-runtime parity is a
-> separate column and `not verified` for every combo.** The core's headless 46/46 runs
-> are execution evidence, not this metric.
+> **Headline: `46/46` running under the core** (the metric from
+> [`DIRECTION.md`](DIRECTION.md) §6). Measured 2026-10-30 at `ec789371`: each combo as fighter 0
+> in `foundation_demo --headless --match`, 900 ticks on stage01 with three CPU opponents,
+> `RESULT: ok` and 900 frames. Tier 5 execution evidence on one stage, with no human input and
+> no judgement of correctness. **Original-runtime parity is a separate column and `not
+> verified` for every combo.** Open disagreements stay in `DIRECTION-STATUS.md`.
 >
 > Closed metric: `1/46` accepted under contract v3 (Rena+0, owner verdict 2026-10-30,
 > state at `261078b0`). It accepted the legacy-path pilot under that contract and does
