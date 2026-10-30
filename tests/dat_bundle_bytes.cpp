@@ -316,7 +316,7 @@ writes: <work_dir>/oracle.tsv
 import hashlib, os, struct, sys
 
 repo, game, workdir = sys.argv[1], sys.argv[2], sys.argv[3]
-sys.path.insert(0, os.path.join(repo, "remake", "tools", "asset-tools"))
+sys.path.insert(0, os.path.join(repo, "tools", "asset-tools"))
 import extract_dat as ed
 
 ARCHIVES = ["daybreak00.dat", "daybreak02.dat", "daybreak04.dat",
@@ -573,7 +573,7 @@ std::string dir_raw_sha(const std::vector<const DatEntry*>& entries) {
 fs::path findRepoRoot(fs::path start) {
     std::error_code ec;
     for (int depth = 0; depth < 12 && !start.empty(); ++depth) {
-        if (fs::exists(start / "remake" / "tools" / "asset-tools" / "extract_dat.py", ec))
+        if (fs::exists(start / "tools" / "asset-tools" / "extract_dat.py", ec))
             return start;
         const fs::path parent = start.parent_path();
         if (parent == start) break;
@@ -618,7 +618,7 @@ int main(int argc, char** argv) {
         return 77;
     }
     if (findRepoRoot(fs::absolute(argv[0]).parent_path()).empty() &&
-        !fs::exists(repo / "remake" / "tools" / "asset-tools" / "extract_dat.py", skipEc)) {
+        !fs::exists(repo / "tools" / "asset-tools" / "extract_dat.py", skipEc)) {
         std::printf("SKIP: extract_dat.py oracle not found from repo=%s\n", repo.string().c_str());
         // The Python oracle is a repository file, so its absence is a broken checkout
         // rather than a missing optional input: that is a failure, not a skip.

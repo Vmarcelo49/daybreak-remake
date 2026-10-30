@@ -87,7 +87,7 @@ void expectMat3(const std::string& what, const glm::mat3& got, const float fileR
 fs::path findRepoRoot(fs::path start) {
     std::error_code ec;
     for (int depth = 0; depth < 12 && !start.empty(); ++depth) {
-        if (fs::exists(start / "remake" / "foundation" / "src" / "assets" / "xmodel.h", ec))
+        if (fs::exists(start / "src" / "assets" / "xmodel.h", ec))
             return start;
         const fs::path parent = start.parent_path();
         if (parent == start) break;

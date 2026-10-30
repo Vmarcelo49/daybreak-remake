@@ -121,7 +121,7 @@ fs::path findInstall(int argc, char** argv) {
     if (const char* env = std::getenv("GAME_DIR")) return fs::path(env);
     std::error_code ec;
     for (fs::path r = fs::current_path(); !r.empty(); r = r.parent_path()) {
-        if (fs::is_directory(r / "remake" / "foundation", ec)) {
+        if (fs::is_directory(r / "src" / "assets", ec)) {
             const fs::path game = r / "Higurashi-Daybreak";
             if (fs::is_directory(game / "data", ec)) return game;
         }

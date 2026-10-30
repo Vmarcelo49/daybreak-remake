@@ -316,7 +316,7 @@ fs::path findInstall(int argc, char** argv) {
                               fs::current_path()}) {
         for (fs::path r = d; !r.empty(); r = r.parent_path()) {
             std::error_code ec;
-            if (fs::is_directory(r / "remake" / "foundation", ec)) {
+            if (fs::is_directory(r / "src" / "assets", ec)) {
                 game = r / "Higurashi-Daybreak";
                 break;
             }

@@ -125,7 +125,7 @@ std::vector<std::string> split_tabs(const std::string& line) {
 // ---------------------------------------------------------------------------
 bool run_order(const fs::path& repo, const fs::path& install, bool hash, Order& out,
                std::string& log) {
-    const fs::path pkg = repo / "remake" / "foundation" / "webdelivery";
+    const fs::path pkg = repo / "webdelivery";
     const fs::path logPath = fs::temp_directory_path() / "web_catalog_order.log";
     std::string cmd = "PYTHONPATH=" + shell_quote(pkg.string()) + " python3 -m daybreak_web order "
                       "--install " + shell_quote(install.string());
@@ -322,8 +322,7 @@ void write_bundle(const fs::path& path, const std::vector<SyntheticEntry>& entri
 fs::path find_repo_root(fs::path start) {
     std::error_code ec;
     for (int depth = 0; depth < 12 && !start.empty(); ++depth) {
-        if (fs::exists(start / "remake" / "foundation" / "webdelivery" / "daybreak_web"
-                             / "bundles.py", ec))
+        if (fs::exists(start / "webdelivery" / "daybreak_web" / "bundles.py", ec))
             return start;
         const fs::path parent = start.parent_path();
         if (parent == start) break;
@@ -412,7 +411,7 @@ int main(int argc, char** argv) {
     std::printf("web_catalog_order: repo=%s game=%s\n", repo.string().c_str(),
                 game.string().c_str());
 
-    const fs::path pkg = repo / "remake" / "foundation" / "webdelivery" / "daybreak_web";
+    const fs::path pkg = repo / "webdelivery" / "daybreak_web";
     std::error_code ec;
     if (!fs::exists(pkg / "bundles.py", ec)) {
         std::printf("SKIP: webdelivery package not found under %s\n", repo.string().c_str());
