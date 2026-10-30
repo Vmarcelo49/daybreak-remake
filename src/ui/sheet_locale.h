@@ -13,7 +13,8 @@
 
 namespace ui {
 
-// False, with `error` set, when the file or the font cannot be read.
+// Empty or "ja" restores the game's own sheets. False, with `error` set, when the file or the font
+// cannot be read. A screen picks the change up when its sheets next load.
 bool setSheetLanguage(const std::string& language, std::string& error);
 // Empty until a language is set: the game's own Japanese.
 const std::string& sheetLanguage();
@@ -26,10 +27,8 @@ struct SheetLabel {
 // Device-free so the file format is testable. Malformed lines are reported in `error`.
 std::vector<SheetLabel> parseSheetLabels(const std::string& text, std::string& error);
 
-// A translated sheet is drawn this many times larger than the original, so its text stays sharp when
-// the 800x600 canvas is scaled up. The screens keep using the original's coordinates.
-inline constexpr int kSheetScale = 4;
-
+// A translated sheet is drawn larger than the original, so its text stays sharp when the 800x600
+// canvas is scaled up. The screens keep using the original's coordinates.
 struct LocalizedSheet {
     int width = 0, height = 0;
     std::vector<uint8_t> rgba;

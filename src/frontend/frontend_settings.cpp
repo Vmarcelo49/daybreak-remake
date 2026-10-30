@@ -28,6 +28,7 @@ void applyUserSettings(FrontendSettings& settings, const settings::UserSettings&
     settings.fullscreen = document.fullscreen;
     settings.toonRendering = document.toonRendering;
     settings.installDir = document.installDir;
+    settings.language = document.language;
     settings.shadowRendering = document.shadowRendering;
 }
 
@@ -41,6 +42,7 @@ settings::UserSettings toUserSettings(const FrontendSettings& settings) {
     document.shadowRendering = settings.shadowRendering;
     document.resolution = {settings.resolutionChoice.width, settings.resolutionChoice.height};
     document.installDir = settings.installDir;
+    document.language = settings.language;
     return document;
 }
 bool bindingCaptureActive() { return capturePlayer >= 0; }

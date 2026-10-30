@@ -163,7 +163,7 @@ UserSettings::UserSettings() {
 }
 
 bool UserSettings::operator==(const UserSettings& other) const {
-    return installDir == other.installDir && fullscreen == other.fullscreen &&
+    return installDir == other.installDir && language == other.language && fullscreen == other.fullscreen &&
            resolution == other.resolution &&
            toonRendering == other.toonRendering &&
            shadowRendering == other.shadowRendering &&
@@ -279,7 +279,7 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                 if (!parseInt(value, version)) return fail(": version is not a number");
                 if (version != kSchemaVersion && version != kSchemaVersionLegacy &&
                     version != kSchemaVersionV2 && version != kSchemaVersionV3 &&
-                    version != kSchemaVersionV4) {
+                    version != kSchemaVersionV4 && version != kSchemaVersionV5) {
                     error = "unsupported config version " + std::to_string(version) +
                             " (this build writes " + std::to_string(kSchemaVersion) + ")";
                     return false;
@@ -308,6 +308,11 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                 } else {
                     candidate.installDir = value;
                 }
+            } else if (key == "language") {
+                // A file name part: anything but a plain tag would reach outside assets/locale.
+                const bool plain = std::all_of(value.begin(), value.end(), [](char c) { return (c >= 'a' && c <= 'z') || c == '-'; });
+                if (plain && value.size() <= 16) candidate.language = value;
+                else warn("language: '" + value + "' is not a language tag, ignoring it");
             } else {
                 warn("ignoring unknown key '" + key + "'");
             }
@@ -429,6 +434,11 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
             "config version 4: migrated to " + std::to_string(kSchemaVersion) +
             " (character shadows default to off; every stored value kept)");
         break;
+    case kSchemaVersionV5:
+        report.messages.push_back(
+            "config version 5: migrated to " + std::to_string(kSchemaVersion) +
+            " (the language defaults to Japanese; every stored value kept)");
+        break;
     case kSchemaVersion:
         // A CURRENT document always carries the folder key — serialize() writes it even when
         // no folder is remembered — so its absence is a hand-edit or a lossy writer, and the
@@ -466,7 +476,9 @@ std::string serialize(const UserSettings& settings) {
         << "# single run, and the packaged launcher reads this key.\n"
         << "install_dir = "
         << (storableInstallDir(settings.installDir) ? settings.installDir : std::string())
-        << "\n\n";
+        << "\n"
+        << "# The language of the menus and the HUD: en, or empty for the game's own Japanese.\n"
+        << "language = " << settings.language << "\n\n";
 
     out << "[display]\n"
         << "fullscreen = " << (settings.fullscreen ? "true" : "false") << "\n"

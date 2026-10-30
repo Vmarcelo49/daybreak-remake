@@ -181,8 +181,11 @@ saved_choice() {
     conf=$(config_dir)
     [ -n "$conf" ] || return 0
     [ -f "$conf/settings.conf" ] || return 0
-    [ "$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*//p' "$conf/settings.conf" |
-         head -n 1)" = "4" ] || return 0
+    case "$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*//p' "$conf/settings.conf" |
+             head -n 1)" in
+        4|5|6) ;;
+        *) return 0 ;;
+    esac
     awk -F= '
         /^[[:space:]]*\[/ {
             game = ($0 ~ /^[[:space:]]*\[[[:space:]]*game[[:space:]]*\][[:space:]]*$/)

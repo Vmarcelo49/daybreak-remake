@@ -65,7 +65,11 @@ namespace settings {
 // by a #36 build loads with its install_dir intact and the toggle defaulted off (what v4
 // meant, since the option did not exist there). Both migrations are additive and both are
 // reported.
-inline constexpr int kSchemaVersion = 5;
+//
+// v6 added [game] language, the translated labels the Options screen chooses. A v5 file is
+// MIGRATED additively: empty is the game's own Japanese, which is what v5 showed.
+inline constexpr int kSchemaVersion = 6;
+inline constexpr int kSchemaVersionV5 = 5;
 inline constexpr int kSchemaVersionLegacy = 1;
 inline constexpr int kSchemaVersionV2 = 2;
 inline constexpr int kSchemaVersionV3 = 3;
@@ -103,6 +107,8 @@ struct UserSettings {
     // a direct run agree on it. A relative value is refused by the parser (see
     // storableInstallDir) because it would name a different folder per working directory.
     std::string installDir;
+    // Which assets/locale/<language>.txt labels the sheets; empty is the game's own Japanese.
+    std::string language;
     bool        fullscreen = false;
     DisplaySize resolution{0, 0};
     // Toon rendering (issue #21), the Options screen's first row. Off is the shipped

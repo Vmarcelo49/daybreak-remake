@@ -28,11 +28,11 @@ constexpr UiColor kTrack{1.f, 1.f, 1.f, 0.18f};
 struct Words { const char* ja; const char* en; };
 const char* say(const Words& words) { return sheetLanguage().empty() ? words.ja : words.en; }
 
-enum class OptionRow { Toon, Shadow, Fullscreen, Resolution, Master, Music, Voice, Sfx, Back, Count };
+enum class OptionRow { Toon, Shadow, Fullscreen, Resolution, Language, Master, Music, Voice, Sfx, Back, Count };
 constexpr int kOptionRowCount = (int)OptionRow::Count;
-constexpr float kOptionY[kOptionRowCount] = {132, 170, 208, 246, 332, 370, 408, 446, 498};
+constexpr float kOptionY[kOptionRowCount] = {130, 164, 198, 232, 266, 334, 368, 402, 436, 494};
 constexpr Words kOptionNames[kOptionRowCount] = {
-    {"トゥーンレンダリング", "TOON SHADING"}, {"影の表示", "SHADOWS"}, {"画面モード", "SCREEN MODE"}, {"解像度", "RESOLUTION"},
+    {"トゥーンレンダリング", "TOON SHADING"}, {"影の表示", "SHADOWS"}, {"画面モード", "SCREEN MODE"}, {"解像度", "RESOLUTION"}, {"言語", "LANGUAGE"},
     {"全体の音量", "MASTER"}, {"音楽の音量", "MUSIC"}, {"音声の音量", "VOICE"}, {"効果音の音量", "EFFECTS"}, {"終了", "BACK"},
 };
 constexpr Words kOptionHelp[kOptionRowCount] = {
@@ -40,6 +40,7 @@ constexpr Words kOptionHelp[kOptionRowCount] = {
     {"←→ で影の表示を切り替えます", "Left and right switch the character shadows."},
     {"←→ で画面モードを切り替えます", "Left and right switch the window and fullscreen."},
     {"←→ で解像度を変更します", "Left and right change the resolution."},
+    {"←→ で言語を切り替えます", "Left and right change the language of the menus and the HUD."},
     {"←→ で全体の音量を調整します", "Left and right set the overall volume."},
     {"←→ で音楽の音量を調整します", "Left and right set the music volume."},
     {"←→ で音声の音量を調整します", "Left and right set the voice volume."},
@@ -121,6 +122,14 @@ public:
             case OptionRow::Resolution:
                 if (settings.resolutionAvailable) settings.cycleResolution(in.left ? -1 : 1);
                 break;
+            case OptionRow::Language: {
+                // The two languages this build ships. A failed load keeps the current one.
+                const std::string next = sheetLanguage().empty() ? "en" : "";
+                std::string failure;
+                if (setSheetLanguage(next, failure)) settings.language = next;
+                else std::fprintf(stderr, "[options] %s\n", failure.c_str());
+                break;
+            }
             case OptionRow::Master:
             case OptionRow::Music:
             case OptionRow::Voice:
@@ -181,7 +190,7 @@ private:
         const auto& settings = frontendSettings();
         frame(batch, {"環境設定", "OPTIONS"}, 40, 540);
         label(batch, say({"映像", "GRAPHICS"}), 130, 104, 16.f, kGold);
-        label(batch, say({"音量", "SOUND"}), 130, 304, 16.f, kGold);
+        label(batch, say({"音量", "SOUND"}), 130, 308, 16.f, kGold);
         const Words on{"有効", "ON"}, off{"無効", "OFF"};
         for (int i = 0; i < kOptionRowCount; ++i) {
             const float y = kOptionY[i];
@@ -212,6 +221,7 @@ private:
             std::snprintf(resolution, sizeof resolution, "%d x %d", size.width, size.height);
         }
         choice(batch, resolution, kOptionY[(int)OptionRow::Resolution], isRow(OptionRow::Resolution));
+        choice(batch, sheetLanguage().empty() ? "日本語" : "ENGLISH", kOptionY[(int)OptionRow::Language], isRow(OptionRow::Language));
         const int values[] = {settings.volumes.master, settings.volumes.music, settings.volumes.voice, settings.volumes.sfx};
         for (int i = 0; i < 4; ++i) {
             const int row = (int)OptionRow::Master + i;

@@ -20,7 +20,9 @@ namespace ui {
 namespace {
 
 constexpr const char* kFontFile = "Goldman-Bold.ttf";
-constexpr float kRasterEm = 512.f;
+// A label rasterises at the smallest of these that covers it, and each glyph only once per size:
+// the select screen alone has hundreds of labels, and it is built on every entry.
+constexpr int kRasterEms[] = {96, 192, 384, 768};
 constexpr float kShear = 0.25f;  // Goldman has no italic; the game's lettering leans this way
 
 struct Rgb { float r, g, b; };
@@ -39,6 +41,8 @@ const std::map<std::string, Style> kStyles = {
     {"label",  {{1, 1, 1}, {0.78f, 0.82f, 0.95f}, 1.f, 2.f, 1.2f, 0.62f, Erase::Clear, 0}},
     {"dim",    {{0.55f, 0.55f, 0.58f}, {0.4f, 0.4f, 0.44f}, 1.f, 2.f, 0.6f, 0.62f, Erase::Clear, 0}},
     {"gold",   {{1, 0.92f, 0.4f}, {1, 0.62f, 0.05f}, 1.f, 2.f, 0.8f, 0.62f, Erase::Clear, 0}},
+    {"menu",   {{1, 1, 1}, {0.78f, 0.82f, 0.95f}, 1.f, 2.f, 1.2f, 1.0f, Erase::Clear, 0}},
+    {"menudim", {{0.55f, 0.55f, 0.58f}, {0.4f, 0.4f, 0.44f}, 1.f, 2.f, 0.6f, 1.0f, Erase::Clear, 0}},
     {"left",   {{1, 1, 1}, {0.78f, 0.82f, 0.95f}, 1.f, 2.f, 1.2f, 0.72f, Erase::Clear, -1}},
     {"right",  {{1, 1, 1}, {0.78f, 0.82f, 0.95f}, 1.f, 2.f, 1.2f, 0.72f, Erase::Clear, 1}},
     {"small",  {{1, 1, 1}, {0.92f, 0.92f, 0.96f}, 1.f, 1.2f, 0.5f, 0.84f, Erase::Clear, 0}},
@@ -60,6 +64,25 @@ std::vector<SheetLabel> gLabels;
 std::string gLanguage;
 std::vector<uint8_t> gFontBytes;
 stbtt_fontinfo gFont;
+
+struct Glyph {
+    int w = 0, h = 0, offsetX = 0, offsetY = 0, advance = 0;
+    std::vector<uint8_t> coverage;
+};
+std::map<std::pair<int, char>, Glyph> gGlyphs;
+
+const Glyph& glyphAt(int em, char c) {
+    const auto key = std::make_pair(em, c);
+    const auto found = gGlyphs.find(key);
+    if (found != gGlyphs.end()) return found->second;
+    Glyph glyph;
+    const float scale = stbtt_ScaleForPixelHeight(&gFont, static_cast<float>(em));
+    unsigned char* bitmap = stbtt_GetCodepointBitmap(&gFont, 0, scale, c, &glyph.w, &glyph.h, &glyph.offsetX, &glyph.offsetY);
+    if (bitmap) glyph.coverage.assign(bitmap, bitmap + static_cast<size_t>(glyph.w) * glyph.h);
+    stbtt_FreeBitmap(bitmap, nullptr);
+    stbtt_GetCodepointHMetrics(&gFont, c, &glyph.advance, nullptr);
+    return gGlyphs.emplace(key, std::move(glyph)).first->second;
+}
 
 std::string lowered(std::string text) {
     for (char& c : text)
@@ -83,48 +106,47 @@ std::vector<std::string> splitLines(const std::string& text) {
 // One line of text as coverage at the raster size, with the lean applied.
 struct Mask { int w = 0, h = 0; std::vector<float> a; };
 
-Mask rasterLine(const std::string& line) {
-    const float scale = stbtt_ScaleForPixelHeight(&gFont, kRasterEm);
+Mask rasterLine(const std::string& line, float targetHeight) {
     int ascent = 0, descent = 0, gap = 0;
     stbtt_GetFontVMetrics(&gFont, &ascent, &descent, &gap);
+    int em = kRasterEms[0];
+    for (int candidate : kRasterEms) {
+        em = candidate;
+        if (static_cast<float>(em) >= targetHeight * 1.5f) break;
+    }
+    const float scale = stbtt_ScaleForPixelHeight(&gFont, static_cast<float>(em));
     const int baseline = static_cast<int>(std::ceil(ascent * scale));
     const int height = static_cast<int>(std::ceil((ascent - descent) * scale));
 
     // The labels are ASCII: the translated text never needs another face.
+    const auto kern = [&](size_t i) {
+        return i + 1 < line.size() ? stbtt_GetCodepointKernAdvance(&gFont, line[i], line[i + 1]) * scale : 0.f;
+    };
     float pen = 0.f;
-    for (size_t i = 0; i < line.size(); ++i) {
-        int advance = 0, bearing = 0;
-        stbtt_GetCodepointHMetrics(&gFont, line[i], &advance, &bearing);
-        pen += advance * scale;
-        if (i + 1 < line.size()) pen += stbtt_GetCodepointKernAdvance(&gFont, line[i], line[i + 1]) * scale;
-    }
+    for (size_t i = 0; i < line.size(); ++i) pen += glyphAt(em, line[i]).advance * scale + kern(i);
     Mask out;
     if (line.empty()) return out;
-    constexpr int kMargin = 16;
+    const int margin = em / 32;
     const int lean = static_cast<int>(std::ceil(kShear * height));
-    out.w = static_cast<int>(std::ceil(pen)) + lean + kMargin * 2;
-    out.h = height + kMargin * 2;
+    out.w = static_cast<int>(std::ceil(pen)) + lean + margin * 2;
+    out.h = height + margin * 2;
     out.a.assign(static_cast<size_t>(out.w) * out.h, 0.f);
     pen = 0.f;
     for (size_t i = 0; i < line.size(); ++i) {
-        int gw = 0, gh = 0, ox = 0, oy = 0;
-        unsigned char* bitmap = stbtt_GetCodepointBitmap(&gFont, 0, scale, line[i], &gw, &gh, &ox, &oy);
-        for (int y = 0; y < gh; ++y) {
-            const int row = baseline + oy + y;
-            const float lift = kShear * static_cast<float>(height - row);
-            for (int x = 0; x < gw; ++x) {
-                const int dx = static_cast<int>(std::lround(pen + ox + x + lift)) + kMargin;
-                const int dy = row + kMargin;
-                if (dx < 0 || dx >= out.w || dy < 0 || dy >= out.h) continue;
-                float& to = out.a[static_cast<size_t>(dy) * out.w + dx];
-                to = std::max(to, bitmap[static_cast<size_t>(y) * gw + x] / 255.f);
+        const Glyph& glyph = glyphAt(em, line[i]);
+        for (int y = 0; y < glyph.h; ++y) {
+            const int row = baseline + glyph.offsetY + y;
+            const int dy = row + margin;
+            if (dy < 0 || dy >= out.h) continue;
+            const int dxStart = static_cast<int>(std::lround(pen + glyph.offsetX + kShear * static_cast<float>(height - row))) + margin;
+            float* to = out.a.data() + static_cast<size_t>(dy) * out.w;
+            const uint8_t* from = glyph.coverage.data() + static_cast<size_t>(y) * glyph.w;
+            for (int x = 0; x < glyph.w; ++x) {
+                const int dx = dxStart + x;
+                if (dx >= 0 && dx < out.w && from[x]) to[dx] = std::max(to[dx], from[x] / 255.f);
             }
         }
-        stbtt_FreeBitmap(bitmap, nullptr);
-        int advance = 0, bearing = 0;
-        stbtt_GetCodepointHMetrics(&gFont, line[i], &advance, &bearing);
-        pen += advance * scale;
-        if (i + 1 < line.size()) pen += stbtt_GetCodepointKernAdvance(&gFont, line[i], line[i + 1]) * scale;
+        pen += glyph.advance * scale + kern(i);
     }
     return out;
 }
@@ -202,16 +224,16 @@ void eraseRect(const SheetLabel& label, Erase mode, uint8_t* rgba, int width, in
     }
 }
 
-void paintLabel(SheetLabel label, const Style& style, uint8_t* rgba, int width, int height) {
-    label.x *= kSheetScale;
-    label.y *= kSheetScale;
-    label.w *= kSheetScale;
-    label.h *= kSheetScale;
+void paintLabel(SheetLabel label, const Style& style, int scale, uint8_t* rgba, int width, int height) {
+    label.x *= scale;
+    label.y *= scale;
+    label.w *= scale;
+    label.h *= scale;
     eraseRect(label, style.erase, rgba, width, height);
     const std::vector<std::string> lines = splitLines(label.text);
     const float rowHeight = label.h * style.fillRatio / static_cast<float>(lines.size());
     for (size_t row = 0; row < lines.size(); ++row) {
-        const Mask raster = rasterLine(lines[row]);
+        const Mask raster = rasterLine(lines[row], rowHeight);
         if (raster.a.empty()) continue;
         // The natural size, narrowed before it is shrunk: a long label stays tall enough to read.
         constexpr float kMinimumSqueeze = 0.68f;
@@ -267,33 +289,53 @@ void paintLabel(SheetLabel label, const Style& style, uint8_t* rgba, int width, 
     }
 }
 
-// What the GPU's linear filter would show, so the art beside a label looks as it did.
-std::vector<uint8_t> enlarged(const uint8_t* rgba, int width, int height) {
-    const int w = width * kSheetScale, h = height * kSheetScale;
-    std::vector<uint8_t> out(static_cast<size_t>(w) * h * 4);
+// What the GPU's linear filter would show, so the art beside a label looks as it did. Sheets are
+// mostly transparent once their labels are cleared, so those pixels take the early exit.
+std::vector<uint8_t> enlarged(const uint8_t* rgba, int width, int height, int scale) {
+    constexpr int kFraction = 256;
+    const int w = width * scale, h = height * scale;
+    std::vector<uint8_t> out(static_cast<size_t>(w) * h * 4, 0);
+    struct Sample { int low, high, weight; };
+    const auto samples = [scale](int size) {
+        std::vector<Sample> table(static_cast<size_t>(size) * scale);
+        for (int i = 0; i < size * scale; ++i) {
+            const float at = std::max(0.f, (i + 0.5f) / scale - 0.5f);
+            const int low = std::min(size - 1, static_cast<int>(at));
+            table[i] = {low, std::min(size - 1, low + 1), static_cast<int>((at - low) * kFraction)};
+        }
+        return table;
+    };
+    const std::vector<Sample> columns = samples(width), rows = samples(height);
     for (int y = 0; y < h; ++y) {
-        const float sy = std::max(0.f, (y + 0.5f) / kSheetScale - 0.5f);
-        const int y0 = static_cast<int>(sy), y1 = std::min(height - 1, y0 + 1);
-        const float fy = sy - y0;
-        for (int x = 0; x < w; ++x) {
-            const float sx = std::max(0.f, (x + 0.5f) / kSheetScale - 0.5f);
-            const int x0 = static_cast<int>(sx), x1 = std::min(width - 1, x0 + 1);
-            const float fx = sx - x0;
-            const uint8_t* corner[4] = {rgba + (static_cast<size_t>(y0) * width + x0) * 4, rgba + (static_cast<size_t>(y0) * width + x1) * 4,
-                                        rgba + (static_cast<size_t>(y1) * width + x0) * 4, rgba + (static_cast<size_t>(y1) * width + x1) * 4};
-            const float weight[4] = {(1 - fx) * (1 - fy), fx * (1 - fy), (1 - fx) * fy, fx * fy};
-            float alpha = 0.f, colour[3] = {0, 0, 0};
-            for (int i = 0; i < 4; ++i) {
-                const float a = corner[i][3] * weight[i];
-                alpha += a;
-                for (int c = 0; c < 3; ++c) colour[c] += corner[i][c] * a;
-            }
-            uint8_t* p = out.data() + (static_cast<size_t>(y) * w + x) * 4;
-            for (int c = 0; c < 3; ++c) p[c] = alpha > 0.f ? static_cast<uint8_t>(std::lround(colour[c] / alpha)) : 0;
-            p[3] = static_cast<uint8_t>(std::lround(alpha));
+        const Sample& sy = rows[y];
+        const uint8_t* lowRow = rgba + static_cast<size_t>(sy.low) * width * 4;
+        const uint8_t* highRow = rgba + static_cast<size_t>(sy.high) * width * 4;
+        uint8_t* p = out.data() + static_cast<size_t>(y) * w * 4;
+        for (int x = 0; x < w; ++x, p += 4) {
+            const Sample& sx = columns[x];
+            const uint8_t* c00 = lowRow + sx.low * 4;
+            const uint8_t* c10 = lowRow + sx.high * 4;
+            const uint8_t* c01 = highRow + sx.low * 4;
+            const uint8_t* c11 = highRow + sx.high * 4;
+            if (!(c00[3] | c10[3] | c01[3] | c11[3])) continue;
+            const int w00 = (kFraction - sx.weight) * (kFraction - sy.weight), w10 = sx.weight * (kFraction - sy.weight);
+            const int w01 = (kFraction - sx.weight) * sy.weight, w11 = sx.weight * sy.weight;
+            const int64_t a00 = w00 * c00[3], a10 = w10 * c10[3], a01 = w01 * c01[3], a11 = w11 * c11[3];
+            const int64_t alpha = a00 + a10 + a01 + a11;
+            if (alpha <= 0) continue;
+            for (int c = 0; c < 3; ++c) p[c] = static_cast<uint8_t>((a00 * c00[c] + a10 * c10[c] + a01 * c01[c] + a11 * c11[c]) / alpha);
+            p[3] = static_cast<uint8_t>(alpha / (kFraction * kFraction));
         }
     }
     return out;
+}
+
+// Four times the sheet where the labels are large. The select screen loads sixteen weapon sheets and
+// two full-screen photos on every entry, and at 4x those alone cost a second and over 400 MB.
+int sheetScale(const std::string& key, int width) {
+    constexpr int kFull = 4, kLight = 2;
+    if (width > 512) return kLight;
+    return key.rfind("data/select/w", 0) == 0 ? kLight : kFull;
 }
 
 std::vector<uint8_t> readFontFile(const char* name) {
@@ -351,6 +393,11 @@ std::vector<SheetLabel> parseSheetLabels(const std::string& text, std::string& e
 }
 
 bool setSheetLanguage(const std::string& language, std::string& error) {
+    if (language.empty() || language == "ja") {
+        gLabels.clear();
+        gLanguage.clear();
+        return true;
+    }
     const std::string text = readLocaleFile(language + ".txt");
     if (text.empty()) {
         error = "no translation found at assets/locale/" + language + ".txt";
@@ -382,11 +429,16 @@ bool localizeSheet(const std::string& stem, const uint8_t* rgba, int width, int 
     const std::string key = lowered(stem);
     const auto named = [&](const SheetLabel& label) { return label.sheet == key; };
     if (std::none_of(gLabels.begin(), gLabels.end(), named)) return false;
-    out.width = width * kSheetScale;
-    out.height = height * kSheetScale;
-    out.rgba = enlarged(rgba, width, height);
+    const int scale = sheetScale(key, width);
+    out.width = width * scale;
+    out.height = height * scale;
+    // Clearing a label before enlarging saves the work on pixels it would throw away.
+    std::vector<uint8_t> source(rgba, rgba + static_cast<size_t>(width) * height * 4);
     for (const SheetLabel& label : gLabels)
-        if (named(label)) paintLabel(label, kStyles.at(label.style), out.rgba.data(), out.width, out.height);
+        if (named(label) && kStyles.at(label.style).erase == Erase::Clear) eraseRect(label, Erase::Clear, source.data(), width, height);
+    out.rgba = enlarged(source.data(), width, height, scale);
+    for (const SheetLabel& label : gLabels)
+        if (named(label)) paintLabel(label, kStyles.at(label.style), scale, out.rgba.data(), out.width, out.height);
     return true;
 }
 

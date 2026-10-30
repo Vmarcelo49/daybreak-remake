@@ -1104,7 +1104,6 @@ static bool enterFrontendBattle(App& app) {
 // --match uses, so a script drives the menu through the vocabulary the DX9 suite speaks.
 bool initScreens(App& app) {
     ui::ScreenId id = ui::ScreenId::Quit;
-    if (!app.opts.language.empty() && !ui::setSheetLanguage(app.opts.language, app.error)) return false;
     if (!app.opts.story.empty()) app.frontend.storyScript = "data/scenario/" + app.opts.story + ".txt";
     // No --screen and a plain launch means the original's boot scene, 0x00 (resolveBootOpening
     // decided that); anything else here has to name an id the parser knows.
@@ -1269,6 +1268,16 @@ bool initScreens(App& app) {
         if (screen) std::printf("[menu] scene: %s (tick %llu)\n", screen->name(), (unsigned long long)app.logicTicks);
         return screen;
     };
+    // --language wins for one run and is an error if it cannot load; a stale saved one only warns.
+    if (!app.opts.language.empty()) {
+        if (!ui::setSheetLanguage(app.opts.language, app.error)) return false;
+    } else if (!app.userSettings.language.empty()) {
+        std::string failure;
+        if (!ui::setSheetLanguage(app.userSettings.language, failure)) {
+            std::fprintf(stderr, "[settings] %s; using Japanese\n", failure.c_str());
+            ui::frontendSettings().language.clear();
+        }
+    }
     if (app.opts.storyTeam >= 0 && !ui::beginStoryTeam(app.frontend, app.opts.storyTeam, app.error))
         return false;
     if (!app.opts.storyFight.empty()) {

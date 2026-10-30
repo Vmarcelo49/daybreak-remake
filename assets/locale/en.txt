@@ -3,18 +3,18 @@
 # A rect is the label's cell on the sheet. \n breaks a line. Styles are in src/ui/sheet_locale.cpp.
 
 # Title: selected and unselected columns
-data/title/title |   0   0 192 48 | label | STORY
-data/title/title | 192   0 192 48 | dim   | STORY
-data/title/title |   0  48 192 48 | label | VERSUS
-data/title/title | 192  48 192 48 | dim   | VERSUS
-data/title/title |   0  96 192 48 | label | NETWORK
-data/title/title | 192  96 192 48 | dim   | NETWORK
-data/title/title |   0 144 192 48 | label | OPTIONS
-data/title/title | 192 144 192 48 | dim   | OPTIONS
-data/title/title |   0 192 192 48 | label | CONTROLS
-data/title/title | 192 192 192 48 | dim   | CONTROLS
-data/title/title |   0 240 192 48 | label | QUIT
-data/title/title | 192 240 192 48 | dim   | QUIT
+data/title/title |   0   0 192 48 | menu | STORY
+data/title/title | 192   0 192 48 | menudim | STORY
+data/title/title |   0  48 192 48 | menu | VERSUS
+data/title/title | 192  48 192 48 | menudim | VERSUS
+data/title/title |   0  96 192 48 | menu | NETWORK
+data/title/title | 192  96 192 48 | menudim | NETWORK
+data/title/title |   0 144 192 48 | menu | OPTIONS
+data/title/title | 192 144 192 48 | menudim | OPTIONS
+data/title/title |   0 192 192 48 | menu | CONTROLS
+data/title/title | 192 192 192 48 | menudim | CONTROLS
+data/title/title |   0 240 192 48 | menu | QUIT
+data/title/title | 192 240 192 48 | menudim | QUIT
 
 # HUD: tactics, inside their coloured frames
 data/object/p03 |  26  20 84 26 | tag | AUTO
@@ -202,16 +202,12 @@ data/select/pbg02 | 384  64 128 64 | dim | DAY
 data/select/pbg02 | 384 128 128 64 | dim | DUSK
 data/select/pbg02 | 384 192 128 64 | dim | NIGHT
 
-# Backgrounds: the text is part of the art
+# Backgrounds: the text is part of the art. bg01 is the layer in front of the portraits, so it has none.
 data/teamselect/bg00 | 300 6 200 50 | patch | TODAY'S STARS
 data/select/bg00 | 121 86 158 100 | patchblue | BLUE
 data/select/bg00 | 121 411 158 100 | patchblue | BLUE
 data/select/bg00 | 531 86 158 100 | patchred | RED
 data/select/bg00 | 531 411 158 100 | patchred | RED
-data/select/bg01 | 121 86 158 100 | patchblue | BLUE
-data/select/bg01 | 121 411 158 100 | patchblue | BLUE
-data/select/bg01 | 531 86 158 100 | patchred | RED
-data/select/bg01 | 531 411 158 100 | patchred | RED
 
 # Story teams: names on two rows, the team above its underline
 data/teamselect/p00 |   0   4 256 46 | left  | KEIICHI MAEBARA

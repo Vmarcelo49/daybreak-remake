@@ -127,7 +127,7 @@ expect "remembered: is named as the source" "$err" "(the remembered folder)"
 # is ignored and the search goes on (the binary would reject that whole document too).
 future_config="$work/config-future/daybreak-decomp"
 mkdir -p "$future_config"
-printf 'version = 5\n\n[game]\ninstall_dir = %s\n' "$game" > "$future_config/settings.conf"
+printf 'version = 7\n\n[game]\ninstall_dir = %s\n' "$game" > "$future_config/settings.conf"
 run "$pkg" "$work/home" "$work/config-future" "$work/data" "$work/cwd"
 [ "$status" = 1 ] || bad "unknown schema: expected the search to continue (exit 1), got $status"
 reject "unknown schema: its folder is not used" "$out" "STUB"

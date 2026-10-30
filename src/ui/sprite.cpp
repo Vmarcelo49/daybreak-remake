@@ -220,6 +220,10 @@ bool SpriteRenderer::createTexture(Texture& t, uint32_t w, uint32_t h, const voi
             for (uint32_t y = 0; y < nh; ++y)
                 for (uint32_t x = 0; x < nw; ++x) {
                     uint32_t alpha = 0, colour[3] = {0, 0, 0};
+                    const uint8_t* corner = above + ((size_t)(y * 2) * lw + x * 2) * 4;
+                    // Sheets are mostly empty: the common case needs no averaging.
+                    if (x * 2 + 1 < lw && y * 2 + 1 < lh &&
+                        !(corner[3] | corner[7] | corner[lw * 4 + 3] | corner[lw * 4 + 7])) continue;
                     for (uint32_t k = 0; k < 4; ++k) {
                         const uint32_t sx = std::min(lw - 1, x * 2 + (k & 1)), sy = std::min(lh - 1, y * 2 + (k >> 1));
                         const uint8_t* p = above + ((size_t)sy * lw + sx) * 4;

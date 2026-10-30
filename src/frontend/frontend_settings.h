@@ -22,6 +22,7 @@ struct FrontendSettings {
     // the first save after a launch that remembered it. The host sets it when it opens a
     // folder; applyUserSettings() carries the loaded value in.
     std::string installDir;
+    std::string language;   // empty is the game's own Japanese
     // The Options screen's toon-rendering row (issue #21). Live state: main syncs it into
     // the renderer's appearance every frame, so flipping the row needs no restart, and
     // toUserSettings() carries it into the persisted document.
