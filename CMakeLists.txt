@@ -115,6 +115,7 @@ add_library(ui STATIC
     src/frontend/screen_vs.cpp
     src/frontend/screen_result.cpp
     src/frontend/result_quote.cpp
+    src/frontend/story_script.cpp
     src/frontend/frontend_launch.cpp
     src/frontend/frontend_settings.cpp
     src/settings/user_settings.cpp
@@ -734,6 +735,11 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_include_directories(bgm_loop_test PRIVATE src)
     add_test(NAME bgm_loop_test COMMAND bgm_loop_test)
     set_tests_properties(bgm_loop_test PROPERTIES LABELS asset)
+
+    add_executable(story_script_test tests/story_script_test.cpp)
+    target_link_libraries(story_script_test PRIVATE ui assets glm)
+    add_test(NAME story_script_test COMMAND story_script_test)
+    set_tests_properties(story_script_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
     add_executable(result_title_test tests/result_title_test.cpp)
     target_link_libraries(result_title_test PRIVATE gameplay ui assets glm)
