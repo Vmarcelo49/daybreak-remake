@@ -1268,10 +1268,6 @@ bool initScreens(App& app) {
         if (screen) std::printf("[menu] scene: %s (tick %llu)\n", screen->name(), (unsigned long long)app.logicTicks);
         return screen;
     };
-    if (!app.opts.texturePack.empty()) {
-        const size_t images = fnd::assets::assetSource().openTexturePack(app.opts.texturePack);
-        std::printf("[pack] %s: %zu image(s)\n", app.opts.texturePack.c_str(), images);
-    }
     // --language wins for one run and is an error if it cannot load; a stale saved one only warns.
     if (!app.opts.language.empty()) {
         if (!ui::setSheetLanguage(app.opts.language, app.error)) return false;
@@ -1602,6 +1598,18 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     // runs skip this entirely — see usesUserConfig.
     if (usesUserConfig(app->opts)) loadUserSettings(*app);
 
+    // Earlier folders win. A verification run reads only the pack it names, so what happens
+    // to sit beside the executable cannot change a capture.
+    std::vector<std::string> packs;
+    if (!app->opts.texturePack.empty()) packs.push_back(app->opts.texturePack);
+    if (!verificationRun(app->opts)) {
+        if (const char* base = SDL_GetBasePath()) {
+            packs.push_back(std::string(base) + "custom-textures");
+            packs.push_back(std::string(base) + "hd-textures");
+        }
+    }
+    const size_t packImages = fnd::assets::assetSource().openTexturePacks(packs);
+    if (packImages > 0) std::printf("[pack] %zu image(s)\n", packImages);
     const bool ok = (!app->opts.screen.empty() || app->opts.bootOpening) ? initScreens(*app)
                    : hasAsset(app->opts)                                ? initScene(*app)
                                                                         : initTriangle(*app);

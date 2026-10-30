@@ -63,13 +63,33 @@ static void testTexturePack() {
     std::ofstream(root / "data" / "Rena" / "notes.txt") << "not an image";
 
     auto& assets = fnd::assets::assetSource();
-    CHECK(assets.openTexturePack(root.string()) == 1);
+    CHECK(assets.openTexturePacks({root.string()}) == 1);
     uint32_t w = 0, h = 0;
     std::vector<uint8_t> rgba;
     CHECK(assets.readPackImage("data/rena/face.cnv", w, h, rgba));
     CHECK(w == 2 && h == 1 && rgba.size() == 8 && rgba[4] == 40);
     CHECK(!assets.readPackImage("data/rena/other.cnv", w, h, rgba));
-    CHECK(assets.openTexturePack("") == 0);
+    // The first folder wins, and a missing one is no error.
+    const fs::path second = fs::temp_directory_path() / "daybreak_pack_test_second";
+    fs::remove_all(second, ec);
+    fs::create_directories(second / "data" / "rena", ec);
+    fs::copy_file(root / "data" / "Rena" / "Face.PNG", second / "data" / "rena" / "face.png", ec);
+    std::ofstream(second / "data" / "rena" / "other.png", std::ios::binary).write(reinterpret_cast<const char*>(kPng), sizeof kPng);
+    std::ofstream(root / "data" / "Rena" / "Face.PNG", std::ios::binary | std::ios::trunc) << "broken";
+    // A duplicate shares its own folder's image, never an earlier folder's.
+    std::ofstream(second / "data" / "rena" / "third.png", std::ios::binary).write(reinterpret_cast<const char*>(kPng), sizeof kPng);
+    std::ofstream(root / "data" / "Rena" / "third.png", std::ios::binary) << "broken";
+    std::ofstream(second / "duplicates.txt") << "data/mion/other.cnv\tdata/rena/other.cnv\r\ndata/mion/none\tdata/rena/none\n"
+                                             << "data/mion/third\tdata/rena/third\n"
+                                             << "data/rena/face\tdata/rena/other\n";
+    CHECK(assets.openTexturePacks({root.string(), (root / "missing").string(), second.string()}) == 5);
+    CHECK(assets.readPackImage("data/rena/other.cnv", w, h, rgba));
+    CHECK(!assets.readPackImage("data/rena/face.cnv", w, h, rgba));
+    CHECK(assets.readPackImage("data/mion/other.cnv", w, h, rgba));
+    CHECK(!assets.readPackImage("data/mion/none.cnv", w, h, rgba));
+    CHECK(assets.readPackImage("data/mion/third.cnv", w, h, rgba));
+    fs::remove_all(second, ec);
+    CHECK(assets.openTexturePacks({}) == 0);
     CHECK(!assets.readPackImage("data/rena/face.cnv", w, h, rgba));
     // A loose tree answers whatever case the game asks in.
     const fs::path previous = fs::current_path(ec);

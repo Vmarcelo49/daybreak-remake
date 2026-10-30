@@ -603,6 +603,9 @@ bool SceneRenderer::uploadTexture(const xm::SceneModel& sm, const std::string& n
         return true;
     }
 
+    // A pack's larger texture would shimmer on a distant fighter without a chain, whatever
+    // the original did for the small one.
+    if (img->fromPack) mipmapped = true;
     // Only stage textures get a chain: the reference's other textures are created with
     // MipLevels = 1 because their directories ship no levels. The header's mip note
     // carries that evidence, the original's MIPFILTER state, and the box filter's
@@ -610,7 +613,7 @@ bool SceneRenderer::uploadTexture(const xm::SceneModel& sm, const std::string& n
     // staying as the fallback past them and for missing art.
     std::vector<std::vector<uint8_t>> levels;
     if (mipmapped) {
-        buildMipChain(img->rgba.data(), img->width, img->height, levels);
+        buildMipChain(keyed.empty() ? img->rgba.data() : keyed.rgba.data(), img->width, img->height, levels);
         // B3: levels 1-2 come from the shipped `base_1`/`base_2` files when present
         // (FUN_00656c80 fills one D3DX level per `%s_%d.bmp`), the box level staying
         // as the fallback otherwise. The lookup rides the same bundle-first cache as
@@ -622,7 +625,8 @@ bool SceneRenderer::uploadTexture(const xm::SceneModel& sm, const std::string& n
         uint32_t shipped = 0;
         for (uint32_t l = 1; l <= 2 && l < levels.size(); ++l) {
             const xm::CnvImage* sib = sm.textures.get(mipSiblingName(name, l));
-            if (sib && !sib->empty() &&
+            // The original's mip under a pack's base would show the old art at a distance.
+            if (sib && !sib->empty() && sib->fromPack == img->fromPack &&
                 mipShippedDimsOk(img->width, img->height, sib->width, sib->height, l)) {
                 levels[l] = sib->rgba;
                 shipped = l;

@@ -148,19 +148,36 @@ std::string AssetSource::toKey(const std::string& path) const {
     return {};
 }
 
-size_t AssetSource::openTexturePack(const std::string& folder) {
+size_t AssetSource::openTexturePacks(const std::vector<std::string>& folders) {
     namespace fs = std::filesystem;
     packImages_.clear();
-    if (folder.empty()) return 0;
-    std::error_code ec;
-    const fs::path root = fs::u8path(folder);
-    for (fs::recursive_directory_iterator it(root, ec), end; !ec && it != end; it.increment(ec)) {
-        if (!it->is_regular_file(ec)) continue;
-        std::string extension = it->path().extension().u8string();
-        for (char& c : extension)
-            if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
-        if (extension != ".png") continue;
-        packImages_[packKey(it->path().lexically_relative(root).generic_u8string())] = it->path().u8string();
+    for (const std::string& folder : folders) {
+        std::error_code ec;
+        const fs::path root = fs::u8path(folder);
+        std::unordered_map<std::string, std::string> images;
+        for (fs::recursive_directory_iterator it(root, ec), end; !ec && it != end; it.increment(ec)) {
+            if (!it->is_regular_file(ec)) continue;
+            std::string extension = it->path().extension().u8string();
+            for (char& c : extension)
+                if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+            if (extension != ".png") continue;
+            images.emplace(packKey(it->path().lexically_relative(root).generic_u8string()), it->path().u8string());
+        }
+        // Most textures repeat across folders. duplicates.txt lets a pack carry each one once:
+        // `path<TAB>path it is the same as`, inside this folder, so replacing one costume's
+        // texture in an earlier folder does not spread to the others.
+        std::ifstream duplicates(root / "duplicates.txt");
+        for (std::string line; std::getline(duplicates, line);) {
+            const size_t tab = line.find('\t');
+            if (tab == std::string::npos) continue;
+            if (line.back() == '\r') line.pop_back();
+            const auto source = images.find(packKey(line.substr(tab + 1)));
+            if (source != images.end()) {
+                const std::string file = source->second;
+                images.emplace(packKey(line.substr(0, tab)), file);
+            }
+        }
+        packImages_.insert(images.begin(), images.end());
     }
     return packImages_.size();
 }

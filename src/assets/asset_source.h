@@ -34,11 +34,13 @@ public:
     bool openInstall(const std::string& installDir);
     void closeInstall();
 
-    // An optional texture pack: a folder of PNGs at the game's paths, in any size, such as
+    // Optional texture packs: folders of PNGs at the game's paths, in any size, such as
     // <pack>/data/rena/face.png for data/rena/face.cnv. Names compare case-blind, like the
-    // bundles'. Returns the number of images found. An empty path turns the pack off.
-    size_t openTexturePack(const std::string& folder);
-    // The pack's image for a game path, whatever its extension. False when the pack has none.
+    // bundles', and the earliest folder wins. A missing folder counts as empty. A folder's
+    // duplicates.txt names textures that share one of its images.
+    // Returns the number of images found. No folders turns the packs off.
+    size_t openTexturePacks(const std::vector<std::string>& folders);
+    // The packs' image for a game path, whatever its extension. False when they have none.
     bool readPackImage(const std::string& path, uint32_t& width, uint32_t& height, std::vector<uint8_t>& rgba) const;
 
     bool                bundlesOpen() const { return bundlesOpen_; }

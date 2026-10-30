@@ -575,6 +575,10 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     set_tests_properties(web_match_group_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 LABELS asset)
 
 
+    add_test(NAME texture_pack_check COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/texture_pack_check.py)
+    set_tests_properties(texture_pack_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
+
     # The input seed that threw before PATCHES.md's trig entry, at tick 797.
     add_test(NAME sim_fuzz_regression COMMAND simfuzz 8 2 1 1000 9)
     set_tests_properties(sim_fuzz_regression PROPERTIES SKIP_RETURN_CODE 77 LABELS asset

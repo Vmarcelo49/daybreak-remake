@@ -48,6 +48,7 @@ namespace xm {
 struct CnvImage {
     uint32_t             width = 0, height = 0;
     std::vector<uint8_t> rgba;          // RGBA8, top-down, stride = width * 4
+    bool                 fromPack = false;
 
     bool empty() const { return rgba.empty(); }
     size_t sizeBytes() const { return rgba.size(); }
@@ -312,6 +313,7 @@ const CnvImage* TextureCache::get(const std::string& rawName) const {
     {
         auto packed = std::make_unique<CnvImage>();
         if (fnd::assets::assetSource().readPackImage(directory_ + stem, packed->width, packed->height, packed->rgba)) {
+            packed->fromPack = true;
             const CnvImage* result = packed.get();
             cache_.emplace(rawName, std::move(packed));
             ++resolved_;
