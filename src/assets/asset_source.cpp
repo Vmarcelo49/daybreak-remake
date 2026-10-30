@@ -184,6 +184,37 @@ bool AssetSource::readPackImage(const std::string& path, uint32_t& width, uint32
     return true;
 }
 
+// A loose tree on a case-sensitive filesystem: the exe's names fold case (__stricmp at 0x00663c20)
+// and the shipped ones disagree, such as P00 asked for and p00.cnv on disk. Empty when nothing matches.
+static std::string foldedPath(const std::string& path) {
+    std::error_code ec;
+    fs::path built;
+    const fs::path wanted(path);
+    const auto lowered = [](std::string text) {
+        for (char& c : text)
+            if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+        return text;
+    };
+    for (const fs::path& part : wanted) {
+        fs::path next = built / part;
+        if (!fs::exists(next, ec)) {
+            const std::string target = lowered(part.string());
+            bool found = false;
+            const fs::path listed = built.empty() ? fs::path(".") : built;
+            for (const auto& entry : fs::directory_iterator(listed, ec)) {
+                if (lowered(entry.path().filename().string()) == target) {
+                    next = built / entry.path().filename();
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) return {};
+        }
+        built = next;
+    }
+    return built.string();
+}
+
 bool AssetSource::exists(const std::string& path) const {
     if (bundlesOpen_) {
         const std::string key = toKey(path);
@@ -196,7 +227,7 @@ bool AssetSource::exists(const std::string& path) const {
     try { return fs::exists(fs::u8path(path), ec); }
     catch (const fs::filesystem_error&) { return false; }
 #else
-    return fs::exists(fs::path(path), ec);
+    return fs::exists(fs::path(path), ec) || (!bundlesOpen_ && !foldedPath(path).empty());
 #endif
 }
 
@@ -215,7 +246,14 @@ bool AssetSource::read(const std::string& path, std::vector<uint8_t>& out) const
             if (entry && owner && owner->read(*entry, out)) return true;
         }
     }
-    return readFile(path, out);
+    if (readFile(path, out)) return true;
+#if !defined(_WIN32)
+    if (!bundlesOpen_) {
+        const std::string folded = foldedPath(path);
+        if (!folded.empty() && folded != path) return readFile(folded, out);
+    }
+#endif
+    return false;
 }
 
 std::string AssetSource::resolve(const std::vector<std::string>& candidates) const {

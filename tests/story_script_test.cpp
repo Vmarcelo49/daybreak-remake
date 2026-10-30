@@ -71,6 +71,14 @@ static void testTexturePack() {
     CHECK(!assets.readPackImage("data/rena/other.cnv", w, h, rgba));
     CHECK(assets.openTexturePack("") == 0);
     CHECK(!assets.readPackImage("data/rena/face.cnv", w, h, rgba));
+    // A loose tree answers whatever case the game asks in.
+    const fs::path previous = fs::current_path(ec);
+    fs::current_path(root, ec);
+    std::vector<uint8_t> notes;
+    CHECK(assets.exists("data/rena/NOTES.txt"));
+    CHECK(assets.read("DATA/RENA/notes.TXT", notes) && notes.size() == 12);
+    CHECK(!assets.exists("data/rena/other.txt"));
+    fs::current_path(previous, ec);
     fs::remove_all(root, ec);
 }
 
