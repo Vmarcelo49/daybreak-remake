@@ -204,14 +204,14 @@ data/select/pbg02 | 384 192 128 64 | dim | NIGHT
 
 # Backgrounds: the text is part of the art
 data/teamselect/bg00 | 300 6 200 50 | patch | TODAY'S STARS
-data/select/bg00 | 135 100 130 72 | patchblue | BLUE
-data/select/bg00 | 135 425 130 72 | patchblue | BLUE
-data/select/bg00 | 545 100 130 72 | patchred | RED
-data/select/bg00 | 545 425 130 72 | patchred | RED
-data/select/bg01 | 135 100 130 72 | patchblue | BLUE
-data/select/bg01 | 135 425 130 72 | patchblue | BLUE
-data/select/bg01 | 545 100 130 72 | patchred | RED
-data/select/bg01 | 545 425 130 72 | patchred | RED
+data/select/bg00 | 121 86 158 100 | patchblue | BLUE
+data/select/bg00 | 121 411 158 100 | patchblue | BLUE
+data/select/bg00 | 531 86 158 100 | patchred | RED
+data/select/bg00 | 531 411 158 100 | patchred | RED
+data/select/bg01 | 121 86 158 100 | patchblue | BLUE
+data/select/bg01 | 121 411 158 100 | patchblue | BLUE
+data/select/bg01 | 531 86 158 100 | patchred | RED
+data/select/bg01 | 531 411 158 100 | patchred | RED
 
 # Story teams: names on two rows, the team above its underline
 data/teamselect/p00 |   0   4 256 46 | left  | KEIICHI MAEBARA
@@ -257,10 +257,10 @@ data/config/0002 |   0 192 192 32 | dim   | FRAME RATE
 data/config/0002 |   0 224 192 32 | label   | FRAME RATE
 data/config/0002 |   0 256 192 32 | dim   | SCREEN MODE
 data/config/0002 |   0 288 192 32 | label   | SCREEN MODE
-data/config/0002 |   0 320 192 32 | dim   | MASTER VOLUME
-data/config/0002 |   0 352 192 32 | label   | MASTER VOLUME
-data/config/0002 |   0 384 192 32 | dim   | MUSIC VOLUME
-data/config/0002 |   0 416 192 32 | label   | MUSIC VOLUME
+data/config/0002 |   0 320 192 32 | dim   | MASTER
+data/config/0002 |   0 352 192 32 | label   | MASTER
+data/config/0002 |   0 384 192 32 | dim   | MUSIC
+data/config/0002 |   0 416 192 32 | label   | MUSIC
 data/config/0002 |   0 448 192 32 | dim   | EXIT
 data/config/0002 |   0 480 192 32 | label   | EXIT
 data/config/0002 | 192   0  96 32 | dim   | ON
@@ -283,10 +283,10 @@ data/config/0002 | 192 256  96 32 | dim   | WINDOW
 data/config/0002 | 192 288  96 32 | label   | WINDOW
 data/config/0002 | 288 256 128 32 | dim   | FULLSCREEN
 data/config/0002 | 288 288 128 32 | label   | FULLSCREEN
-data/config/0002 | 192 320 128 32 | dim   | VOICE VOLUME
-data/config/0002 | 192 352 128 32 | label   | VOICE VOLUME
-data/config/0002 | 192 384 128 32 | dim   | EFFECTS VOLUME
-data/config/0002 | 192 416 128 32 | label   | EFFECTS VOLUME
+data/config/0002 | 192 320 128 32 | dim   | VOICE
+data/config/0002 | 192 352 128 32 | label   | VOICE
+data/config/0002 | 192 384 128 32 | dim   | EFFECTS
+data/config/0002 | 192 416 128 32 | label   | EFFECTS
 data/config/0003 | 0   0 512 48 | small | Use toon shading? Press left or right.\nTurning it off runs a little lighter.
 data/config/0003 | 0  48 512 48 | small | Show shadows? Press left or right.\nTurning them off runs a little lighter.
 data/config/0003 | 0  96 512 48 | small | Choose texture resolution with left or right.\nLow looks rougher but runs a little lighter.
