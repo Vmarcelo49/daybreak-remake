@@ -1,0 +1,112 @@
+# Builds and packages every platform when the version changes. VERSION is the one file that
+# asks for a build, so ordinary pushes cost nothing; run it by hand with `gh workflow run build.yml`.
+# The runners have no game data: tests that need the install skip, so green here says nothing
+# about battles or pixels. tools/fingerprints.sh and tests/release_flow_check.py cover those locally.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    paths: [VERSION]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    env:
+      CMAKE_PREFIX_PATH: ${{ github.workspace }}/.sdl3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxi-dev libxss-dev libxfixes-dev libxkbcommon-dev libwayland-dev wayland-protocols \
+            libegl1-mesa-dev libasound2-dev libpulse-dev libdecor-0-dev libudev-dev mesa-vulkan-drivers
+      - uses: actions/cache@v4
+        with:
+          path: third_party
+          key: third-party-${{ hashFiles('scripts/fetch_deps.sh') }}
+      # Ubuntu 24.04 packages no SDL3. Same version as the MinGW build's pin.
+      - uses: actions/cache@v4
+        id: sdl3
+        with:
+          path: .sdl3
+          key: sdl3-linux-${{ hashFiles('scripts/fetch_deps.sh') }}
+      - name: Build SDL3
+        if: steps.sdl3.outputs.cache-hit != 'true'
+        run: |
+          version=$(sed -n 's/^SDL3_VERSION=//p' scripts/fetch_deps.sh)
+          curl -fsSL "https://github.com/libsdl-org/SDL/releases/download/release-$version/SDL3-$version.tar.gz" | tar -xz -C "$RUNNER_TEMP"
+          cmake -S "$RUNNER_TEMP/SDL3-$version" -B "$RUNNER_TEMP/sdl3-build" -GNinja -DCMAKE_BUILD_TYPE=Release -DSDL_TESTS=OFF
+          cmake --build "$RUNNER_TEMP/sdl3-build"
+          cmake --install "$RUNNER_TEMP/sdl3-build" --prefix "$GITHUB_WORKSPACE/.sdl3"
+      - run: ./build.sh deps
+      - run: ./build.sh linux
+      - run: ctest --test-dir build/linux -j4 --timeout 400 --output-on-failure
+      - run: ./scripts/package_linux.sh --no-build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daybreak-linux-x86_64
+          path: build/package/daybreak-*-linux-x86_64.tar.gz*
+          if-no-files-found: error
+
+  windows:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build g++-mingw-w64-x86-64-posix gcc-mingw-w64-x86-64-posix
+      - uses: actions/cache@v4
+        with:
+          path: third_party
+          key: third-party-${{ hashFiles('scripts/fetch_deps.sh') }}
+      - run: ./build.sh deps
+      - run: ./scripts/package_windows.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daybreak-windows-x86_64
+          path: build/package/daybreak-*-windows-x86_64.zip
+          if-no-files-found: error
+
+  web:
+    runs-on: ubuntu-24.04
+    env:
+      EMSDK: ${{ github.workspace }}/.emsdk
+      # The version this tree is verified with (docs/BUILD-web.md).
+      EMSDK_VERSION: 6.0.10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+      - uses: actions/cache@v4
+        with:
+          path: third_party
+          key: third-party-${{ hashFiles('scripts/fetch_deps.sh') }}
+      - name: Install Emscripten
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk "$EMSDK"
+          "$EMSDK/emsdk" install "$EMSDK_VERSION"
+          "$EMSDK/emsdk" activate "$EMSDK_VERSION"
+      - run: ./build.sh deps
+      - run: ./build.sh web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daybreak-web
+          path: |
+            build/web/daybreak.html
+            build/web/daybreak.js
+            build/web/daybreak.wasm
+            build/web/daybreak.data
+          if-no-files-found: error

@@ -35,7 +35,7 @@ cp "$root/assets/fonts/gyrotrope-black.otf" "$stage/assets/fonts/"
 cp "$root/third_party/fonts/NotoSansCJKjp-Regular.otf" "$stage/assets/fonts/"
 cp "$root/package/README-WINDOWS.md" "$stage/"
 cp -R "$root/package/LICENSES" "$stage/"
-cp "$root/../../LICENSE" "$stage/LICENSES/daybreak-decomp.txt"
+cp "$root/LICENSE" "$stage/LICENSES/daybreak-decomp.txt"
 cat > "$stage/LICENSES/README.md" <<'NOTICES'
 # Windows package notices
 

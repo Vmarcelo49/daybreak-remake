@@ -11,8 +11,8 @@ result text, settings/key configuration and diagnostics use this shared
 choice. Existing image labels and image-based numerals keep their original art.
 
 Gyrotrope lacks Japanese glyphs; `NotoSansCJKjp-Regular.otf` supplies them
-through the font chain. The repository-level `fetch_deps.sh` fetches it into
-ignored `foundation/third_party/fonts/`, separate from `foundation/build.sh deps`.
+through the font chain. `./build.sh deps` fetches it into the ignored
+`third_party/fonts/` and verifies its hash.
 Native packages include both faces under `assets/fonts`; web preloads available
 faces there.
 The embedded bitmap font remains an emergency fallback for missing fonts or

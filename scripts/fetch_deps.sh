@@ -63,4 +63,41 @@ if [ ! -e "$tp/SDL3-mingw" ]; then
     mv "$tmp"/SDL3-*/ "$tp/SDL3-mingw"
     rm -rf "$tmp"
 fi
+
+# The fonts are fetched rather than committed, and their hashes are pinned because the
+# rasterizer's output is only reproducible against a known file (src/ui/text.h).
+verify_sha256() {  # file expected
+    [ "$(sha256sum "$1" | cut -d' ' -f1)" = "$2" ] || { echo "sha256 mismatch: $1" >&2; exit 1; }
+}
+mkdir -p "$tp/fonts"
+
+# Noto Sans CJK JP (OFL 1.1): the Japanese fallback of the caption chain (D7).
+CJK_FONT="$tp/fonts/NotoSansCJKjp-Regular.otf"
+CJK_SHA256=68a3fc98800b2a27b371f2fb79991daf3633bd89309d4ffaa6946fd587f375b5
+if [ ! -e "$CJK_FONT" ]; then
+    echo "  Noto Sans CJK JP: fetching"
+    curl -fsSL --retry 3 -o "$CJK_FONT.tmp" \
+        "https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf"
+    mv "$CJK_FONT.tmp" "$CJK_FONT"
+fi
+verify_sha256 "$CJK_FONT" "$CJK_SHA256"
+
+# Liberation Sans Bold (OFL 1.1): the Arial substitute tests/hud_text_test.cpp pins against
+# the banked DX9 frames. The upstream release has no binary asset, so it comes from the .deb.
+LATIN_FONT="$tp/fonts/LiberationSans-Bold.ttf"
+LATIN_DEB_SHA256=3d5c47480067b9615f6bf9b0eda6eefcab9d837af609827015445e8e759b5b8c
+LATIN_SHA256=1b5f2da6f4cadce4c05b9ecebe3a6fcd374eb95ae443605e799f4c3287978939
+if [ ! -e "$LATIN_FONT" ]; then
+    echo "  Liberation Sans Bold: fetching"
+    tmp=$(mktemp -d)
+    curl -fsSL --retry 3 -o "$tmp/lib.deb" \
+        "https://deb.debian.org/debian/pool/main/f/fonts-liberation/fonts-liberation_2.1.5-3_all.deb"
+    verify_sha256 "$tmp/lib.deb" "$LATIN_DEB_SHA256"
+    (cd "$tmp" && ar x lib.deb data.tar.xz \
+        && tar xJf data.tar.xz ./usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf)
+    mv "$tmp/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" "$LATIN_FONT"
+    rm -rf "$tmp"
+fi
+verify_sha256 "$LATIN_FONT" "$LATIN_SHA256"
+
 echo "deps ready in $tp"

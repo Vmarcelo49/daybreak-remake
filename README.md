@@ -123,6 +123,14 @@ forces SDL's dummy audio driver for its tests and their child processes. Use `--
 any launch that should not make sound; `--with-audio` is only for an intentional listening
 test, and neither flag changes saved volumes.
 
+`tools/fingerprints.sh` prints the simulation and capture hashes to compare across a refactor.
+
+### Continuous integration
+
+Changing `VERSION` on `main` runs [`.github/workflows/build.yml`](.github/workflows/build.yml):
+it builds Linux, Windows and web, runs the tests that need no game data, and keeps the packages
+as workflow artifacts. Run it by hand with `gh workflow run build.yml`.
+
 ### The Linux release package
 
 A user does not build anything: `scripts/package_linux.sh` stages and archives
