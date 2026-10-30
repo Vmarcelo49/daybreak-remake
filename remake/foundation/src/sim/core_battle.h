@@ -1,9 +1,8 @@
 #pragma once
 // game::Battle over the vendored core, behind --sim=core (docs/DIRECTION.md, M4).
 //
-// In progress: placement, poses, input, health, magazines and held weapons come from the core.
-// Combat events, trails, hypermode and the match economy are still empty, so the HUD, effects and
-// audio stay quiet on this path until later slices wire them.
+// In progress. Trails, combat statistics, hit edges for the title counters and animated shot
+// models are still empty on this path.
 #include <array>
 #include <memory>
 #include <string>
@@ -46,15 +45,15 @@ public:
     float charge_hold_frac() const override { return 0.f; }
     game::ShotTier charge_tier() const override { return game::ShotTier::Tap; }
     game::ShotTier last_shot_tier() const override { return game::ShotTier::Tap; }
-    game::Hypermode hypermode() const override { return game::Hypermode::Friendship; }
-    float hyper_gauge() const override { return 0.f; }
-    bool hyper_active() const override { return false; }
-    bool hyper_ready() const override { return false; }
+    game::Hypermode hypermode() const override;
+    float hyper_gauge() const override;
+    bool hyper_active() const override { return m_special.active; }
+    bool hyper_ready() const override { return !m_special.active && hyper_gauge() >= 1.f; }
     float hyper_seconds_left() const override { return 0.f; }
     int hyper_flash_alpha() const override { return 0; }
     bool hyper_activation_playing() const override { return false; }
     int hyper_activation_elapsed() const override { return 0; }
-    bool aura_active() const override { return false; }
+    bool aura_active() const override { return m_special.active; }
     glm::vec3 aura_center_local() const override { return glm::vec3(0.f, 58.f, 0.f); }
     float aura_radius() const override { return 0.f; }
     game::Rgb aura_color() const override { return 0; }
@@ -80,6 +79,7 @@ private:
     std::array<int, 2> m_held{{-1, -1}};
     std::array<MagazineState, 2> m_magazines{};
     ActorAnimation m_animation{};
+    SpecialState m_special{};
     game::CombatStats m_stats{};
     std::array<gameplay::WeaponTrail, 2> m_trails{};
     mutable std::vector<std::string> m_boneNames;
@@ -98,11 +98,11 @@ public:
     int side(int fighter) const override { return fighter / 2; }
     const game::FighterView& fighter(int index) const override { return m_fighters[static_cast<size_t>(index)]; }
     const gameplay::MatchEconomy& economy() const override { return m_economy; }
-    int locked_target(int fighter) const override { return (fighter + 2) % 4; }
-    int aim_target(int fighter) const override { return (fighter + 2) % 4; }
+    int locked_target(int fighter) const override { return m_battle->actor(static_cast<unsigned>(fighter)).target; }
+    int aim_target(int fighter) const override { return locked_target(fighter); }
     int lock_pulse(int) const override { return 0; }
     bool ai_enabled(int) const override { return true; }
-    void for_each_shot(const std::function<void(const game::ShotView&)>&) const override {}
+    void for_each_shot(const std::function<void(const game::ShotView&)>& visit) const override;
     void for_each_spark(const std::function<void(const game::SparkView&)>&) const override {}
 
     game::BattleFrame step(const fnd::input::PlayerState* inputs[game::kMatchFighterCount], double dt) override;
@@ -111,13 +111,15 @@ public:
     void step_round_entry(double) override {}
     void cycle_locked_target(int, bool) override {}
     void lock_ally_target(int) override {}
-    void set_primary_listener_fighter(int) override {}
+    void set_primary_listener_fighter(int fighter) override { m_listener = fighter; }
 
 private:
     std::unique_ptr<sim::Battle> m_battle;
     std::array<CoreFighter, 4> m_fighters{};
     gameplay::MatchEconomy m_economy{};
     bool m_paused = false;
+    int m_listener = 0;
+    bool m_roundReported = false;
 };
 
 }  // namespace sim

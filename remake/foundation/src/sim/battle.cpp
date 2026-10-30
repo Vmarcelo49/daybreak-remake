@@ -12,6 +12,7 @@
 #include "character_names.hpp"
 #include "development_animated_combat.hpp"
 #include "local_normal_projectiles.hpp"
+#include "projectile_render_pose.hpp"
 #include "stage_environment.hpp"
 #include "stage_floor_collision.hpp"
 #include "stage_wall_collision.hpp"
@@ -49,6 +50,7 @@ LocalBattleRoster make_roster(const BattleConfig& config) {
         roster.character[i] = slot.character;
         roster.weapon[i] = slot.weapon;
         roster.option[i] = static_cast<unsigned char>(slot.costume);
+        roster.costume[i] = static_cast<unsigned char>(slot.specialMode);
         if (slot.cpu) {
             roster.owner[i] = 4;  // BattleCpuDriver::configure: owners >= 4 are CPU
         } else {
@@ -59,6 +61,7 @@ LocalBattleRoster make_roster(const BattleConfig& config) {
     }
     roster.controlled_count = controllers;
     roster.stage = config.stage;
+    roster.rule_values = config.rules;
     BattleRandom random;
     random.seed(config.seed);
     roster.simulation_random = random;
@@ -94,6 +97,8 @@ struct Battle::Impl {
     unsigned ticks = 0;
     bool victoryResolved = false;
     std::uint64_t digest = 1469598103934665603ull;
+    BattleEvents events;
+    std::shared_ptr<BattleVoiceInventory> voices;
 
     explicit Impl(const BattleConfig& config)
         : assets(mount_assets(config.gameDir)),
@@ -108,7 +113,7 @@ struct Battle::Impl {
         // selection draws from the battle RNG (queue_voice), so leaving it out changes the match.
         combat.configure_offline_pause(true);
         combat.configure_actor_texture_styles(roster.flags);
-        auto voices = std::make_shared<BattleVoiceInventory>(assets);
+        voices = std::make_shared<BattleVoiceInventory>(assets);
         for (unsigned i = 0; i < 4; ++i)
             voices->configure(i, static_cast<unsigned>(roster.character[i]),
                               combat.actor_assets(i).parameters[3], roster.option[i], roster.flags[i]);
@@ -130,6 +135,38 @@ struct Battle::Impl {
         for (size_t i = 0; i < size; ++i) {
             digest ^= bytes[i];
             digest *= 1099511628211ull;
+        }
+    }
+
+    // RuntimeBattle::update's delivery of the tick's requests, as data. The requests live until
+    // the next tick's move_with_projectile_scripts clears them.
+    void collect_events() {
+        events.effects.clear();
+        events.sounds.clear();
+        events.voices.clear();
+        for (const auto& request : combat.effect_requests) {
+            std::array<float, 3> direction;
+            if (request.direction) {
+                direction = *request.direction;
+            } else {
+                const float cp = legacy_trig(request.pitch, false);
+                direction = {legacy_trig(request.heading, false) * cp, legacy_trig(request.pitch, true),
+                             legacy_trig(request.heading, true) * cp};
+            }
+            events.effects.push_back({static_cast<int>(request.actor), static_cast<int>(request.id), request.position, direction});
+        }
+        for (const auto& request : combat.sound_requests) {
+            if (request.system && !battle_contact_sound_audible(request, roster.controlled_slots, roster.controlled_count)) continue;
+            events.sounds.push_back({static_cast<int>(request.actor), static_cast<int>(request.id),
+                                     !request.system && request.mode == BattleSoundMode::Spatial, request.position});
+        }
+        for (const auto& request : combat.voice_requests) {
+            if (!battle_event_voice_audible(request, roster.controlled_slots, roster.controlled_count)) continue;
+            if (!request.selection_resolved || request.actor >= 4 || request.bank < 0 || request.selected_choice < 0) continue;
+            const unsigned which = voices->bank(request.actor, request.bank != 0);
+            const auto& names = voices->names(request.actor, which, request.category);
+            if (static_cast<size_t>(request.selected_choice) >= names.size()) continue;
+            events.voices.push_back({static_cast<int>(request.actor), names[static_cast<size_t>(request.selected_choice)]});
         }
     }
 
@@ -169,6 +206,7 @@ struct Battle::Impl {
             effects.advance(&world);
         }
         ++ticks;
+        collect_events();
         for (unsigned i = 0; i < 4; ++i) {
             const auto& a = world.actors[i];
             mix(a.position.data(), sizeof(float) * 3);
@@ -211,6 +249,7 @@ ActorState Battle::actor(unsigned slot) const {
     out.hp = static_cast<int>(combat.health[slot]);
     out.gauge = combat.gauge[slot];
     out.grounded = a.grounded != 0;
+    out.target = static_cast<int>(a.relationships.target);
     return out;
 }
 
@@ -226,6 +265,55 @@ ActorAnimation Battle::animation(unsigned slot) const {
     out.lowerTime = service.channels[0].position[out.lowerSet];
     out.upperTime = service.channels[1].position[out.upperSet];
     return out;
+}
+
+SpecialState Battle::special(unsigned slot) const {
+    const auto& gauge = m_impl->combat.special_gauges[slot];
+    SpecialState out;
+    out.mode = gauge.mode;
+    out.active = gauge.active0 || gauge.active1 || gauge.active2;
+    out.charge = static_cast<int>(gauge.charge0);
+    out.limit = static_cast<int>(gauge.limit0);
+    return out;
+}
+
+MatchState Battle::match_state() const {
+    const auto& combat = m_impl->combat;
+    MatchState out;
+    out.winner = combat.match.winner;
+    out.finished = combat.match.ready;
+    out.timed = combat.match.timed;
+    out.remainingTicks = static_cast<int>(combat.match.remaining_ticks);
+    const auto scores = combat.displayed_team_scores();
+    for (unsigned team = 0; team < 2; ++team) {
+        out.score[team] = scores[team];
+        out.limit[team] = static_cast<float>(m_impl->roster.rule_values[2 + team]);
+    }
+    return out;
+}
+
+const BattleEvents& Battle::events() const { return m_impl->events; }
+
+void Battle::for_each_projectile(const std::function<void(const ProjectileState&)>& visit) const {
+    static const LegacyMatrix kIdentity{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+    for (const auto& p : m_impl->projectiles.live) {
+        const auto& frame = p.cursor.current(p.assets->selected());
+        LegacyMatrix external;
+        const bool bound = LocalNormalProjectiles::bound_render_pose(p, m_impl->combat, m_impl->world, external);
+        ProjectileState out;
+        out.owner = static_cast<int>(p.pool_owner);
+        out.item = static_cast<int>(p.state.item);
+        // The core keeps the bullet's registration number; the product indexes the weapon's rows.
+        const auto& weapon = *m_impl->combat.actor_assets(p.pool_owner).weapon_item;
+        out.row = -1;
+        for (unsigned row = 0; row < weapon.bullets.size() && out.row < 0; ++row)
+            if (weapon.bullets[row].registration_id() == static_cast<int>(p.registration)) out.row = static_cast<int>(row);
+        out.position = p.state.position;
+        out.modelMatrix = projectile_render_pose(p.state, frame.flags28, kIdentity, bound ? &external : nullptr);
+        out.billboard = (frame.flags28 & 0x1000u) != 0;
+        out.tint = frame.fields[19];
+        visit(out);
+    }
 }
 
 std::array<int, 2> Battle::held_models(unsigned slot) const {

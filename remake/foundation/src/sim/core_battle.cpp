@@ -1,5 +1,6 @@
 #include "sim/core_battle.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
@@ -33,6 +34,8 @@ SlotInput slot_input(const fnd::input::PlayerState& state) {
     if (state.down[Action::Shoot]) out.buttons |= Shoot;
     if (state.down[Action::LockSwitch]) out.buttons |= Target;
     if (state.down[Action::Guard]) out.buttons |= Guard;
+    // The port's Special key is the original's melee + shot chord (FUN_0063c2a0 case 0x24).
+    if (state.down[Action::Special]) out.buttons |= Melee | Shoot;
     return out;
 }
 
@@ -76,6 +79,19 @@ void CoreFighter::refresh() {
     m_held = m_battle->held_models(m_slot);
     m_magazines = m_battle->magazines(m_slot);
     m_animation = m_battle->animation(m_slot);
+    m_special = m_battle->special(m_slot);
+}
+
+game::Hypermode CoreFighter::hypermode() const {
+    switch (m_special.mode & 255u) {
+        case 0: return game::Hypermode::Oyashiro;
+        case 2: return game::Hypermode::Kakera;
+        default: return game::Hypermode::Friendship;
+    }
+}
+
+float CoreFighter::hyper_gauge() const {
+    return m_special.limit > 0 ? std::min(1.f, static_cast<float>(m_special.charge) / static_cast<float>(m_special.limit)) : 0.f;
 }
 
 game::FighterPose CoreFighter::pose() const {
@@ -102,6 +118,8 @@ void CoreBattle::start(const BattleConfig& config, const std::array<const gamepl
     m_battle = std::make_unique<sim::Battle>(config);
     for (unsigned i = 0; i < 4; ++i) m_fighters[i].bind(m_battle.get(), i, moves[i], weapons[i]);
     m_paused = false;
+    m_roundReported = false;
+    m_economy.reset();
 }
 
 game::BattleFrame CoreBattle::step(const fnd::input::PlayerState* inputs[game::kMatchFighterCount], double) {
@@ -112,7 +130,45 @@ game::BattleFrame CoreBattle::step(const fnd::input::PlayerState* inputs[game::k
         if (inputs[i]) next[i] = slot_input(*inputs[i]);
     m_battle->step(next);
     for (CoreFighter& fighter : m_fighters) fighter.refresh();
+
+    const auto toVec = [](const std::array<float, 3>& v) { return glm::vec3(v[0], v[1], v[2]); };
+    const BattleEvents& events = m_battle->events();
+    for (const auto& e : events.effects) frame.effectSpawns.push_back({e.id, toVec(e.position), toVec(e.direction)});
+    for (const auto& s : events.sounds) frame.soundCues.push_back({s.id, s.positional, toVec(s.position)});
+    for (const auto& v : events.voices) frame.voiceCues.push_back({v.actor, v.path});
+
+    // FUN_006358c0: one listener at the selected actor's XYZ +150Y.
+    const CoreFighter& listener = m_fighters[static_cast<size_t>(m_listener)];
+    frame.audioListenerPosition = listener.position() + glm::vec3(0.f, 150.f, 0.f);
+    frame.audioListenerForward = glm::vec3(std::sin(listener.facing_yaw()), 0.f, std::cos(listener.facing_yaw()));
+    frame.audioListenerValid = true;
+
+    const MatchState match = m_battle->match_state();
+    const float score[2] = {match.score[0], match.score[1]};
+    const float limit[2] = {match.limit[0], match.limit[1]};
+    m_economy.mirror(score, limit, match.winner, match.timed ? match.remainingTicks / 60 : 0);
+    frame.roundOver = match.winner >= 0 && !m_roundReported;
+    frame.roundOverSide = match.winner;
+    m_roundReported = match.winner >= 0;
     return frame;
+}
+
+void CoreBattle::for_each_shot(const std::function<void(const game::ShotView&)>& visit) const {
+    if (!m_battle) return;
+    m_battle->for_each_projectile([&](const ProjectileState& p) {
+        // The product's bullet models are loaded per owner from its weapon's rows; a scene
+        // effect the core spawns from another item has no card there yet.
+        const auto* weapon = m_fighters[static_cast<size_t>(p.owner)].weapon();
+        if (!weapon || weapon->id != p.item) return;
+        game::ShotView view;
+        view.owner = p.owner;
+        view.bulletRow = p.row;
+        view.pos = glm::vec3(p.position[0], p.position[1], p.position[2]);
+        view.modelMatrix = to_glm(p.modelMatrix);
+        view.billboard = p.billboard;
+        view.tint = p.tint;
+        visit(view);
+    });
 }
 
 }  // namespace sim

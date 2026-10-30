@@ -3,6 +3,7 @@
 // its headers, its global names and its 284k lines stay out of every other translation unit.
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -16,6 +17,7 @@ struct Slot {
     int weapon = 0;
     bool cpu = true;
     int costume = 0;   // the rig variant: 0 is data/<name>, N is data/<name>_<'A'+N>
+    unsigned specialMode = 1;  // the hypermode's +0x318 value: 0 Oyashiro, 1 Friendship, 2 Kakera
 };
 
 struct BattleConfig {
@@ -24,6 +26,9 @@ struct BattleConfig {
     unsigned stage = 1;
     std::uint32_t seed = 1;
     unsigned timeLimitSeconds = 0;  // 0 keeps the match's own rule
+    // Health, gauge, blue and red limits, in percent. The core rejects values its menus cannot
+    // produce (configure_match_values).
+    std::array<int, 4> rules{{100, 100, 100, 100}};
 };
 
 // Buttons as the original's physical bits, before battle_button_carrier.
@@ -40,6 +45,43 @@ struct MagazineState {
     int rounds = 0, capacity = 0;
 };
 
+// A row-major D3D matrix: the same 16 floats in memory as a glm::mat4 of the same transform.
+using Matrix = std::array<float, 16>;
+
+// The slot's hypermode meter (BattleSpecialGauges). `mode` is the original's +0x318 value.
+struct SpecialState {
+    unsigned mode = 0;
+    bool active = false;
+    int charge = 0, limit = 0;
+};
+
+struct MatchState {
+    int winner = -1;                       // the winning team once the round is decided
+    bool finished = false;                 // the result screens are ready
+    bool timed = false;
+    int remainingTicks = 0;
+    std::array<float, 2> score{}, limit{};  // the balloon percentages the HUD shows
+};
+
+// One live projectile, in the render pass's terms (projectile_render_pose).
+struct ProjectileState {
+    int owner = 0, item = 0, row = 0;
+    std::array<float, 3> position{};
+    Matrix modelMatrix{};
+    bool billboard = false;
+    int tint = 0;
+};
+
+// What the last tick asked the presentation to do, after the core's audibility rules.
+struct BattleEvents {
+    struct Effect { int actor, id; std::array<float, 3> position, direction; };
+    struct Sound { int actor, id; bool positional; std::array<float, 3> position; };
+    struct Voice { int actor; std::string path; };
+    std::vector<Effect> effects;
+    std::vector<Sound> sounds;
+    std::vector<Voice> voices;
+};
+
 struct ActorState {
     std::array<float, 3> position{};
     float heading = 0.f;
@@ -49,10 +91,8 @@ struct ActorState {
     int hp = 0;
     int gauge = 0;         // +0x834, 0..1000
     bool grounded = false;
+    int target = 0;        // the slot this actor is locked on to
 };
-
-// A row-major D3D matrix: the same 16 floats in memory as a glm::mat4 of the same transform.
-using Matrix = std::array<float, 16>;
 
 // The bound animation sets. The two channels are the rig's lower and upper body; a row usually
 // binds the same set to both.
@@ -81,6 +121,10 @@ public:
     unsigned live_projectiles() const;
     bool match_finished() const;
     ActorAnimation animation(unsigned slot) const;
+    SpecialState special(unsigned slot) const;
+    MatchState match_state() const;
+    const BattleEvents& events() const;
+    void for_each_projectile(const std::function<void(const ProjectileState&)>& visit) const;
     // The item models the actor holds, -1 for an empty hand.
     std::array<int, 2> held_models(unsigned slot) const;
     // The weapon's first two magazines, as the HUD reads them.

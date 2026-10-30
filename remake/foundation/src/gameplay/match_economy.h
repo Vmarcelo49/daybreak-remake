@@ -242,6 +242,18 @@ public:
     // value falls back to the 100 default.
     void set_round_rules(int timeLimit, const int balloonSize[2]);
 
+    // A backend that keeps its own score overwrites the read side each tick; the credit and
+    // tick paths below are then unused.
+    void mirror(const float balloon[kSideCount], const float capacity[kSideCount], int winner, int secondsLeft) {
+        for (int side = 0; side < kSideCount; ++side) {
+            m_balloon[side] = m_balloonDisplay[side] = balloon[side];
+            m_capacity[side] = capacity[side];
+        }
+        m_roundOverSide = winner;
+        m_roundOver = winner >= 0;
+        m_timeLimit = secondsLeft;
+    }
+
     // One frame of the clock, exactly scenes.cpp:610. Call once per frame, before
     // update(): it also advances the recovered balloon presentation (the popup timer
     // and the ±0.5%/frame inflate of FUN_006430f0 @0x6430f0).

@@ -131,6 +131,51 @@ void test_scripted_rena_reaches_her_rows(const std::string& game) {
     check(states.count(40) == 1, "a jump press reaches row 40");
 }
 
+// The presentation requests --sim=core delivers: a match with CPUs fires, sounds and speaks, and
+// every request resolves to something the presentation can use.
+void test_presentation_events(const std::string& game) {
+    sim::Battle battle(match(game, 1, 0));
+    size_t effects = 0, sounds = 0, voices = 0, shots = 0, unknownRows = 0;
+    bool badVoicePath = false;
+    for (unsigned t = 0; t < 3600; ++t) {
+        battle.step({});
+        const sim::BattleEvents& events = battle.events();
+        effects += events.effects.size();
+        sounds += events.sounds.size();
+        voices += events.voices.size();
+        for (const auto& voice : events.voices) badVoicePath |= voice.path.rfind("data/voice/", 0) != 0;
+        battle.for_each_projectile([&](const sim::ProjectileState& p) {
+            ++shots;
+            unknownRows += p.row < 0;
+        });
+    }
+    check(effects > 0, "a match requests effects");
+    check(sounds > 0, "a match requests sounds");
+    check(voices > 0, "a match requests voices");
+    check(!badVoicePath, "voices resolve to shipped paths");
+    check(shots > 0, "a match has live projectiles");
+    check(unknownRows == 0, "every projectile maps back to a weapon row");
+    const sim::MatchState state = battle.match_state();
+    check(state.limit[0] == 100.f && state.limit[1] == 100.f, "the score limit defaults to 100");
+}
+
+// The round decides itself: the clock runs out and the core names a winner, then its result
+// screen opens, which draws from the RNG and must not throw.
+void test_round_end(const std::string& game) {
+    auto config = match(game, 0, 0);
+    config.timeLimitSeconds = 10;
+    sim::Battle battle(config);
+    bool decided = false, ready = false;
+    for (unsigned t = 0; t < 3000 && !ready; ++t) {
+        battle.step({});
+        decided = decided || battle.match_state().winner >= 0;
+        ready = battle.match_state().finished;
+    }
+    check(decided, "the time limit decides a winner");
+    check(ready, "and the result screens become ready");
+    check(battle.match_state().timed, "the round reports its clock");
+}
+
 void test_invalid_combos_are_rejected(const std::string& game) {
     const auto rejected = [&](int character, int weapon) {
         try {
@@ -182,6 +227,8 @@ int main() {
         return 77;
     }
     test_invalid_combos_are_rejected(game);
+    test_presentation_events(game);
+    test_round_end(game);
     test_determinism(game);
     test_input_sensitivity(game);
     test_scripted_rena_reaches_her_rows(game);

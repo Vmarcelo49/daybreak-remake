@@ -562,5 +562,21 @@ int main() {
     }
 
     std::puts("combat_audio_test: event identity, resolution and channel bookkeeping ok");
+    // Direct requests from a backend that resolves its own cues: the given file plays on the
+    // fighter's own voice channel and a repeat replaces the line instead of stacking.
+    {
+        Recorder sink;
+        CombatAudio audio(sink);
+        audio.begin_match(4);
+        audio.play_voice_direct(1, "data/voice/mion/attackA/000.wav");
+        audio.play_voice_direct(1, "data/voice/mion/attackB/001.wav");
+        audio.play_voice_direct(7, "data/voice/mion/attackA/000.wav");
+        CHECK(sink.played.size() == 2);
+        CHECK(sink.played[1].stem == "data/voice/mion/attackB/001");
+        CHECK(sink.played[0].channel == sink.played[1].channel);
+        audio.play_se_direct(12, false, {}, {}, {0.f, 0.f, 1.f}, false);
+        CHECK(sink.played.size() == 3);
+        CHECK(sink.played[2].bus == SfxBus::Sfx);
+    }
     return 0;
 }

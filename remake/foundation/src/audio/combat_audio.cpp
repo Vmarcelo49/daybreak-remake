@@ -346,6 +346,35 @@ void CombatAudio::play_voice(const CombatEvent& e, const CombatCue& cue) {
     ++stats_.voice_plays;
 }
 
+void CombatAudio::play_se_direct(int id, bool positional, const AudioPoint3& position, const AudioPoint3& listener,
+                                 const AudioPoint3& forward, bool listenerValid) {
+    CombatCue cue;
+    cue.se_id = id;
+    cue.se_positional = positional;
+    cue.se_listener_valid = listenerValid;
+    cue.se_position = position;
+    cue.se_listener_position = listener;
+    cue.se_listener_forward = forward;
+    play_se(cue);
+}
+
+void CombatAudio::play_voice_direct(int fighter, const std::string& path) {
+    if (fighter < 0 || fighter >= 4) return;
+    FighterVoice& v = voices_[static_cast<size_t>(fighter)];
+    const int channel = voice_channel_for(fighter);
+    if (v.channel >= 0) sink_.stop(v.channel);
+    const size_t dot = path.find_last_of('.');
+    const std::string stem = dot == std::string::npos ? path : path.substr(0, dot);
+    const int played = sink_.play(stem, SfxBus::Voice, channel);
+    v.channel = played;
+    if (played < 0) {
+        ++stats_.voice_missing;
+        return;
+    }
+    last_voice_stem_ = stem;
+    ++stats_.voice_plays;
+}
+
 void CombatAudio::play_se(const CombatCue& cue) {
     if (!cue.has_se()) return;
     // The SE bus auto-picks (the original's own bank is a 32-slot table, FUN_0064ade0).

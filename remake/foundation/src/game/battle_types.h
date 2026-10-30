@@ -2,6 +2,8 @@
 // Plain data shared by the product and whichever simulation backs a battle (game/battle_view.h).
 // Nothing here knows Fighter or Match, so these survive the legacy path's removal.
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #include <glm/glm.hpp>
 
@@ -197,6 +199,15 @@ struct BattleFrame {
     };
     int     shotHitCount = 0;
     ShotHit shotHits[kMaxShotHits];
+    // A backend that resolves its own presentation requests lists them here instead of using
+    // the per-fighter fields above, since one tick can ask for several per fighter. The legacy
+    // path leaves these empty.
+    struct EffectSpawn { int id = -1; glm::vec3 position{0.f}, direction{0.f}; };
+    struct SoundCue { int id = -1; bool positional = false; glm::vec3 position{0.f}; };
+    struct VoiceCue { int fighter = -1; std::string path; };
+    std::vector<EffectSpawn> effectSpawns;
+    std::vector<SoundCue> soundCues;
+    std::vector<VoiceCue> voiceCues;
 };
 
 }  // namespace game

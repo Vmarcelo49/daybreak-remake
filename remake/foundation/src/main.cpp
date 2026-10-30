@@ -2600,6 +2600,8 @@ static bool startCoreBattle(App& app, const gameplay::MatchConfig& config) {
     }
     sim::BattleConfig core;
     core.gameDir = fnd::assets::assetSource().installDir();
+    core.timeLimitSeconds = static_cast<unsigned>(std::max(0, config.timeLimit));
+    core.rules = {config.healthPercent, config.gaugePercent, config.balloonSize[0], config.balloonSize[1]};
     const std::string stageDir = charDirForSpec(app.opts.stage);
     core.stage = static_cast<unsigned>(std::atoi(stageDir.c_str() + std::min<size_t>(5, stageDir.size())));
     std::array<const gameplay::CharacterMoves*, 4> moves{};
@@ -2624,7 +2626,8 @@ static bool startCoreBattle(App& app, const gameplay::MatchConfig& config) {
         std::string specPath;
         int costume = 0;
         splitSuffix(app.opts.battleCharacters[i], specPath, costume);
-        core.slots[static_cast<size_t>(i)] = {character, slot, !human, costume};
+        core.slots[static_cast<size_t>(i)] = {character, slot, !human, costume,
+                                              static_cast<unsigned>(gameplay::hypermode_wire_value(config.hyper[i]))};
         moves[static_cast<size_t>(i)] = config.moves[i];
         weapons[static_cast<size_t>(i)] = weapon;
     }
@@ -4121,6 +4124,16 @@ static bool tickMatch(App& app, double dt) {
         if (f.meleeHit[i]) ++app.matchHits;
     // Live combat audio (issue #16): the frame just produced is the event source.
     dispatchCombatAudio(app, f);
+    if (app.combatAudio) {
+        const auto toArray = [](const glm::vec3& v) { return fnd::audio::AudioPoint3{v.x, v.y, v.z}; };
+        for (const auto& cue : f.soundCues)
+            app.combatAudio->play_se_direct(cue.id, cue.positional, toArray(cue.position),
+                                            toArray(f.audioListenerPosition), toArray(f.audioListenerForward),
+                                            f.audioListenerValid);
+        for (const auto& cue : f.voiceCues) app.combatAudio->play_voice_direct(cue.fighter, cue.path);
+    }
+    for (const auto& spawn : f.effectSpawns)
+        if (!spawnEffect(app, app.matchFx, spawn.id, spawn.position, spawn.direction)) ++app.fxBadEffect;
     // The earned-title counters (issue #20). The original splits them the same way: the damage
     // functions credit the attacker's "to target/others" pair by whether the victim was its
     // lock (FUN_00639160), the hit functions credit the victim's "from target/others" pair by
