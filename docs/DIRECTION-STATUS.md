@@ -1894,6 +1894,8 @@ next unblocked row.
 
 - 2026-10-30 — M6, result over the battle — **the owner reports the rest of the start and end is right, and that the team announcement and the conclusion screen should draw over the game, not on black.** The result screen now draws over the live scene with no fade into it, and the core keeps animating behind it, without input or sound. The screen no longer repeats the 180-tick team announcement, because the core has already played it. Its bars and dim now reach past 800x600 on a wide target. A fade-out flash, where the report fell back to the quote, is fixed. Linux suite 55/55; a 4P front-end capture shows the portraits sliding in over the stage, then the report over the dimmed scene (tier 5). The black bars and portraits are still the product's result screen, not the original's composition code. Not played on this revision.
 
+- 2026-10-30 — M6, owner playtest of `f7374d61` — **the result over the battle "ficou certo".** Tier 3 owner observation of our build. Original-runtime parity stays not verified.
+
 ## Recovered-body completeness census (2026-10-15, measured)
 
 The owner's working hypothesis is that the Ginkiha recovery "is probably almost everything we need
