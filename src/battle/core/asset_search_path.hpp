@@ -33,7 +33,7 @@ public:
         const fs::path base(root);
         std::error_code ec;
         for(fs::recursive_directory_iterator it(base/"data",ec),end;!ec && it!=end;it.increment(ec))
-            if(it->is_regular_file(ec)) loose_.emplace(archive_name_key(fs::relative(it->path(),base,ec).generic_string()),it->path().string());
+            if(it->is_regular_file(ec)) loose_.emplace(archive_name_key(it->path().lexically_relative(base).generic_string()),it->path().string());
     }
     struct Asset {std::string archive;std::vector<std::uint8_t> bytes;};
     bool contains(const std::string& name)const{const auto key=archive_name_key(name);if(loose_.count(key))return true;for(const auto& mount:mounts_)if(mount->indices.count(key))return true;return false;}

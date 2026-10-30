@@ -58,7 +58,10 @@ STARTUP_NAMES: tuple[str, ...] = ("movie/op.mpg",)
 #: Measured, not guessed — a live delivered match asked for ``data/aura/03.x``
 #: and the effect table reads ``data/effect/%03d.dat`` plus the models and
 #: textures beside it (``buildFxAssets`` in src/main.cpp).
-MATCH_SHARED_PREFIXES: tuple[str, ...] = ("data/effect/", "data/aura/")
+#: The core adds ``data/camera/01.x`` and every projectile set: it preloads six of them for
+#: any roster (local_normal_projectiles.hpp) and opens others in mid-battle, when a missing
+#: file would end the match, so the whole directory arrives up front.
+MATCH_SHARED_PREFIXES: tuple[str, ...] = ("data/effect/", "data/aura/", "data/bullet/", "data/camera/")
 
 
 def rules_fingerprint() -> str:
@@ -127,6 +130,9 @@ def match_prefixes(stage: str, slots: Sequence[str]) -> list[str]:
             suffixes = {"", "_BCDEF"[costume - 1]}
         for suffix in suffixes:
             prefixes.append(f"data/{character}{suffix}/")
+        # No trailing slash: the bank can be data/voice/renaB (battle_voice_root). The core
+        # lists these names even when no audio plays, and that list feeds the battle RNG.
+        prefixes.append(f"data/voice/{character}")
     return prefixes
 
 
@@ -144,9 +150,11 @@ def match_asset_ids(catalog_assets: Iterable[dict], stage: str, slots: Sequence[
             prefixes.append(f"data/{weapon}")
         else:
             prefixes.append(f"data/bullet/{weapon}/")
+    # Archive names compare case-blind (0x663c20), and the install ships data/ohishi_b.
+    prefixes = tuple(prefix.lower() for prefix in prefixes)
     ids = []
     for asset in catalog_assets:
         asset_id = asset["id"]
-        if any(asset_id.startswith(prefix) for prefix in prefixes):
+        if asset_id.lower().startswith(prefixes):
             ids.append(asset_id)
     return sorted(set(ids))

@@ -557,6 +557,12 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak --recipe=com --rounds=1 --frames=5000 --fighters=4)
     set_tests_properties(sim_frontend_flow PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 LABELS asset)
 
+    # The browser's download against what the core reads. Skips without a prepared tree.
+    add_test(NAME web_match_group_check COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/web_match_group_check.py $<TARGET_FILE:simctl>
+        ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak ${CMAKE_CURRENT_SOURCE_DIR}/local-data/harness/web-data)
+    set_tests_properties(web_match_group_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 LABELS asset)
+
 
     # The input seed that threw before PATCHES.md's trig entry, at tick 797.
     add_test(NAME sim_fuzz_regression COMMAND simfuzz 8 2 1 1000 9)
