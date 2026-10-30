@@ -1900,6 +1900,8 @@ next unblocked row.
 
 - 2026-10-30 — M6, hypermode order — **the owner reports the HUD is right, and that the hypermode order was wrong, with Friendship first.** The port's enum put Friendship at 0 and translated to the actor's value at +0x318, while the selection screen's first row and the actor's value 0 are both Oyashiro. So choosing the first row, 恐怖のオヤシロ, fought as Friendship. Tier 2: FUN_0040d130:106 copies the slot's +0x3d18 to the actor untouched. The enum now is that value, Oyashiro 0, Friendship 1, Kakera 2, and the translation is gone. Linux suite 55/55; a 4P capture shows the first row on the selection and on the HUD (tier 5). Not played on this revision.
 
+- 2026-10-30 — M6, owner playtest of `b389ca6d` — **the HUD (`176cae2d`) and the hypermode order "ficou certo".** Tier 3 owner observation of our build. Original-runtime parity stays not verified.
+
 ## Recovered-body completeness census (2026-10-15, measured)
 
 The owner's working hypothesis is that the Ginkiha recovery "is probably almost everything we need
