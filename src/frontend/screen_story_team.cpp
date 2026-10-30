@@ -95,10 +95,12 @@ public:
                     batch.pushTextured(frames_[p], {408, 304.f * cursor_[p], 400, 300}, uv(frames_[p], {0, 0, 400, 300}), {});
 
         drawChibis(batch);
-        if (art_[team_] >= 0)
-            batch.pushTextured(art_[team_], {144, 44, 512, 512}, uv(art_[team_], {0, 0, 512, 512}), {});
-        const int labelSheet = labels_[team_ < 6 ? 0 : 1];
-        const int labelIndex = team_ < 6 ? team_ : team_ - 6;
+        // The art and its label are numbered like the team files, not like the cursor.
+        const int file = kTeamFile[team_];
+        if (art_[file] >= 0)
+            batch.pushTextured(art_[file], {144, 44, 512, 512}, uv(art_[file], {0, 0, 512, 512}), {});
+        const int labelSheet = labels_[file < 6 ? 0 : 1];
+        const int labelIndex = file < 6 ? file : file - 6;
         if (labelSheet >= 0)
             batch.pushTextured(labelSheet, {272, 300, 256, 160},
                                uv(labelSheet, {labelIndex / 3 * 256.f, labelIndex % 3 * 160.f, 256, 160}), {});
