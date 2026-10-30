@@ -28,7 +28,17 @@ handed a task, check it against the plan first.
 (Rena+0) behind a runtime flag, before any of it is scaled or becomes
 load-bearing.
 
+### PIlot scope beats the global freeze (owner, 2026-10-29)
+
+**Any change that directly or indirectly affects Rena+0 is pilot work and is allowed.**
+The owner retired the "global work is frozen" reading: shared systems (hit reactions,
+knockdown, recovery, projectiles, input) are in scope when they change what Rena+0 does,
+even if the file or the rule is used by every combo. Do not stop to ask for an exception
+for those; record the change and its evidence like any other pilot work.
+The freeze below still applies to work that does **not** reach Rena+0.
+
 ### Frozen work — this list is the single source of truth
+
 
 `DIRECTION.md` links here instead of repeating this list, so the two cannot drift
 apart.
@@ -75,6 +85,7 @@ assert original-runtime parity. Until a verdict is recorded, list A stands.
    scripted port scenario with its field/event and step, or a named pilot blocker?
    "Required" without that evidence does not qualify.
 
+Before them: if the change directly or indirectly affects Rena+0, it is pilot work — proceed.
 If none is true: **stop and ask**. Do not infer a task from an old report, a TODO,
 a "next steps" list, or a milestone table. A task that fails these three is drift,
 and drift is reverted work no matter how well it is executed.

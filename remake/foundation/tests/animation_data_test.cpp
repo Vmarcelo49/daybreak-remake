@@ -1172,6 +1172,26 @@ void zero_power_projectile(const Combo& combo) {
               "carrying the record's own impact effect");
     check(victim.state() == gameplay::FighterState::Hit,
           "and the zero-power projectile still staggers its victim");
+
+    // FUN_00637950:74 rejects a victim with +0x7ac >= 1 before any contact work, so the
+    // shot flies through: no contact event, no spent allowance, no status.
+    gameplay::Fighter invincible;
+    combo.init(invincible, {0, 0, 40});
+    gameplay::HitReaction grant;
+    grant.row = grant.rowHigh = 100;
+    grant.meterA = 120;
+    grant.meterB = 120;
+    invincible.take_damage(0, &owner, 0, 100, false, grant);
+    check(invincible.invincible_ticks() > 0, "a full down meter grants +0x7ac");
+    const gameplay::FighterState stateBefore = invincible.state();
+    gameplay::ProjectilePool passThrough;
+    check(passThrough.spawn(invincible.position() - glm::vec3(0, 0, 30), {0, 0, 1},
+                            gameplay::ShotTier::Tap, &owner, 0),
+          "the second shot allocates");
+    passThrough.update(gameplay::FixedStep::seconds, &invincible, 1, nullptr, nullptr);
+    check(passThrough.contact_count() == 0, "an invincible victim reports no contact");
+    check(passThrough.live_shots() == 1, "and the shot survives it");
+    check(invincible.state() == stateBefore, "and the reaction is unchanged");
 }
 
 void projectile_clocks(const Combo& combo) {

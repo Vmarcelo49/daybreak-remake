@@ -175,7 +175,9 @@ void Fighter::reset_hit_reaction() {
     m_pendingReaction = HitReaction{};
     m_reactionSeedPending = false;
     m_launched = false;
-    m_downPhase = m_downRow = 0;
+    m_downRow = 0;
+    m_getupChoicePending = false;
+    m_invincible = 0;
     m_staggerDecay = m_comboDecay = m_comboHits = 0;
 }
 
@@ -185,6 +187,55 @@ void Fighter::seed_pending_reaction() {
     if (!m_reactionSeedPending) return;
     m_reactionSeedPending = false;
     apply_reaction_motion(m_pendingReaction, true);
+}
+
+void Fighter::bind_recovery_row(int row) {
+    m_downRow = row;
+    m_phaseIndex = 0;
+    m_moveElapsedTicks = 0;
+    m_animSetIdx = -1;
+    try_switch_animation();
+    // Cases 0x7c/0x80 drop 120's 0.25 settle: 124 writes its own speed, 128 holds zero.
+    m_rowDecel = 0.f;
+    m_getupRollTicks = 0;
+    if (row == 128) halt_row_motion();
+}
+
+void Fighter::halt_row_motion() {
+    m_rowSpeed = 0.f;
+    m_velocity.x = m_velocity.z = 0.f;
+}
+
+// FUN_00428510 case 0x7c. Phase 0 snaps to the held bearing (+0x874 = 180) and phase 1
+// steers 3 degrees a tick at speed 10; FUN_00421780 leaves the angle alone on neutral.
+// +0xe8 counts phase 1, which leaves past 150 ticks, or past 30 with a button counter
+// (+0x280 jump, +0x284 melee, +0x288 shot/second) live; the stick is not one of them.
+void Fighter::update_getup_roll(const input::PlayerState* input) {
+    if (m_pilotMeter) {
+        const int refill = m_hitStatusDuration[6] > 0 ? 5 : 40;
+        m_actionMeter = std::min(1000, m_actionMeter + refill);
+    }
+    if (m_phaseIndex >= 2) {
+        halt_row_motion();
+        return;
+    }
+    const int x = held_axis_x(input), z = held_axis_z(input);
+    if (x != 0 || z != 0) {
+        const glm::vec3 wanted =
+            relative_direction(m_inputFacing, static_cast<float>(x), static_cast<float>(z));
+        const float diff = std::remainder(std::atan2(wanted.x, wanted.z) - m_facing,
+                                          glm::two_pi<float>());
+        const float turn = glm::radians(m_phaseIndex == 0 ? 180.f : 3.f);
+        m_facing += std::clamp(diff, -turn, turn);
+    }
+    if (m_phaseIndex != 1) return;
+    m_rowSpeed = 10.f;
+    ++m_getupRollTicks;
+    const bool button = input && (input->down[input::Action::Jump] ||
+                                  input->down[input::Action::AttackA] ||
+                                  input->down[input::Action::Shoot] ||
+                                  input->down[input::Action::Special]);
+    if (m_getupRollTicks > 150 || (m_getupRollTicks > 30 && button)) enter_phase(2);
 }
 
 void Fighter::apply_reaction_motion(const HitReaction& reaction, bool fromPhaseOne) {
@@ -483,32 +534,47 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // The stagger meter's window (+0x7bc) and the combo window (+0x7c4): both expire together
     // with their counters (FUN_0041f580 0x41f673-0x41f732).
     if (!executorFrozen) {
+        const int stateRow = state_move_id();
+        const bool reactionBand = stateRow >= 100 && stateRow <= 299;
         if (m_staggerDecay > 0 && --m_staggerDecay == 0) m_hitMeterA = 0;
-        if (m_comboDecay > 0 && --m_comboDecay == 0) { m_hitMeterB = 0; m_comboHits = 0; }
+        // FUN_0041f580 runs the +0x7c4 countdown only outside the reaction band
+        // (FUN_004236c0), so a knocked-down victim keeps its down meter frozen.
+        if (!reactionBand && m_comboDecay > 0 && --m_comboDecay == 0) {
+            m_hitMeterB = 0;
+            m_comboHits = 0;
+        }
+        // +0x7ac: FUN_00423700 holds the get-up rows (0x7c..0x81) and the death row
+        // 0xc2 invincible by refreshing 30 every tick and clearing the meters;
+        // FUN_004236c0 gates the decrement to states outside 100..299, and
+        // FUN_0041f580 skips both while hitstop +0xa0 is nonzero.
+        const bool getUpInvincible =
+            m_state == FighterState::Knockdown && m_downRow >= 124 && m_downRow <= 129;
+        if (getUpInvincible) {
+            m_invincible = 30;
+            m_hitMeterA = m_hitMeterB = 0;
+            m_staggerDecay = m_comboDecay = m_comboHits = 0;
+        } else if (m_invincible > 0 && !reactionBand) {
+            // FUN_004236c0: the timer decrements only outside the 100..299 row band.
+            // Row 45 is below it, so the tech roll ticks the timer down.
+            --m_invincible;
+        }
+        // FUN_00428510 case 0x78: row 120's completion reads the stick axes and
+        // chooses the rolling get-up (124) or the in-place one (128).
+        if (m_getupChoicePending) {
+            m_getupChoicePending = false;
+            const bool directional = held_axis_x(input) != 0 || held_axis_z(input) != 0;
+            bind_recovery_row(directional ? 124 : 128);
+        }
     }
     // Port-only timed states approximate row completion, which the executor
     // cannot evaluate during hitstop (FUN_0043ffc0).
     if (!executorFrozen && m_stateTimer > 0) {
         --m_stateTimer;
         if (m_stateTimer == 0) {
-            // The knockdown chain: lying (118/119) plays out, then the get-up row 120, and only
-            // then does the victim stand. Everything is animation-length driven — the original
-            // advances on move completion, never on a stun counter.
-            if (m_state == FighterState::Knockdown) {
-                if (m_downPhase == 1) {
-                    m_downPhase = 2;
-                    m_downRow = 120;
-                    m_phaseIndex = 0;
-                    m_moveElapsedTicks = 0;
-                    m_animSetIdx = -1;
-                    try_switch_animation();
-                    m_stateTimer = std::max(1, move_row_frames(120));
-                } else {
-                    m_downPhase = 0;
-                    m_downRow = 0;
-                    set_state(FighterState::Idle);
-                }
-            } else if (m_state != FighterState::KO && m_state != FighterState::TagOut) {
+            // The knockdown chain advances on row completion in advance_animation_phase
+            // (FUN_004218c0), not on this port timer: only the non-reaction states use it.
+            if (m_state != FighterState::KO && m_state != FighterState::TagOut &&
+                m_state != FighterState::Knockdown) {
                 // Timed states expire back into the fall when airborne
                 // (a dash/attack/volley started mid-air lands as Jump). This is the DEFAULT
                 // path's approximation, not the recovered completion: the original advances
@@ -552,6 +618,8 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
     // dispatch so a dash edge cannot use the previous walk heading or old tick.
     m_inputFacing = opponent ? std::atan2(opponent->position().x - m_position.x,
                                          opponent->position().z - m_position.z) : m_facing;
+    if (!executorFrozen && m_state == FighterState::Knockdown && m_downRow == 124)
+        update_getup_roll(input);
     const FighterState stateBeforeInput = m_state;
 
     // 2. Update state machine (check input, transition states).
@@ -659,7 +727,14 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
         // Flight rows approach a ±4 floor instead of settling to zero; the knocked-down
         // rows settle toward zero (FUN_00428510's per-row handlers own both laws).
         const int row = m_reactionMove;
-        if (!executorFrozen) {
+        if (m_state == FighterState::Knockdown && m_downRow == 45) {
+            // Case 0x2d: speed -25, +0.5 a tick while below -10; frame 26 zeroes it.
+            if (m_moveElapsedTicks < 26) {
+                if (m_rowSpeed < -10.f) m_rowSpeed += 0.5f;
+            } else {
+                halt_row_motion();
+            }
+        } else if (!executorFrozen) {
             const bool flightRow = m_state == FighterState::Hit &&
                                    reaction_motion(row).floorAtFour;
             if (flightRow) {
@@ -858,6 +933,11 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
                      reaction_motion(m_reactionMove).gravity > 0.f)
                 m_vy -= reaction_motion(m_reactionMove).gravity /
                         static_cast<float>(FixedStep::seconds);
+            else if (m_state == FighterState::Knockdown && m_downRow == 45)
+                // Case 0x2d: gravity 1.0 through frame 25, vertical zeroed from 26.
+                m_vy = m_moveElapsedTicks < 26
+                           ? m_vy - 1.0f / static_cast<float>(FixedStep::seconds)
+                           : 0.f;
             else
                 m_vy -= FighterConstants::kGravity * step;
         }
@@ -895,20 +975,36 @@ void Fighter::update(const input::PlayerState* input, Fighter* opponent, double 
             m_dashFall = false;
             m_landingTicks = 0;
             m_hoverSpent = false;   // a new airtime re-arms the one hover
-            // This port models a partial knockdown chain. The front/back launch
-            // handlers select 118/119 respectively; bounce and later get-up rows
-            // are not yet represented (FUN_00428510 cases 0x71/0xd5).
             if (m_state == FighterState::Hit && m_launched) {
                 m_launched = false;
-                // Front flight rows bind 118; their +100 mirrors bind 119.
-                // FUN_00428510 cases 0x71/0xd5 use these rows directly.
-                m_downRow = m_reactionMove >= 200 ? 119 : 118;
-                m_downPhase = 1;
-                // Rows 118 and 119 settle +0x54 toward zero by 0.25 per tick
-                // (FUN_00428510 cases 0x76/0x77).
-                m_rowDecel = 0.25f;
-                set_state(FighterState::Knockdown);
-                m_stateTimer = std::max(1, move_row_frames(m_downRow));
+                // FUN_00428510 cases 0x71..0x74: a FRONT air hit (113..116) that lands
+                // with Jump held and the down meter below 100 teches (row 45) instead
+                // of lying down. The back rows 0xd5..0xd8 have no such branch.
+                const bool frontFlight = m_reactionMove >= 113 && m_reactionMove <= 116;
+                const bool tech = frontFlight && m_hitMeterB < 100 && input &&
+                                  input->down[input::Action::Jump];
+                if (tech) {
+                    // Case 0x74 clears the meters and zeroes both velocities before
+                    // binding 45; the 45 body also clears +0x7ac at frame 0.
+                    m_hitMeterA = m_hitMeterB = 0;
+                    m_staggerDecay = m_comboDecay = m_comboHits = 0;
+                    m_invincible = 0;
+                    m_rowSpeed = -25.f;
+                    m_vy = 12.5f / static_cast<float>(FixedStep::seconds);
+                    m_grounded = false;
+                    bind_recovery_row(45);
+                    set_state(FighterState::Knockdown);
+                    m_stateTimer = 0;
+                } else {
+                    // Front flight rows bind 118; their +100 mirrors bind 119.
+                    // FUN_00428510 cases 0x71/0xd5 use these rows directly.
+                    m_downRow = m_reactionMove >= 200 ? 119 : 118;
+                    // Rows 118 and 119 settle +0x54 toward zero by 0.25 per tick
+                    // (FUN_00428510 cases 0x76/0x77). Their completion drives the chain.
+                    m_rowDecel = 0.25f;
+                    set_state(FighterState::Knockdown);
+                    m_stateTimer = 0;
+                }
             }
             if (m_state == FighterState::Jump ||
                 (m_state == FighterState::Run && m_dashAir)) {
@@ -1695,8 +1791,13 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
     const bool trips = reaction.meterA > 0 && m_hitMeterA >= 100;
     if (trips) {
         m_hitMeterA = 0;
-        m_hitMeterB += reaction.meterB;   // +0x7c0: the heavy-row counter
-        m_comboDecay = 120;
+        m_hitMeterB += reaction.meterB;   // +0x7c0: combat[8] feeds the down meter
+        m_comboDecay = 120;               // +0x7c4: its 120-tick memory
+        // FUN_00637950: at 100 the victim gains 30 ticks of invincibility.
+        if (m_hitMeterB > 99) m_invincible = 30;
+        // Record flag 0x800: the blow becomes the ground-roll reaction and is scaled
+        // to 70% before the HP math (case 0x79 / 0xcd).
+        if (reaction.flags & 0x800) amount = (amount * 7) / 10;
     }
 
     if (m_state == FighterState::Guard) {
@@ -1809,6 +1910,8 @@ Fighter::DamageResult Fighter::take_damage(int amount, Fighter* source, int hits
         // byte +0x84 alongside +0x7c0).
         const bool heavyRow = (heavy || !m_grounded) && reaction.rowHigh > 0;
         int row = heavyRow ? reaction.rowHigh : hitCategory;
+        // State-flag 0x800 overrides the row: the 121 ground roll (221 from behind).
+        if (reaction.flags & 0x800) row = 121;
         if (source) {
             const glm::vec3 toAttacker = source->position() - m_position;
             if (std::abs(toAttacker.x) > 1e-4f || std::abs(toAttacker.z) > 1e-4f) {
@@ -2010,6 +2113,8 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
     if (m_contactDisabled) return false;
     if (!melee_in_active()) return false;
     if (!target.is_alive()) return false;
+    // FUN_00637950's eligibility test requires the victim's +0x7ac < 1.
+    if (target.m_invincible > 0) return false;
 
     if (const MoveEntry* record = current_move_record()) {
         const auto point = [&](const std::array<float, 3>& p) {
@@ -2038,6 +2143,7 @@ bool Fighter::try_melee_hit(Fighter& target, const game::physics::MovementCollis
             reaction.rise = static_cast<float>(record->combat[18]) * 0.01f;
             reaction.meterA = record->combat[7];
             reaction.meterB = record->combat[8];
+            reaction.flags = record->stateFlags;
             target.take_damage(damage, this, record->defenderHitstun, record->reactionMove, false,
                                reaction);
         }
@@ -2375,6 +2481,10 @@ void Fighter::advance_animation_phase() {
     const int moveId = state_move_id();
     const CharacterMove* move = m_moves->find(moveId);
     if (!move || m_phaseIndex < 0 || m_phaseIndex >= move->sectionCount) return;
+    // FUN_00428510 case 0x2d returns before the clock on frame 25 while airborne.
+    if (m_state == FighterState::Knockdown && m_downRow == 45 && m_moveElapsedTicks == 25 &&
+        !m_grounded)
+        return;
 
     const int set = move->phase_set_index(m_phaseIndex);
     if (set < 0 || static_cast<std::size_t>(set) >= m_model->anims.size()) return;
@@ -2414,7 +2524,33 @@ void Fighter::advance_animation_phase() {
         // plays to its last frame and only then releases the victim. A launched victim that is
         // still airborne keeps the row (its later sections are the fall); the touchdown rebind
         // in the landing block takes over from there.
+        if (m_state == FighterState::Knockdown) {
+            // FUN_00428510 case 0x2d: the tech roll ends on row completion, back to Idle.
+            if (m_downRow == 45) {
+                m_downRow = 0;
+                set_state(FighterState::Idle);
+                return;
+            }
+            // FUN_00428510 cases 0x76/0x77/0x78/0x7c/0x80: 118/119 -> 120 -> 124|128 -> Idle.
+            if (m_downRow == 118 || m_downRow == 119) {
+                bind_recovery_row(120);
+            } else if (m_downRow == 120) {
+                m_getupChoicePending = true;
+            } else if (m_downRow == 124 || m_downRow == 128) {
+                m_downRow = 0;
+                set_state(FighterState::Idle);
+            }
+            return;
+        }
         if (m_state == FighterState::Hit && m_grounded) {
+            // FUN_00428510 case 0x79: the 121/221 ground roll completes into the 120
+            // get-up, not into Idle.
+            if (m_reactionMove == 121 || m_reactionMove == 221) {
+                m_downRow = 120;
+                set_state(FighterState::Knockdown);
+                m_stateTimer = 0;
+                return;
+            }
             set_state(FighterState::Idle);
             return;
         }

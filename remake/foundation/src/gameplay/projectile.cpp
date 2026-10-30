@@ -237,6 +237,8 @@ void ProjectilePool::update(double dt, Fighter* fighters, int fighterCount,
         for (int i = 0; i < fighterCount; ++i) {
             Fighter& f = fighters[i];
             if (&f == s.owner || (ownerSide >= 0 && fighterSides[i] == ownerSide)) continue;
+            // FUN_00637950:74 rejects an invincible victim before any contact work.
+            if (f.invincible_ticks() > 0) continue;
             if (s.behavior && (i >= 4 || s.hitsRemaining[static_cast<size_t>(i)] <= 0 ||
                               (s.contactedVictims & (1u << i)))) continue;
             if (record) {
@@ -284,6 +286,7 @@ void ProjectilePool::update(double dt, Fighter* fighters, int fighterCount,
                 reaction.rise = static_cast<float>(record->combat[18]) * 0.01f;
                 reaction.meterA = record->combat[7];
                 reaction.meterB = record->combat[8];
+                reaction.flags = record->stateFlags;
             }
             f.take_damage(damage,s.owner,record ? record->defenderHitstun : -1,
                             record ? record->reactionMove : hitCategory,/*shot=*/true,reaction);

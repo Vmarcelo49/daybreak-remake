@@ -906,6 +906,396 @@ void test_delayed_reaction_rows() {
     }
 }
 
+// FUN_00428510 cases 0x76/0x77/0x78: 118/119 complete into 120, and 120's
+// completion reads the stick axes to choose the rolling get-up (124) or the
+// in-place one (128). The 124..129 rows refresh the +0x7ac invincibility timer.
+void test_knockdown_getup_chain() {
+    section("Rena+0: the knockdown chain completes into 120, then 124 or 128");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    const auto launch = [&](Fighter& attacker, Fighter& victim) {
+        combo.init(attacker, glm::vec3(0, 0, 100));
+        combo.init(victim);
+        gameplay::HitReaction injected;
+        injected.row = injected.rowHigh = 113;
+        injected.meterA = 120;
+        injected.counter = 5.f;
+        injected.rise = 5.f;
+        victim.take_damage(0, &attacker, 0, 113, false, injected);
+        for (int i = 0; i < 400 && victim.down_row_for_test() == 0; ++i)
+            victim.update(nullptr, nullptr, gameplay::FixedStep::seconds);
+        checkInt(118, victim.down_row_for_test(), "the launch lands into the lying row 118");
+    };
+    const auto wait_row = [&](Fighter& victim, int row, const input::PlayerState* in) {
+        for (int i = 0; i < 600 && victim.down_row_for_test() != row; ++i)
+            victim.update(in, nullptr, gameplay::FixedStep::seconds);
+        return victim.down_row_for_test() == row;
+    };
+
+    Fighter attacker, victim;
+    launch(attacker, victim);
+    check(wait_row(victim, 120, nullptr), "row 118 completes into the get-up row 120");
+    // Hold a direction before 120 completes: the get-up must be the roll, not standing.
+    input::PlayerState in;
+    in.stick_y = 16000;
+    check(wait_row(victim, 124, &in), "the held stick turns 120 into the rolling get-up 124");
+    checkInt(124, victim.down_row_for_test(), "the roll row is 124");
+    victim.update(&in, nullptr, gameplay::FixedStep::seconds);
+    checkInt(30, victim.invincible_ticks(), "the get-up roll refreshes the 30-tick invincibility");
+
+    // A live row-300 volume must not connect while +0x7ac is armed (FUN_00637950's
+    // eligibility test), and the same volume must connect once the timer decays.
+    const auto swing_near = [&](Fighter& f, Fighter& target) {
+        f.shove(target.position() + glm::vec3(0, 0, -45) - f.position(), nullptr);
+        input::PlayerState atk;
+        atk.down[input::Action::AttackA] = true;
+        tick_held(f, atk);
+        atk.down[input::Action::AttackA] = false;
+        for (int i = 0; i < 90 && f.state() == FighterState::AttackA && !f.melee_in_active(); ++i)
+            tick_held(f, atk);
+        const auto volume = f.hitbox_debug();
+        target.shove(volume.attackCenter -
+                         (target.position() + target.hurtbox_anchor_offset(1)), nullptr);
+    };
+    Fighter striker;
+    combo.init(striker, glm::vec3(0, 0, 300));
+    swing_near(striker, victim);
+    check(striker.melee_in_active(), "the strike reaches its active window");
+    const int hpBefore = victim.hp();
+    check(!striker.try_melee_hit(victim), "an invincible get-up roll rejects the swing");
+    checkInt(hpBefore, victim.hp(), "the rejected swing costs no HP");
+
+    for (int i = 0; i < 600 && victim.state() == FighterState::Knockdown; ++i)
+        victim.update(&in, nullptr, gameplay::FixedStep::seconds);
+    check(victim.state() == FighterState::Idle, "the roll completes back into Idle");
+    input::PlayerState idleIn;
+    for (int i = 0; i < 60 && victim.invincible_ticks() > 0; ++i)
+        victim.update(&idleIn, nullptr, gameplay::FixedStep::seconds);
+    checkInt(0, victim.invincible_ticks(), "the invincibility timer decays outside the reaction");
+    Fighter striker2;
+    combo.init(striker2, glm::vec3(0, 0, 300));
+    swing_near(striker2, victim);
+    check(striker2.try_melee_hit(victim), "once the timer is gone the same swing connects");
+
+    Fighter attacker2, victim2;
+    launch(attacker2, victim2);
+    check(wait_row(victim2, 120, nullptr), "the second victim reaches the get-up row 120");
+    input::PlayerState idle;
+    check(wait_row(victim2, 128, &idle), "no stick selects the in-place get-up 128");
+    checkInt(128, victim2.down_row_for_test(), "the in-place row is 128");
+    for (int i = 0; i < 600 && victim2.state() == FighterState::Knockdown; ++i)
+        victim2.update(&idle, nullptr, gameplay::FixedStep::seconds);
+    check(victim2.state() == FighterState::Idle, "the in-place get-up completes back into Idle");
+}
+
+// FUN_00428510 case 0x7c, reached through case 0x78: phase 1 runs speed 10 toward the
+// held direction and leaves on `+0xe8 > 150`, or on `> 30` with a button counter
+// (+0x280/+0x284/+0x288) live. The stick is not one of those counters.
+void test_getup_roll_body() {
+    section("Rena+0: the rolling get-up moves, times out and cancels on buttons only");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    const double dt = gameplay::FixedStep::seconds;
+    const auto to_row120 = [&](Fighter& attacker, Fighter& victim) {
+        combo.init(attacker, glm::vec3(0, 0, 3000));
+        combo.init(victim);
+        gameplay::HitReaction injected;
+        injected.row = injected.rowHigh = 113;
+        injected.meterA = 120;
+        injected.counter = 5.f;
+        injected.rise = 5.f;
+        victim.take_damage(0, &attacker, 0, 113, false, injected);
+        for (int i = 0; i < 600 && victim.down_row_for_test() != 120; ++i)
+            victim.update(nullptr, nullptr, dt);
+    };
+    const auto to_roll = [&](Fighter& attacker, Fighter& victim, const input::PlayerState& held) {
+        to_row120(attacker, victim);
+        for (int i = 0; i < 600 && victim.down_row_for_test() == 120; ++i)
+            victim.update(&held, &attacker, dt);
+        checkInt(124, victim.down_row_for_test(), "a held direction selects the roll");
+    };
+    const auto distance = [](const glm::vec3& a, const glm::vec3& b) {
+        return glm::length(glm::vec2(a.x - b.x, a.z - b.z));
+    };
+    input::PlayerState up, right, none, attack;
+    up.down[input::Action::Up] = true;
+    right.down[input::Action::Right] = true;
+    attack.down[input::Action::AttackA] = true;
+
+    {
+        Fighter attacker, victim;
+        to_roll(attacker, victim, up);
+        const glm::vec3 start = victim.position();
+        int ticks = 0;
+        for (; ticks < 1000 && victim.state() == FighterState::Knockdown; ++ticks) {
+            victim.update(&none, &attacker, dt);
+            if (ticks == 100)
+                checkInt(124, victim.down_row_for_test(), "neutral input does not end the roll early");
+        }
+        check(victim.state() == FighterState::Idle, "with no input the roll still times out into Idle");
+        const float travelled = distance(victim.position(), start);
+        check(travelled > 1490.f && travelled < 1530.f,
+              ("neutral roll covers 151 ticks at speed 10, got " + std::to_string(travelled)).c_str());
+    }
+    {
+        Fighter attacker, victim;
+        to_roll(attacker, victim, up);
+        for (int i = 0; i < 100; ++i) victim.update(&up, &attacker, dt);
+        checkInt(124, victim.down_row_for_test(), "a held stick is not a cancel button");
+    }
+    {
+        Fighter attacker, victim;
+        to_roll(attacker, victim, up);
+        const glm::vec3 start = victim.position();
+        for (int i = 0; i < 1000 && victim.state() == FighterState::Knockdown; ++i)
+            victim.update(&attack, &attacker, dt);
+        const float travelled = distance(victim.position(), start);
+        check(travelled > 290.f && travelled < 340.f,
+              ("a held button cancels just past 30 ticks, got " + std::to_string(travelled)).c_str());
+    }
+    const auto first_step = [&](const input::PlayerState& held) {
+        Fighter attacker, victim;
+        to_roll(attacker, victim, held);
+        glm::vec3 step(0.f);
+        for (int i = 0; i < 120 && glm::length(step) < 1.f; ++i) {
+            const glm::vec3 before = victim.position();
+            victim.update(&held, &attacker, dt);
+            step = victim.position() - before;
+        }
+        const glm::vec3 toAttacker = attacker.position() - victim.position();
+        return glm::dot(glm::normalize(glm::vec2(step.x, step.z)),
+                        glm::normalize(glm::vec2(toAttacker.x, toAttacker.z)));
+    };
+    check(first_step(up) > 0.99f, "Up rolls along the target bearing (FUN_00421780)");
+    check(std::fabs(first_step(right)) < 0.1f, "Right rolls across the target bearing");
+    {
+        Fighter attacker, victim;
+        to_row120(attacker, victim);
+        input::PlayerState drift;
+        drift.stick_x = 100;
+        for (int i = 0; i < 600 && victim.down_row_for_test() == 120; ++i)
+            victim.update(&drift, &attacker, dt);
+        checkInt(128, victim.down_row_for_test(), "stick noise under the dead zone stays in place");
+    }
+    {
+        struct Meter : Fighter::PilotMeter {} meter;
+        Fighter attacker, victim;
+        to_roll(attacker, victim, up);
+        victim.set_pilot_meter(&meter);
+        victim.set_charge_gauge(100);
+        for (int i = 0; i < 3; ++i) victim.update(&up, &attacker, dt);
+        checkInt(220, victim.charge_gauge(), "the roll refills +0x834 by 40 per tick");
+    }
+}
+
+// FUN_00428510 case 0x2d: from frame 26 both velocities are zero, and frame 25 holds
+// while airborne, so the row cannot leave its fall hanging.
+void test_tech_roll_end() {
+    section("Rena+0: the tech roll stops dead at frame 26 and lands before it ends");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    const double dt = gameplay::FixedStep::seconds;
+    input::PlayerState jump;
+    jump.down[input::Action::Jump] = true;
+    const auto to_tech = [&](Fighter& attacker, Fighter& victim) {
+        combo.init(attacker, glm::vec3(0, 0, 100));
+        combo.init(victim);
+        gameplay::HitReaction injected;
+        injected.row = injected.rowHigh = 113;
+        injected.meterA = 120;
+        injected.counter = 5.f;
+        injected.rise = 5.f;
+        victim.take_damage(0, &attacker, 0, 113, false, injected);
+        for (int i = 0; i < 400 && victim.down_row_for_test() == 0; ++i)
+            victim.update(&jump, nullptr, dt);
+        checkInt(45, victim.down_row_for_test(), "Jump teches into row 45");
+    };
+    {
+        Fighter attacker, victim;
+        to_tech(attacker, victim);
+        const glm::vec3 start = victim.position();
+        for (int i = 0; i < 400 && victim.state() == FighterState::Knockdown; ++i)
+            victim.update(&jump, nullptr, dt);
+        const float travelled = glm::length(glm::vec2(victim.position().x - start.x,
+                                                      victim.position().z - start.z));
+        check(travelled > 470.f && travelled < 505.f,
+              ("the tech covers its speed law with no drift after frame 26, got " +
+               std::to_string(travelled)).c_str());
+    }
+    {
+        Fighter attacker, victim;
+        to_tech(attacker, victim);
+        for (int i = 0; i < 5; ++i) victim.update(&jump, nullptr, dt);
+        victim.shove(glm::vec3(0.f, 300.f, 0.f), nullptr);
+        for (int i = 0; i < 600 && victim.state() == FighterState::Knockdown; ++i)
+            victim.update(&jump, nullptr, dt);
+        check(victim.state() == FighterState::Idle, "a high tech roll still completes");
+        check(victim.position().y < 1.f, "and it holds frame 25 until it has landed");
+    }
+}
+
+// FUN_00428510 cases 0x71..0x74: a front air hit that lands with Jump held and the
+// down meter below 100 teches into row 45, which clears the meters and hops back.
+// The back rows 0xd5..0xd8 have no tech branch.
+void test_landing_tech_roll() {
+    section("Rena+0: Jump on landing teches a front air hit into row 45");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    const auto launch = [&](Fighter& attacker, Fighter& victim, int row, int meterB) {
+        combo.init(attacker, glm::vec3(0, 0, 100));
+        combo.init(victim);
+        gameplay::HitReaction injected;
+        injected.row = injected.rowHigh = row;
+        injected.meterA = 120;
+        injected.meterB = meterB;
+        injected.counter = 5.f;
+        injected.rise = 5.f;
+        victim.take_damage(0, &attacker, 0, row, false, injected);
+    };
+
+    Fighter attacker, victim;
+    launch(attacker, victim, 113, 50);
+    input::PlayerState jump;
+    jump.down[input::Action::Jump] = true;
+    checkInt(50, victim.down_meter_for_test(), "the injected hit fills the down meter");
+    for (int i = 0; i < 400 && victim.down_row_for_test() == 0; ++i)
+        victim.update(&jump, nullptr, gameplay::FixedStep::seconds);
+    checkInt(45, victim.down_row_for_test(), "the held Jump lands the victim into row 45");
+    checkInt(0, victim.down_meter_for_test(), "the tech roll clears the down meter");
+    const glm::vec3 before = victim.position();
+    victim.update(&jump, nullptr, gameplay::FixedStep::seconds);
+    const float travelled = glm::length(glm::vec2(victim.position().x - before.x,
+                                                  victim.position().z - before.z));
+    check(std::fabs(travelled - 25.f) < 1.f, "row 45 travels at the recovered -25/tick");
+    for (int i = 0; i < 400 && victim.state() == FighterState::Knockdown; ++i)
+        victim.update(&jump, nullptr, gameplay::FixedStep::seconds);
+    check(victim.state() == FighterState::Idle, "the tech roll completes back into Idle");
+
+    // Without Jump the same launch must still take the lying branch.
+    Fighter attacker2, victim2;
+    launch(attacker2, victim2, 113, 0);
+    input::PlayerState idle;
+    for (int i = 0; i < 400 && victim2.down_row_for_test() == 0; ++i)
+        victim2.update(&idle, nullptr, gameplay::FixedStep::seconds);
+    checkInt(118, victim2.down_row_for_test(), "without Jump the front hit lies down in 118");
+
+    // A back air hit has no tech branch, even with Jump held.
+    Fighter attacker3, victim3;
+    launch(attacker3, victim3, 213, 0);
+    for (int i = 0; i < 400 && victim3.down_row_for_test() == 0; ++i)
+        victim3.update(&jump, nullptr, gameplay::FixedStep::seconds);
+    checkInt(119, victim3.down_row_for_test(), "a back air hit lies down in 119, no tech");
+}
+
+// FUN_00637950: +0x7c0 accumulates combat[8] per trip, keeps a 120-tick memory that
+// only ticks outside the reaction band, selects the heavy row at 100, and grants 30
+// ticks of invincibility at the same threshold.
+void test_down_meter_semantics() {
+    section("Rena+0: the down meter accumulates, gates the heavy row and grants i-frames");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    Fighter attacker, victim;
+    combo.init(attacker, glm::vec3(0, 0, 100));
+    combo.init(victim);
+    gameplay::HitReaction injected;
+    injected.row = 100;
+    injected.rowHigh = 130;
+    injected.meterA = 120;
+    injected.meterB = 60;
+    injected.counter = 5.f;
+    injected.rise = 5.f;
+    victim.take_damage(0, &attacker, 0, 100, false, injected);
+    checkInt(60, victim.down_meter_for_test(), "the first trip adds combat[8] to the meter");
+    checkInt(0, victim.invincible_ticks(), "below 100 there is no invincibility");
+    checkInt(100, victim.reaction_move_for_test(), "below 100 the grounded victim takes the normal row");
+
+    injected.meterB = 50;
+    victim.take_damage(0, &attacker, 0, 100, false, injected);
+    checkInt(110, victim.down_meter_for_test(), "the second trip crosses the 100 threshold");
+    checkInt(30, victim.invincible_ticks(), "crossing 100 grants the 30-tick invincibility");
+    checkInt(130, victim.reaction_move_for_test(), "at 100 the heavy row replaces the normal one");
+
+    input::PlayerState idle;
+    for (int i = 0; i < 600 && victim.state() == FighterState::Hit; ++i)
+        victim.update(&idle, nullptr, gameplay::FixedStep::seconds);
+    check(victim.state() == FighterState::Idle, "the reaction plays out");
+    checkInt(110, victim.down_meter_for_test(), "the meter does not tick during the reaction");
+    for (int i = 0; i < 119; ++i)
+        victim.update(&idle, nullptr, gameplay::FixedStep::seconds);
+    checkInt(110, victim.down_meter_for_test(), "the 120-tick window holds just short of expiry");
+    victim.update(&idle, nullptr, gameplay::FixedStep::seconds);
+    checkInt(0, victim.down_meter_for_test(), "the 120th tick clears the down meter");
+}
+
+// FUN_00637950 record flag 0x800: the blow becomes the 121 ground roll (221 from
+// behind), deals 70% damage, and its completion enters the 120 get-up.
+void test_ground_roll_flag_121() {
+    section("Rena+0: the 0x800 record flag selects the 121 ground roll");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    Fighter attacker, victim;
+    combo.init(attacker, glm::vec3(0, 0, 100));
+    combo.init(victim);
+    gameplay::HitReaction injected;
+    injected.row = 100;
+    injected.rowHigh = 130;
+    injected.meterA = 120;
+    injected.counter = 5.f;
+    injected.rise = 5.f;
+    injected.flags = 0x800;
+    const int before = victim.hp();
+    victim.take_damage(10, &attacker, 0, 100, false, injected);
+    checkInt(121, victim.reaction_move_for_test(), "flag 0x800 overrides the row with 121");
+    checkInt(before - 7, victim.hp(), "the flagged blow deals 70% of the damage");
+    input::PlayerState idle;
+    for (int i = 0; i < 400 && victim.state() == FighterState::Hit; ++i)
+        victim.update(&idle, nullptr, gameplay::FixedStep::seconds);
+    check(victim.state() == FighterState::Knockdown, "the 121 roll ends in the knockout state");
+    checkInt(120, victim.down_row_for_test(), "the ground roll completes into the 120 get-up");
+
+    // From behind the same flag adds the +100 back variant.
+    Fighter attacker2, victim2;
+    combo.init(attacker2, glm::vec3(0, 0, 100));
+    combo.init(victim2);
+    victim2.reset(glm::vec3(0, 0, 0), glm::pi<float>());
+    for (int i = 0; i < 80; ++i) victim2.update(&idle, nullptr, gameplay::FixedStep::seconds);
+    victim2.take_damage(10, &attacker2, 0, 100, false, injected);
+    checkInt(221, victim2.reaction_move_for_test(), "a flagged back hit selects 221");
+}
+
+void test_shared_recovery_reachability() {
+    section("Rena+0: which shipped records can select the shared recovery rows");
+    test::Combo combo; std::string error;
+    if (!combo.load(0,0,error)) { skip("Rena+0 rig/item/moves unavailable"); return; }
+    int flagged = 0, rows121 = 0, rows133 = 0, rows103 = 0;
+    int highest = 0;
+    for (int id = 0; id < gameplay::CharacterMoves::kMaxMoves; ++id) {
+        const gameplay::CharacterMove* m = combo.moves.find(id);
+        if (!m) continue;
+        highest = std::max(highest, id);
+        for (int p = 0; p < m->sectionCount; ++p)
+            for (int e = 0; e < m->phases[p].entryCount; ++e) {
+                const gameplay::MoveEntry& r = m->phases[p].entries[e];
+                if (!r.has_combat()) continue;
+                if (r.stateFlags & 0x800) ++flagged;
+                for (int row : {r.reactionMove, r.combat[14]}) {
+                    if (row == 121) ++rows121;
+                    if (row == 133) ++rows133;
+                    if (row == 103) ++rows103;
+                }
+            }
+    }
+    // Shipped-data reachability, not a behaviour claim: no Rena+0 contact carries the
+    // 0x800 flag that selects 121, and no record names 121/133/103 as its reaction.
+    // The 121 path is therefore latent (covered by injection above); 103/203 and the
+    // 133 wall bounce have no requester and no reachable port path, so they stay
+    // documented limits rather than untestable code.
+    checkInt(0, flagged, "no shipped Rena+0 record carries the 0x800 ground-roll flag");
+    checkInt(0, rows121 + rows133 + rows103,
+             "no shipped record names 121, 133 or 103 as its reaction");
+    check(highest >= 400, "the scan walks the shipped move table");
+}
+
 void test_landing_followup_chain_runs_to_its_last_phase() {
     section("Rena+0 landing follow-up chain reaches row 341's last phase");
     test::Combo combo; std::string error;
@@ -1905,6 +2295,13 @@ int main(int argc, char** argv) {
     test_row_351_is_handler_only();
     test_dash_tap_shots();
     test_delayed_reaction_rows();
+    test_knockdown_getup_chain();
+    test_getup_roll_body();
+    test_tech_roll_end();
+    test_landing_tech_roll();
+    test_down_meter_semantics();
+    test_ground_roll_flag_121();
+    test_shared_recovery_reachability();
     test_first_live_record_opens_at_frame_zero();
     test_landing_followup_chain_runs_to_its_last_phase();
     test_back_kick_completes_its_final_phase();

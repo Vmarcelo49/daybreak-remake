@@ -23,6 +23,14 @@ recorded that the owner did not give. Current plan: [`DIRECTION.md`](DIRECTION.m
 
 ## Open
 
+## Q26 — Implement the shared knockdown/tech/get-up system for the pilot? (2026-10-29, owner-reported gap)
+- **Blocks:** the "Rena+0 is perfect" claim. The port only has 118/119 -> 120 -> Idle; the original also has the Jump-held landing tech (45), the 120 -> 124/128 choice, 30-tick get-up invincibility (124..129/194), the down meter (`+0x7c0`, 120-tick window, 30 i-frames at >=100), 103/203 fall-back, the flagged 121 ground roll and 133 wall bounce. Every one changes combo routes and wake-up pressure. Evidence and the port gap: [`reports/knockdown-getup-2026-10-29.md`](reports/knockdown-getup-2026-10-29.md).
+- **Why it needs the owner:** the implementation edits the frozen decision path (`fighter.{h,cpp}`, reaction scripts) and adds a shared system, not a Rena+0-only rule. The Q24 exception covers only the delayed reaction rows.
+- **Options:** (a) authorize the staged plan in the report (rows/timers first, then landing tech, then the down meter, then the shared extras) with the same fail-first test rule; (b) authorize only the landing tech 45 as the minimum change to the claim; (c) defer and keep the gap named in `DIRECTION-STATUS.md`.
+- **Owner response (2026-10-29):** authorized the full staged plan (option a), and then retired the "global work is frozen" reading entirely: any change that directly or indirectly affects Rena+0 is pilot work and proceeds without an exception (`AGENTS.md`, pilot-scope rule). Recorded in `EXCEPTIONS.md` Q26 with the scope from the report; the global shared system is explicitly in scope because the owner named it as a blocker for the "Rena+0 is perfect" claim.
+- **Default if unanswered:** do not edit the frozen path; the report stands as the evidence and the gap stays named. TODO(question 26).
+
+
 ## Q25 — Extend the projectile behavior table to the remaining shipped rows? (2026-10-29, frame-data audit)
 - **Blocks:** full frame-data coverage of Rena+0's shot family. The powered taps launch item rows 6/7 (`parameter 60/70`) and state 407 launches rows 4/9/13/14 (`40/90/130/140`); none of those parameters has an entry in `kProjectileBehavior`, so they fall back to the provisional per-tier tuning instead of the recovered motion, lifetime and wall-child rules. The other rows are covered: 0/1/2/3/10/11/12/17 and the two stage explosions (row 8→10, row 2→3).
 - **Evidence available:** the reconstructed switch (`rena_projectile_switches.hpp`, tier 3) covers all 18 registrations, and the original function `FUN_005f91c0` is addressable in the binary for the disputed cases (tier 2). This is a table extension, not a new mechanic.

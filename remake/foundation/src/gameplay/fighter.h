@@ -82,6 +82,9 @@ struct HitReaction {
     float rise = 0.f;      // combat[18] * 0.01 -> +0x54
     int   meterA = 0;      // combat[7]  -> +0x7b8
     int   meterB = 0;      // combat[8]  -> +0x7c0
+    // Record state flags (FUN_00637950 reads +0x28): bit 0x800 selects the 121
+    // ground roll and scales the blow to 70%.
+    int   flags = 0;
 };
 
 // Fighter states are port labels. The executable stores move IDs directly in
@@ -499,6 +502,11 @@ public:
     // The row the current reaction plays (a test seam: the row is otherwise internal).
     int reaction_move_for_test() const { return m_reactionMove; }
     int down_row_for_test() const { return m_downRow; }
+    // +0x7c0: the down/knockdown accumulator (combat[8]); the tech roll clears it.
+    int down_meter_for_test() const { return m_hitMeterB; }
+    // +0x7ac: the get-up invincibility timer. > 0 means the shared hit resolver
+    // (FUN_00637950's `+0x7ac < 1` test) must skip this fighter.
+    int invincible_ticks() const { return m_invincible; }
     // FUN_00637950 writes hit-driven status durations at actor+0x7dc+slot*4;
     // Rena recovery reads slot 6 at actor+0x7f4. The match ticks durations after
     // the fighter executor, preserving the source's same-frame read-before-decrement.
@@ -1075,6 +1083,11 @@ public:
 private:
     void reset_hit_reaction();
     void seed_pending_reaction();
+    // Binds the next shared-recovery row (118/119 -> 120 -> 124/128) and restarts
+    // its phase clock; the original advances on row completion, not on a timer.
+    void bind_recovery_row(int row);
+    void halt_row_motion();
+    void update_getup_roll(const input::PlayerState* input);
     void apply_reaction_motion(const HitReaction& reaction, bool fromPhaseOne);
     // --- visual ---
     const xm::Model* m_model = nullptr;   // borrowed
@@ -1148,8 +1161,14 @@ private:
     HitReaction  m_pendingReaction;
     bool         m_reactionSeedPending = false;
     bool         m_launched = false;   // the current Hit is a launch: landing becomes a knockdown
-    int          m_downPhase = 0;      // +0xadf4's reaction phases: 1 lying, 2 get-up
-    int          m_downRow = 0;        // 118/119 while lying, 120 for the get-up (0 = none)
+    int          m_downRow = 0;        // 118/119 lying, 120 get-up, 124 roll / 128 in place (0 = none)
+    // The 120 completion chooses 124 (stick held) or 128 and resolves next update,
+    // where the input is in scope (FUN_00428510 case 0x78 reads +0x278/+0x27c).
+    bool         m_getupChoicePending = false;
+    int          m_getupRollTicks = 0; // +0xe8: row 124's phase-1 counter
+    // +0x7ac: refreshed to 30 every tick during the get-up roll (124..129), decaying
+    // outside the reaction range and while no hitstop holds the actor.
+    int          m_invincible = 0;
     int          m_staggerDecay = 0;   // +0x7bc
     int          m_comboDecay = 0;     // +0x7c4
     int          m_comboHits = 0;      // +0x7b0: the damage-proration counter
