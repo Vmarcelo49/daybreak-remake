@@ -73,6 +73,7 @@ screen-replay tooling. Unproven original automation is never required.
 
 | You need | Read |
 |---|---|
+| How to build and how the code is organized | `DEVELOPMENT.md`. `README.md` is for players: keep it plain, and keep its tested list true |
 | The plan and milestones | `docs/DIRECTION.md` |
 | What was done, newest entries last in the work log | `docs/DIRECTION-STATUS.md` |
 | Binding product decisions | `docs/decisions.md` (D1–D14) |
@@ -163,7 +164,7 @@ changes need owner approval, never a silent denominator reduction.
 |---|---|---|
 | Language | C++17, SDL3 + WebGPU (D2) | C11 dumps, Python pipeline, JSON |
 | Rule | **All new game code goes here** | Nothing here runs the game |
-| Entry docs | `README.md` → `docs/decisions.md` | `docs/overview.md` → `docs/pipeline.md` |
+| Entry docs | `DEVELOPMENT.md` → `docs/decisions.md` | `docs/overview.md` → `docs/pipeline.md` |
 | Build | `./build.sh deps` (once), then `./build.sh {linux,windows,web}` | `python3 research/tools/coverage_report.py` (no deps) |
 
 ## Hard rules (violations = reverted work)
@@ -255,7 +256,7 @@ python3 research/tools/coverage_report.py
 
 Read `ctest`'s own summary rather than any count written in a document — every
 added suite moves the denominator. Measured counts, the full command set and the
-list that skips without game data are in `README.md` and
+list that skips without game data are in `DEVELOPMENT.md` and
 `docs/RELEASE-CHECKLIST.md` §2.
 
 ## Conventions (short)
