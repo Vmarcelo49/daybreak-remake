@@ -21,6 +21,7 @@ struct OnlineContext {
 // bound or the address cannot be read.
 bool beginOnlineHost(FrontendState& state, int port, std::string& error);
 bool beginOnlineJoin(FrontendState& state, const std::string& address, std::string& error);
+bool beginOnlineCode(FrontendState& state, const std::string& code, std::string& error);
 // A fresh random pair for the match's token and seed.
 void onlineMatchNumbers(std::uint32_t& token, std::uint32_t& seed);
 

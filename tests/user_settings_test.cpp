@@ -113,6 +113,7 @@ int main() {
         original.netPort = 40000;
         original.netInputDelay = 3;
         original.netLastHost = "10.0.0.2:37564";
+        original.netServer = "203.0.113.10:37565";
         original.shadowRendering = true;
         original.keyboard[fnd::input::Jump] = 42;
         original.keyboard[fnd::input::Guard] = -1;   // an explicitly unbound action

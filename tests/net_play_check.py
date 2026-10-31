@@ -5,6 +5,7 @@ Agreement between peers, not with the original. Skips without an install.
 """
 import json
 import pathlib
+import shutil
 import signal
 import socket
 import subprocess
@@ -14,6 +15,7 @@ import time
 
 TICKS = 10000
 PROXY = pathlib.Path(__file__).resolve().parents[1] / "tools" / "net_proxy.py"
+SERVER_SOURCE = pathlib.Path(__file__).resolve().parents[1] / "server"
 
 
 def free_port():
@@ -109,6 +111,49 @@ def dropped_peer(netctl, game, folder):
     print(f"dropped peer: {frames} frames equal, its slot is COM")
 
 
+def build_server(folder):
+    """The rendezvous server, or None without a Go toolchain."""
+    go = shutil.which("go")
+    if not go:
+        return None
+    binary = folder / "daybreak-rendezvous"
+    subprocess.run([go, "build", "-o", str(binary), "."], cwd=SERVER_SOURCE, check=True)
+    return binary
+
+
+def by_room_code(netctl, game, folder, server_binary):
+    port = free_port()
+    server = subprocess.Popen([str(server_binary), "-addr", f"127.0.0.1:{port}", "-log", "error"])
+    address = f"127.0.0.1:{port}"
+    peers = []
+    try:
+        time.sleep(0.3)
+        logs = [folder / f"code-{peer}.log" for peer in range(4)]
+        common = ["--game", game, "--ticks", "900", "--server", address]
+        peers.append(subprocess.Popen([netctl, "--host", str(free_port()), "--peers", "4", "--seed", "5", *common, "--log", str(logs[0])],
+                                      stdout=subprocess.PIPE, text=True))
+        line = peers[0].stdout.readline()
+        code = json.loads(line)["code"]
+        wrong = subprocess.run([netctl, "--join-code", "ZZZZ" if code != "ZZZZ" else "YYYY", *common], stdout=subprocess.PIPE, text=True, timeout=30)
+        assert wrong.returncode == 3 and "No room has that code" in wrong.stdout, f"a wrong code: {wrong.stdout}"
+        for peer in range(1, 4):
+            peers.append(subprocess.Popen([netctl, "--join-code", code, *common, "--log", str(logs[peer])], stdout=subprocess.PIPE, text=True))
+        results = []
+        for peer in peers:
+            out, _ = peer.communicate(timeout=120)
+            assert peer.returncode == 0, f"room code: a peer failed: {out}"
+            results.append(result_of(out))
+    finally:
+        for peer in peers:
+            if peer.poll() is None:
+                peer.kill()
+        server.kill()
+    frames = compare(logs, "room code")
+    assert all(r["desyncs"] == 0 for r in results)
+    assert frames > 800, f"room code: only {frames} frames compared"
+    print(f"room code {code}: 4 peers, {frames} frames equal")
+
+
 def refused(netctl, game):
     port = free_port()
     host = subprocess.Popen([netctl, "--host", str(port), "--peers", "2", "--game", game], stdout=subprocess.PIPE, text=True)
@@ -131,6 +176,11 @@ def main():
     with tempfile.TemporaryDirectory() as folder_name:
         folder = pathlib.Path(folder_name)
         refused(netctl, game)
+        server_binary = build_server(folder)
+        if server_binary:
+            by_room_code(netctl, game, folder, server_binary)
+        else:
+            print("room code: not run, no Go toolchain")
         dropped_peer(netctl, game, folder)
         full_match(netctl, game, folder, 2)
         full_match(netctl, game, folder, 4)

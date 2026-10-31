@@ -34,6 +34,7 @@ name = PLAYER                 # what other players see, up to 12 plain character
 port = 37564                  # the UDP port a hosted room listens on
 input_delay = 2               # frames, 0 to 8
 last_host =                   # the address last joined
+server =                      # the rendezvous server, for room codes: an IP address and port
 
 [display]
 fullscreen = false

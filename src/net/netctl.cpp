@@ -15,7 +15,8 @@
 namespace {
 
 const char kUsage[] =
-    "usage: netctl (--host PORT --peers N | --join IP:PORT) [options]\n"
+    "usage: netctl (--host PORT --peers N | --join IP:PORT | --join-code CODE) [options]\n"
+    "  --server IP:PORT the rendezvous server: a host prints its room code, and --join-code needs it\n"
     "  --game DIR       install holding daybreak00.dat (default: $GAME_DIR or a parent directory)\n"
     "  --ticks N        frames to play (default 3600)\n"
     "  --seed N         host: battle seed (default 1)\n"
@@ -75,7 +76,7 @@ int main(int argc, char** argv) try {
     int hostPort = -1;
     unsigned peers = 2, ticks = 3600, delay = 2, timeLimit = 0;
     std::uint32_t seed = 1;
-    std::string join, proxy, gameDir, logPath;
+    std::string join, joinCode, server, proxy, gameDir, logPath;
     long long forcedHash = -1;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -86,6 +87,8 @@ int main(int argc, char** argv) try {
         if (arg == "--host") hostPort = std::atoi(value());
         else if (arg == "--peers") peers = static_cast<unsigned>(std::atoi(value()));
         else if (arg == "--join") join = value();
+        else if (arg == "--join-code") joinCode = value();
+        else if (arg == "--server") server = value();
         else if (arg == "--game") gameDir = value();
         else if (arg == "--ticks") ticks = static_cast<unsigned>(std::atoi(value()));
         else if (arg == "--seed") seed = static_cast<std::uint32_t>(std::atoll(value()));
@@ -99,7 +102,7 @@ int main(int argc, char** argv) try {
             return arg == "--help" ? 0 : 1;
         }
     }
-    if ((hostPort < 0) == join.empty() || peers < 2 || peers > 4) {
+    if ((hostPort >= 0) + !join.empty() + !joinCode.empty() != 1 || peers < 2 || peers > 4) {
         std::cout << kUsage;
         return 1;
     }
@@ -118,14 +121,24 @@ int main(int argc, char** argv) try {
 
     net::Address hostAddress;
     if (!join.empty() && !net::parse_address(join, hostAddress)) throw std::runtime_error("bad --join");
-    net::Lobby lobby = join.empty() ? net::Lobby::host(socket, default_plan(seed, timeLimit), gameHash)
-                                    : net::Lobby::join(socket, hostAddress, gameHash);
+    net::Address serverAddress;
+    if (!server.empty() && !net::parse_address(server, serverAddress)) throw std::runtime_error("bad --server");
+    if (!joinCode.empty() && server.empty()) throw std::runtime_error("--join-code needs --server");
+    net::Lobby lobby = hostPort >= 0 ? net::Lobby::host(socket, default_plan(seed, timeLimit), gameHash, serverAddress)
+                       : !joinCode.empty() ? net::Lobby::join_code(socket, serverAddress, joinCode, gameHash)
+                                           : net::Lobby::join(socket, hostAddress, gameHash);
+    bool printedCode = false;
     net::LocalChoice choice;
     choice.name = "netctl";
     choice.ready = true;
     lobby.set_choice(choice);
     for (unsigned waited = 0; !lobby.ready(); waited += 5) {
         lobby.poll(5);
+        if (!printedCode && !lobby.room_code().empty()) {
+            printedCode = true;
+            std::printf("{\"code\":\"%s\"}\n", lobby.room_code().c_str());
+            std::fflush(stdout);
+        }
         if (lobby.is_host() && lobby.plan().peerCount == peers) lobby.start();
         if (lobby.refused() != net::Refusal::None) {
             std::printf("{\"refused\":\"%s\"}\n", net::refusal_text(lobby.refused()));
@@ -137,7 +150,7 @@ int main(int argc, char** argv) try {
 
     // What the selection screen would have decided, the same on every peer: the first weapon exists
     // for everyone, and the peers fill the teams in turn.
-    net::MatchPlan plan = lobby.plan();
+    net::MatchPlan plan = lobby.plan_for_match();
     plan.timeLimitSeconds = timeLimit;
     constexpr std::array<int, 4> kPeerSlot{{0, 2, 1, 3}};
     for (unsigned i = 0; i < 4; ++i) plan.slots[i].character = static_cast<int>(i);

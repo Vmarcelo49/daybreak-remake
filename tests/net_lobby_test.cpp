@@ -23,6 +23,10 @@ net::MatchPlan sample_plan() {
     plan.peerCount = 2;
     net::parse_address("10.1.2.3:4000", plan.peers[1]);
     plan.names = {"first", "second", "", ""};
+    net::parse_address("198.51.100.7:4100", plan.publics[1]);
+    net::parse_address("192.168.1.7:4000", plan.privates[1]);
+    plan.clientIds = {11, 22, 0, 0};
+    plan.links = {2, 1, 0, 0};
     plan.ready = {true, true, false, false};
     plan.pingMs = {0, 80, 0, 0};
     plan.started = true;
@@ -37,6 +41,7 @@ void test_round_trips() {
     check(net::decode_plan(net::encode_plan(plan, 1, 500), decoded, peer, echo), "a good plan is refused");
     check(peer == 1 && echo == 500 && decoded.token == plan.token && decoded.seed == 77 && decoded.started, "plan header");
     check(decoded.peers[1] == plan.peers[1] && decoded.names[1] == "second" && decoded.ready[1] && decoded.pingMs[1] == 80, "plan peers");
+    check(decoded.publics[1] == plan.publics[1] && decoded.privates[1] == plan.privates[1] && decoded.clientIds[1] == 22 && decoded.links[1] == 1, "plan links");
 
     net::Hello hello;
     hello.gameData = 99;
@@ -44,10 +49,15 @@ void test_round_trips() {
     hello.choice = {"me", true};
     hello.sequence = 9;
     hello.pingMs = 33;
+    hello.clientId = 44;
+    hello.links = 5;
+    net::parse_address("198.51.100.7:4100", hello.publicAddress);
+    net::parse_address("192.168.1.7:4000", hello.privateAddress);
     net::Hello read;
     check(net::decode_hello(net::encode_hello(hello), read), "a good hello is refused");
     check(read.version == net::kProtocolVersion && read.gameData == 99 && read.started && read.sequence == 9 && read.pingMs == 33, "hello fields");
     check(read.choice.name == "me" && read.choice.ready, "hello choice");
+    check(read.clientId == 44 && read.links == 5 && read.publicAddress == hello.publicAddress && read.privateAddress == hello.privateAddress, "hello addresses");
     net::Refusal refusal;
     check(net::decode_refusal(net::encode_refusal(net::Refusal::HostLeft), refusal) && refusal == net::Refusal::HostLeft, "refusal");
     check(net::decode_bye(net::encode_bye()), "bye");
@@ -130,6 +140,36 @@ void test_over_sockets() {
     a.set_choice(aChoice);
     settle({&host, &a}, [&] { return host.can_start(); });
     check(host.can_start(), "everyone is ready");
+    {
+        const net::MatchPlan seen = a.plan_for_match();
+        check(seen.peers[0] == hostAddress, "the joiner plays to the address that answered");
+    }
+    check(host.link_problem().empty(), "no problem to report");
+
+    // A player nobody can reach holds the start, and the lobby says who.
+    {
+        net::UdpSocket silentHostSocket, loneSocket;
+        check(silentHostSocket.open(0, error) && loneSocket.open(0, error), "open: " + error);
+        net::Address silentAddress;
+        net::parse_address("127.0.0.1:" + std::to_string(silentHostSocket.port()), silentAddress);
+        auto silentHost = net::Lobby::host(silentHostSocket, plan, 42);
+        silentHost.set_choice({"host", true});
+        // A hello forged with no link and a dead address: it never answers a probe.
+        net::Hello forged;
+        forged.gameData = 42;
+        forged.clientId = 99;
+        forged.choice = {"ghost", true};
+        const auto packet = net::encode_hello(forged);
+        loneSocket.send(silentAddress, packet.data(), packet.size());
+        settle({&silentHost}, [&] { return silentHost.plan().peerCount == 2; });
+        for (int i = 0; i < 110 && silentHost.link_problem().empty(); ++i) {
+            silentHost.poll(100);
+            // Stays in the room, still not reachable by probe: this socket never answers them.
+            loneSocket.send(silentAddress, packet.data(), packet.size());
+        }
+        check(!silentHost.can_start(), "an unreachable player did not hold the start");
+        check(silentHost.link_problem() == "host cannot reach ghost.", "the lobby named: " + silentHost.link_problem());
+    }
 
     auto wrongData = net::Lobby::join(cSocket, hostAddress, 43);
     settle({&host, &a, &wrongData}, [&] { return wrongData.refused() != net::Refusal::None; });
@@ -173,7 +213,7 @@ void test_over_sockets() {
 
     // And a host that is silent is noticed in time.
     auto nobody = net::Lobby::join(eSocket, net::Address{hostAddress.ip, 9}, 42);
-    for (int i = 0; i < 60; ++i) nobody.poll(100);
+    for (int i = 0; i < 110; ++i) nobody.poll(100);
     check(nobody.host_lost(), "silence went unnoticed");
 }
 

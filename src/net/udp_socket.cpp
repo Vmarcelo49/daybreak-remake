@@ -105,6 +105,29 @@ bool UdpSocket::open(std::uint16_t port, std::string& error) {
 
 std::uint16_t UdpSocket::port() const { return m_impl->port; }
 
+Address UdpSocket::local_address() const {
+    Address out;
+    out.port = m_impl->port;
+    // Connecting a UDP socket sends nothing. It only makes the system choose the outgoing interface.
+    const SocketHandle probe = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (probe == kNoSocket) return out;
+    sockaddr_in target{};
+    target.sin_family = AF_INET;
+    target.sin_addr.s_addr = htonl(0x08080808u);
+    target.sin_port = htons(53);
+    if (connect(probe, reinterpret_cast<const sockaddr*>(&target), sizeof target) == 0) {
+        sockaddr_in own{};
+        socklen_t length = sizeof own;
+        if (getsockname(probe, reinterpret_cast<sockaddr*>(&own), &length) == 0) out.ip = own.sin_addr.s_addr;
+    }
+#ifdef _WIN32
+    closesocket(probe);
+#else
+    close(probe);
+#endif
+    return out;
+}
+
 void UdpSocket::send(const Address& to, const void* data, size_t size) {
     std::uint8_t packet[kMaxPacket];
     size_t prefix = 0;

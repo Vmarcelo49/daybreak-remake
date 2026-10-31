@@ -31,21 +31,25 @@ struct MenuWire {
 // GekkoNet's adapter has no context pointer, and a process plays one match.
 UdpSocket* g_socket = nullptr;
 Lobby* g_lobby = nullptr;
-std::array<Address, 4> g_peers{};
-std::uint8_t g_peerCount = 0;
+MatchPlan g_plan;
+std::uint8_t g_localPeer = 0;
 std::uint32_t g_token = 0;
-constexpr size_t kGameHeader = 1 + sizeof g_token;
+constexpr size_t kGameHeader = 1 + sizeof g_token + 1;
 
-constexpr unsigned kSkipEvery = 8;
-// The first frames have no input yet, which reads as zeros: an input delay's worth, and a prediction
-// before the first packet. By this frame a 0 can only mean a player left.
-constexpr int kFirstLiveFrame = 60;
+void begin_adapter(UdpSocket& socket, Lobby& lobby, const MatchPlan& plan, std::uint8_t localPeer, std::uint32_t token) {
+    g_socket = &socket;
+    g_lobby = &lobby;
+    g_plan = plan;
+    g_localPeer = localPeer;
+    g_token = token;
+}
 
 void adapter_send(GekkoNetAddress* address, const char* data, int length) {
     if (!g_socket || !address || address->size != sizeof(Address) || length < 0) return;
     std::vector<std::uint8_t> packet(kGameHeader + static_cast<size_t>(length));
     packet[0] = kGamePacket;
     std::memcpy(packet.data() + 1, &g_token, sizeof g_token);
+    packet[1 + sizeof g_token] = g_localPeer;
     std::memcpy(packet.data() + kGameHeader, data, static_cast<size_t>(length));
     Address to;
     std::memcpy(&to, address->data, sizeof to);
@@ -66,13 +70,17 @@ GekkoNetResult** adapter_receive(int* length) {
         // Only the match's own peers reach GekkoNet, and only with the match's token.
         if (packet[0] != kGamePacket || packet.size() < kGameHeader) continue;
         if (std::memcmp(packet.data() + 1, &g_token, sizeof g_token) != 0) continue;
-        bool known = false;
-        for (std::uint8_t i = 0; i < g_peerCount; ++i) known = known || g_peers[i] == from;
-        if (!known) continue;
+        const std::uint8_t peer = packet[1 + sizeof g_token];
+        if (peer >= g_plan.peerCount || peer == g_localPeer) continue;
+        // One machine can show several addresses, such as public and private on the same network, and
+        // may send from another than the one this side sends to. GekkoNet knows a peer by one address.
+        const size_t index = peer;
+        const Address& known = g_plan.peers[index];
+        if (!(from == known || from == g_plan.publics[index] || from == g_plan.privates[index])) continue;
         auto* result = static_cast<GekkoNetResult*>(std::malloc(sizeof(GekkoNetResult)));
-        result->addr.size = sizeof from;
-        result->addr.data = std::malloc(sizeof from);
-        std::memcpy(result->addr.data, &from, sizeof from);
+        result->addr.size = sizeof known;
+        result->addr.data = std::malloc(sizeof known);
+        std::memcpy(result->addr.data, &known, sizeof known);
         result->data_len = static_cast<unsigned>(packet.size() - kGameHeader);
         result->data = std::malloc(result->data_len ? result->data_len : 1);
         std::memcpy(result->data, packet.data() + kGameHeader, result->data_len);
@@ -85,6 +93,11 @@ GekkoNetResult** adapter_receive(int* length) {
 void adapter_free(void* data) { std::free(data); }
 
 GekkoNetAdapter g_adapter{adapter_send, adapter_receive, adapter_free};
+
+constexpr unsigned kSkipEvery = 8;
+// The first frames have no input yet, which reads as zeros: an input delay's worth, and a prediction
+// before the first packet. By this frame a 0 can only mean a player left.
+constexpr int kFirstLiveFrame = 60;
 
 void merge(game::BattleFrame& into, game::BattleFrame&& frame) {
     const auto append = [](auto& to, auto& from) { to.insert(to.end(), from.begin(), from.end()); };
@@ -125,12 +138,8 @@ std::unique_ptr<Session> Session::stress(sim::CoreBattle& battle, unsigned dista
 MenuLockstep::MenuLockstep(UdpSocket& socket, Lobby& lobby, const MatchPlan& plan, std::uint8_t localPeer)
     : m_localPeer(localPeer), m_peers(plan.peerCount) {
     if (!gekko_create(&m_session, GekkoGameSession)) throw std::runtime_error("net: no session");
-    g_socket = &socket;
-    g_lobby = &lobby;
-    g_peers = plan.peers;
-    g_peerCount = plan.peerCount;
     // Its own token: a late packet of this session must not reach the battle's.
-    g_token = plan.token ^ 0x4d454e55u;
+    begin_adapter(socket, lobby, plan, localPeer, plan.token ^ 0x4d454e55u);
 
     GekkoConfig config{};
     config.num_players = plan.peerCount;
@@ -192,11 +201,7 @@ std::unique_ptr<Session> Session::online(sim::CoreBattle& battle, UdpSocket& soc
                                          std::uint8_t localPeer, unsigned inputDelay) {
     std::unique_ptr<Session> session(new Session(battle));
     if (!gekko_create(&session->m_session, GekkoGameSession)) throw std::runtime_error("net: no session");
-    g_socket = &socket;
-    g_lobby = &lobby;
-    g_peers = plan.peers;
-    g_peerCount = plan.peerCount;
-    g_token = plan.token;
+    begin_adapter(socket, lobby, plan, localPeer, plan.token);
 
     GekkoConfig config{};
     config.num_players = plan.peerCount;

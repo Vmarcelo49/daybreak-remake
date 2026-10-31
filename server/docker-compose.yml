@@ -1,0 +1,11 @@
+services:
+  daybreak-rendezvous:
+    build: .
+    image: daybreak-rendezvous:latest
+    container_name: daybreak-rendezvous
+    restart: unless-stopped
+    ports:
+      - "37565:37565/udp"
+    environment:
+      - DAYBREAK_RENDEZVOUS_ADDR=:37565
+      - DAYBREAK_LOG_LEVEL=info

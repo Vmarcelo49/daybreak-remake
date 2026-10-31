@@ -214,30 +214,56 @@ reason now goes to the log as `[net] selection ended`.
 
 ### 7. Rendezvous server and NAT punching
 
-Adapt the owner's relay from `Vmarcelo49/ReCaster`, `server/`, into `server/` here. It has what is
-needed: TCP signaling, UDP endpoint discovery, room codes, a TTL, Docker, and no external dependencies.
+Built on 2026-10-31. **The owner deploys the server** and sets its address, and real routers are judged at step 8.
 
-| ReCaster today | Needed here |
-|---|---|
-| A room is one host and one client | Up to 4 peers. Each receives every other peer's endpoint |
-| One public endpoint per peer | Also the private one, so peers behind the same router can connect |
-| Done after two `TunInfo` messages | The room stays open until every peer reports all its links, or the TTL ends |
-| Client in `src/common/net/relay/`, over ENet | A new client on `src/net/udp_socket` |
+- `server/` is adapted from the owner's relay in `Vmarcelo49/ReCaster`. It is UDP only and takes a room of up to 4,
+  since a client already resends everything and only the game socket's address matters. It introduces a joiner and
+  a host, and no game packet passes through it. A request is at least as large as any answer, so a forged sender gains
+  nothing, and joins are limited to 20 a minute per address.
+- A host gets a 4-letter code, shown in its lobby. A joiner tries the host's public and private addresses, and the
+  first to answer is used. Meanwhile the host knocks on the joiner's addresses, which opens its own router.
+- **Every peer proves a link to every other in the lobby**, with direct IP too. Each peer's public and private addresses
+  reach the room in the host's plan, everyone probes everyone, and the start waits for the full mesh. If a link does
+  not form within 10 seconds of everyone being ready, the lobby names the two players.
+- GekkoNet knows a peer by one address, but a machine can show several. So a game packet carries its sender's number.
+- `[network] server` holds the address, as an IP and port. Names are not resolved, so the online menu's SERVER row
+  can edit it. Until one is set, there are no codes and direct IP still works.
 
-A full mesh of 4 is 6 links, and all must open before the match starts. A failure names the peer and
-suggests direct IP. Rate-limit joins, because 4-letter codes can be guessed. Players see each other's
-IP, and the lobby says so.
+**Done when:** Go tests pass, and a CTest runs 4 instances on localhost through the local server. Real NAT is judged
+at step 8.
 
-**Done when:** Go tests pass, and a CTest runs 4 instances on localhost through the local server.
-Real NAT is judged at step 8.
-
-**The owner deploys the server** and gives the address that goes into the default server list.
+Result: `rendezvous_server_test` passes, and `net_play_check` plays 4 peers by room code on localhost, 885 frames
+with equal `stateHash`, and refuses a wrong code. Limits: localhost has no router, so punching itself has not been
+exercised. Symmetric NAT cannot be punched, and needs a relay. IPv4 only.
 
 ### 8. Real play (owner)
 
 Linux with Windows on real networks: 2 players, then 4, over LAN and internet. Check the feel at the
 default delay, wrong sounds after rollbacks, a dropped player, and whether punching works on real
 routers. Then close #3, and decide whether a relay is needed from how many connections failed.
+
+## Later: the v2 lobby
+
+The owner's idea of 2026-10-31, not part of this plan's steps. Nothing below is built, and the room and
+ready flow of step 6 already leads into it.
+
+- **Room list on entering online:** public rooms as `Room <ID> <Current / Max> <Host ping>`, with helper buttons
+  for Create Room, Join Room (a room number or direct IP, and the only way into a private room) and Matchmaking
+  (joins any room with a free slot, or creates one).
+- **Room settings:** public or private, online or LAN.
+- **Inside a room:** names on the left, chat on the right, and a large Ready button at the bottom. Once all are
+  ready, Character Select follows, as now.
+- **Chat:** T starts typing, Enter sends, Esc cancels, in English and Japanese.
+
+What it needs that does not exist yet:
+
+- The rendezvous server has to keep public rooms and answer a list, in several packets, since a list outgrows the
+  48-byte request that keeps it from amplifying. Matchmaking is a server query on top of that.
+- A host's ping in the list means reaching a host the player has not joined, so each listed host would have to be
+  told to open its router. A ping to the server is the cheap stand-in.
+- LAN rooms need discovery by broadcast on the local network, with no server.
+- Chat cannot use the lobby's resend-the-whole-state rule, so it needs numbered messages. Names are plain ASCII
+  today, and chat needs UTF-8 with validation, SDL text input for the Japanese IME, and a line of history.
 
 ## Stop and ask
 

@@ -25,7 +25,7 @@ struct FrontendSettings {
     std::string language;   // empty is the game's own Japanese
     std::string playerName = "PLAYER";
     int netPort = 37564, netInputDelay = 2;
-    std::string netLastHost;
+    std::string netLastHost, netServer;
     // The Options screen's toon-rendering row (issue #21). Live state: main syncs it into
     // the renderer's appearance every frame, so flipping the row needs no restart, and
     // toUserSettings() carries it into the persisted document.

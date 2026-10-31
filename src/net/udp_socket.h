@@ -25,6 +25,9 @@ public:
     // Port 0 picks a free one. False with `error` set when the port cannot be bound.
     bool open(std::uint16_t port, std::string& error);
     std::uint16_t port() const;
+    // This machine's address on its network, with this socket's port, for players behind the same
+    // router. ip is 0 when there is no network.
+    Address local_address() const;
     void send(const Address& to, const void* data, size_t size);
     // False when nothing is waiting.
     bool receive(Address& from, std::vector<std::uint8_t>& data);

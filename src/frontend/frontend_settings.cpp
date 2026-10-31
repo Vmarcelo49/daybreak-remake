@@ -33,6 +33,7 @@ void applyUserSettings(FrontendSettings& settings, const settings::UserSettings&
     settings.netPort = document.netPort;
     settings.netInputDelay = document.netInputDelay;
     settings.netLastHost = document.netLastHost;
+    settings.netServer = document.netServer;
     settings.shadowRendering = document.shadowRendering;
 }
 
@@ -51,6 +52,7 @@ settings::UserSettings toUserSettings(const FrontendSettings& settings) {
     document.netPort = settings.netPort;
     document.netInputDelay = settings.netInputDelay;
     document.netLastHost = settings.netLastHost;
+    document.netServer = settings.netServer;
     return document;
 }
 bool bindingCaptureActive() { return capturePlayer >= 0; }

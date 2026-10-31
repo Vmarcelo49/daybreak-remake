@@ -21,6 +21,14 @@ std::uint64_t installHash() {
 
 constexpr char kNameLetters[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_";
 constexpr char kDigits[] = "0123456789";
+constexpr char kCodeLetters[] = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";  // server/protocol.go's alphabet
+
+// The rendezvous server the settings name, or a zero port.
+net::Address settingsServer() {
+    net::Address server;
+    if (!net::parse_address(frontendSettings().netServer, server) || server.ip == 0) return {};
+    return server;
+}
 
 // Text edited with the menu's own buttons, so a pad can do it too: left and right pick a place, and
 // up and down turn its character on a wheel.
@@ -72,7 +80,7 @@ bool beginOnlineHost(FrontendState& state, int port, std::string& error) {
     if (!context->socket.open(static_cast<std::uint16_t>(port), error)) return false;
     net::MatchPlan plan;
     onlineMatchNumbers(plan.token, plan.seed);
-    context->lobby = std::make_unique<net::Lobby>(net::Lobby::host(context->socket, plan, installHash()));
+    context->lobby = std::make_unique<net::Lobby>(net::Lobby::host(context->socket, plan, installHash(), settingsServer()));
     state.online = std::move(context);
     return true;
 }
@@ -90,6 +98,19 @@ bool beginOnlineJoin(FrontendState& state, const std::string& address, std::stri
     return true;
 }
 
+bool beginOnlineCode(FrontendState& state, const std::string& code, std::string& error) {
+    const net::Address server = settingsServer();
+    if (server.port == 0) {
+        error = "A room code needs a server. Set one below.";
+        return false;
+    }
+    auto context = std::make_shared<OnlineContext>();
+    if (!context->socket.open(0, error)) return false;
+    context->lobby = std::make_unique<net::Lobby>(net::Lobby::join_code(context->socket, server, code, installHash()));
+    state.online = std::move(context);
+    return true;
+}
+
 namespace {
 
 class OnlineMenuScreen : public PanelScreen {
@@ -99,6 +120,7 @@ public:
         auto& settings = frontendSettings();
         name_ = settings.playerName;
         address_ = settings.netLastHost.empty() ? "192.168.000.001:37564" : settings.netLastHost;
+        server_ = settings.netServer.empty() ? "000.000.000.000:37565" : settings.netServer;
         char port[8];
         std::snprintf(port, sizeof port, "%05d", settings.netPort);
         port_ = port;
@@ -119,6 +141,7 @@ public:
                 edit_ = {};
                 settings.playerName = trimmedRight(name_).substr(0, net::kMaxNameLength);
                 settings.netLastHost = address_;
+                settings.netServer = server_;
                 settings.netPort = std::clamp(std::atoi(port_.c_str()), 1, 65535);
             } else {
                 edit_.update(in);
@@ -143,6 +166,12 @@ public:
             if (beginOnlineJoin(state_, address_, failure)) return ScreenId::NetplayLobby;
             state_.onlineMessage = failure;
             break;
+        case Row::Code:
+            if (beginOnlineCode(state_, code_, failure)) return ScreenId::NetplayLobby;
+            state_.onlineMessage = failure;
+            break;
+        case Row::CodeText: edit_.begin(code_, kCodeLetters, net::kRoomCodeLength); break;
+        case Row::Server: edit_.begin(server_, kDigits, 21); break;
         case Row::Address: edit_.begin(address_, kDigits, 21); break;
         case Row::Name: edit_.begin(name_, kNameLetters, net::kMaxNameLength); break;
         case Row::Port: edit_.begin(port_, kDigits, 5); break;
@@ -158,25 +187,26 @@ public:
         const auto& settings = frontendSettings();
         char delay[32];
         std::snprintf(delay, sizeof delay, "%d", settings.netInputDelay);
-        const Words names[kRows] = {{"部屋を作る", "HOST A ROOM"}, {"部屋に入る", "JOIN A ROOM"}, {"相手の住所", "ADDRESS"},
-                                    {"名前", "NAME"}, {"ポート", "PORT"}, {"入力遅延", "INPUT DELAY"}, {"戻る", "BACK"}};
-        const std::string* values[kRows] = {nullptr, nullptr, &address_, &name_, &port_, nullptr, nullptr};
+        const Words names[kRows] = {{"部屋を作る", "HOST A ROOM"}, {"コードで入る", "JOIN BY CODE"}, {"部屋のコード", "ROOM CODE"},
+                                    {"住所で入る", "JOIN BY ADDRESS"}, {"相手の住所", "ADDRESS"}, {"名前", "NAME"}, {"ポート", "PORT"},
+                                    {"入力遅延", "INPUT DELAY"}, {"サーバー", "SERVER"}, {"戻る", "BACK"}};
+        const std::string* values[kRows] = {nullptr, nullptr, &code_, nullptr, &address_, &name_, &port_, nullptr, &server_, nullptr};
         for (int i = 0; i < kRows; ++i) {
-            const float y = 130.f + 46.f * i;
+            const float y = 112.f + 36.f * i;
             const bool selected = i == row_;
             if (selected) batch.pushSolid({116, y - 6.f, 568, 34}, kHighlight);
             label(batch, say(names[i]), 134, y, 20.f, selected ? kWhite : kPale);
             if (values[i]) drawText(batch, *values[i], y, selected);
             else if ((Row)i == Row::Delay) choice(batch, delay, y, selected);
         }
-        if (!state_.onlineMessage.empty()) centred(batch, state_.onlineMessage.c_str(), 400, 460, 18.f, kGold);
+        if (!state_.onlineMessage.empty()) centred(batch, state_.onlineMessage.c_str(), 400, 508, 18.f, kGold);
         help(batch, edit_.active() ? say({"上下で文字、左右で桁、決定で終了", "Up and down change it, left and right move, confirm finishes."})
-                                   : say({"住所はポートも含みます", "Join needs the host's address and port. Hosting may need your router to forward the port."}));
+                                   : say({"コードにはサーバーが必要です。住所はポートも含みます", "A room code needs a server. Without one, the host may have to forward their port."}));
     }
 
 private:
-    enum class Row { Host, Join, Address, Name, Port, Delay, Back };
-    static constexpr int kRows = 7;
+    enum class Row { Host, Code, CodeText, Join, Address, Name, Port, Delay, Server, Back };
+    static constexpr int kRows = 10;
 
     void drawText(SpriteRenderer& batch, const std::string& value, float y, bool selected) const {
         const float x = 400.f;
@@ -189,7 +219,7 @@ private:
     }
 
     FrontendState& state_;
-    std::string name_, address_, port_;
+    std::string name_, address_, port_, server_, code_ = "AAAA";
     WheelEdit edit_;
     int row_ = 0, sound_ = -1;
 };
@@ -217,7 +247,7 @@ public:
         net::Lobby& lobby = *state_.online->lobby;
         if (lobby.refused() != net::Refusal::None) return close(net::refusal_text(lobby.refused()));
         if (lobby.host_lost()) return close(say({"部屋から応答がありません。", "The room stopped answering."}));
-        if (lobby.can_start()) lobby.start();
+        if (lobby.is_host() && lobby.can_start()) lobby.start();
         if (lobby.ready()) return begin_selection();
 
         if (in.cancel) sound_ = 1;
@@ -240,6 +270,10 @@ public:
         frame(batch, {"通信対戦 ロビー", "ONLINE LOBBY"}, 40, 540);
         const net::Lobby& lobby = *state_.online->lobby;
         const net::MatchPlan& plan = lobby.plan();
+        if (!lobby.room_code().empty()) {
+            const std::string code = std::string(say({"部屋のコード  ", "ROOM CODE  "})) + lobby.room_code();
+            centred(batch, code.c_str(), 400, 460, 28.f, kGold);
+        }
         for (int peer = 0; peer < 4; ++peer) {
             const float y = 124.f + 46.f * (float)peer;
             if (peer >= plan.peerCount) {
@@ -258,7 +292,9 @@ public:
         batch.pushSolid({130, 322, 540, 2}, kGold);
         drawRow(batch, 0, choice_.ready ? say({"準備完了を取消", "NOT READY"}) : say({"準備完了", "READY"}));
         drawRow(batch, 1, say({"部屋を出る", "LEAVE"}));
-        if (!state_.onlineMessage.empty()) help(batch, state_.onlineMessage.c_str());
+        const std::string problem = lobby.link_problem();
+        if (!problem.empty()) help(batch, problem.c_str());
+        else if (!state_.onlineMessage.empty()) help(batch, state_.onlineMessage.c_str());
         else if (plan.peerCount < 2) help(batch, say({"相手を待っています", "Waiting for another player."}));
         else help(batch, say({"全員の準備が完了すると始まります。IPアドレスは他の人に見えます", "It starts when everyone is ready. Other players can see your IP address."}));
     }
@@ -274,7 +310,7 @@ private:
     // The selection is the same on every machine from here: same starting state, same inputs.
     ScreenId begin_selection() {
         OnlineContext& online = *state_.online;
-        online.matchPlan = online.lobby->plan();
+        online.matchPlan = online.lobby->plan_for_match();
         online.inMatch = true;
         state_.onlineHumans = online.matchPlan.peerCount;
         state_.randomState = online.matchPlan.seed;

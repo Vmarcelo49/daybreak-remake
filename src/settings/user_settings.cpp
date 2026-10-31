@@ -164,7 +164,7 @@ UserSettings::UserSettings() {
 
 bool UserSettings::operator==(const UserSettings& other) const {
     return playerName == other.playerName && netPort == other.netPort && netInputDelay == other.netInputDelay &&
-           netLastHost == other.netLastHost && installDir == other.installDir && language == other.language && fullscreen == other.fullscreen &&
+           netLastHost == other.netLastHost && netServer == other.netServer && installDir == other.installDir && language == other.language && fullscreen == other.fullscreen &&
            resolution == other.resolution &&
            toonRendering == other.toonRendering &&
            shadowRendering == other.shadowRendering &&
@@ -329,10 +329,10 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
             } else if (key == "input_delay") {
                 if (parseInt(value, number) && number >= 0 && number <= 8) candidate.netInputDelay = number;
                 else warn("input_delay: '" + value + "' is not 0 to 8, ignoring it");
-            } else if (key == "last_host") {
+            } else if (key == "last_host" || key == "server") {
                 const bool plain = std::all_of(value.begin(), value.end(), [](char c) { return (c >= '0' && c <= '9') || c == '.' || c == ':'; });
-                if (plain && value.size() <= 21) candidate.netLastHost = value;
-                else warn("last_host: '" + value + "' is not an address, ignoring it");
+                if (plain && value.size() <= 21) (key == "server" ? candidate.netServer : candidate.netLastHost) = value;
+                else warn(key + ": '" + value + "' is not an address, ignoring it");
             } else {
                 warn("ignoring unknown key '" + key + "'");
             }
@@ -513,7 +513,9 @@ std::string serialize(const UserSettings& settings) {
         << "# Frames of input delay, 0 to 8. More feels slower, and rolls back less.\n"
         << "input_delay = " << settings.netInputDelay << "\n"
         << "# The address last joined.\n"
-        << "last_host = " << settings.netLastHost << "\n\n";
+        << "last_host = " << settings.netLastHost << "\n"
+        << "# The rendezvous server, for room codes: an IP address and port.\n"
+        << "server = " << settings.netServer << "\n\n";
 
     out << "[display]\n"
         << "fullscreen = " << (settings.fullscreen ? "true" : "false") << "\n"
