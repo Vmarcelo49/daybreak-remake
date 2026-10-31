@@ -28,14 +28,16 @@ story, versus, character select, battle, results and options.
 | Options and settings | Our own settings file, never the original's | `src/frontend/screen_options.cpp`, `docs/USER-SETTINGS.md` |
 | Texture packs | Read from beside the executable; extractor and verifier exist. Download and prompt wait for a pack | `docs/TEXTURE-PACKS.md`, `tools/asset-tools/texture_pack.py` |
 | Web | Builds and fights, with an open crash (#88) | `docs/BUILD-web.md`, `webdelivery/` |
-| Not built | Netplay (#3), macOS | |
+| Online | **The current priority.** Not built yet; follow the plan step by step (#3) | `docs/ONLINE-PLAN.md` |
+| Not built | macOS | |
 
 Open issues are on GitHub (`Vmarcelo49/daybreak-remake`), and they are the current bug list.
 
 ## Work mandate
 
-The project is in **M6**: the owner orders product work directly. The milestones and why the
-core exists are in [`docs/DIRECTION.md`](docs/DIRECTION.md).
+The project is in **M6**: the owner orders product work directly, and the priority is
+[`docs/ONLINE-PLAN.md`](docs/ONLINE-PLAN.md). The milestones and why the core exists are in
+[`docs/DIRECTION.md`](docs/DIRECTION.md).
 
 ### Is your task allowed?
 

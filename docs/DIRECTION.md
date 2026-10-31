@@ -56,7 +56,8 @@ where marked. The task list is [`DIRECTION-STATUS.md`](DIRECTION-STATUS.md).
 | **M5** | Core becomes the default; the legacy path is deleted in its own reviewed commit | Owner approves after playtest; full front-end loop passes; pre-cleanup revision recorded |
 | **M6** | Product work: story, netplay, ARM and web, polish | Ordered by the owner after M5 |
 
-**M1 to M5 are closed. The project is in M6**, where the owner orders the work directly.
+**M1 to M5 are closed. The project is in M6**, where the owner orders the work directly. The
+priority is online: [`ONLINE-PLAN.md`](ONLINE-PLAN.md).
 
 The separate Rena+0 cleanup (old step 2h) is skipped: M5 removes the legacy path as a whole.
 
