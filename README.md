@@ -25,7 +25,7 @@ at runtime has not been verified.
 | Texture packs | Optional PNG packs are read from beside the executable. No pack is published yet. |
 | Linux, Windows | Build and package. CI builds both when `VERSION` changes. |
 | Web | Battles run, but an uncaught exception ends them after about 31 s (issue #88). |
-| Multiplayer | Local only. LAN and online are not implemented. |
+| Multiplayer | Local, LAN and online for 2 to 4 players, with rollback and Linux and Windows together. In testing: not yet played over real networks. |
 | macOS | Not attempted. |
 
 This is not an exhaustive bug list. The plan and its live state are

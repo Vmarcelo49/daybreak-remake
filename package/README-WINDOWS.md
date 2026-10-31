@@ -20,6 +20,21 @@ confirm and X to resume. Bindings can be changed in Options.
 Settings are stored in your Windows application-data folder under
 `daybreak-decomp/settings.conf`. The game files are not used for settings storage.
 
+## Playing online
+
+Choose **NETWORK** on the title. To use a room code, first enter the server's address in the **SERVER** row, which
+you get from whoever runs it. The host chooses **HOST A ROOM**, and the room code appears in the lobby. Everyone else
+enters it and chooses **JOIN BY CODE**. Once everyone is ready, you all go to the character select. Other players can
+see your IP address.
+
+Everyone needs this same package and the same game data, or the lobby refuses them.
+
+## Reporting a problem
+
+Attach `daybreak.log`, and `daybreak-previous.log` if the game crashed. Both are in
+`%APPDATA%\daybreak-decomp\`. Say which character and stage you had, and for online problems, what everyone's
+lobby showed.
+
 ## What to test
 
 Check title → selection → countdown → battle → results → rematch. Confirm that

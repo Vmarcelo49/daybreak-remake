@@ -88,7 +88,7 @@ done
 
 usage() {
     cat <<EOF
-daybreak ${version:-?} — Higurashi Daybreak Kai Fan Remake (offline versus) for Linux
+daybreak ${version:-?} — Higurashi Daybreak Kai Fan Remake for Linux
 
 usage: daybreak [--install=DIR] [--screen=ID] [other flags]
 

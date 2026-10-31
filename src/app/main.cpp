@@ -59,6 +59,11 @@
 #include "settings/user_settings.h"
 #include "hud/hud_bridge.h"
 #include "camera/fighter_pose.h"
+#if defined(_WIN32)
+#include <io.h>
+#elif !defined(__EMSCRIPTEN__)
+#include <unistd.h>
+#endif
 #ifdef DAYBREAK_ONLINE
 #include <chrono>
 #include <thread>
@@ -118,18 +123,23 @@ static bool usesUserConfig(const Options& o) {
 // they are in place before the first screen, and the display preference is applied later
 // (initScreens owns the resolution list). A malformed file, an unsupported version or an
 // unreadable directory all land here as "keep the defaults" plus a printed reason.
-static void loadUserSettings(App& app) {
-    app.settingsPath = settings::defaultConfigPath();
+static std::string settingsFilePath() {
 #if defined(_WIN32)
     // Explorer launches usually have no HOME/XDG variables. Use Windows user
     // application data so a portable release never writes settings into the game.
     if (!std::getenv("XDG_CONFIG_HOME")) {
         if (char* directory = SDL_GetPrefPath("", "daybreak-decomp")) {
-            app.settingsPath = std::string(directory) + "settings.conf";
+            const std::string path = std::string(directory) + "settings.conf";
             SDL_free(directory);
+            return path;
         }
     }
 #endif
+    return settings::defaultConfigPath();
+}
+
+static void loadUserSettings(App& app) {
+    app.settingsPath = settingsFilePath();
     if (app.settingsPath.empty()) {
         std::printf("[settings] no $XDG_CONFIG_HOME or $HOME: running with defaults, "
                     "nothing will be written\n");
@@ -1533,6 +1543,33 @@ static bool webDeliveryEnabled() {
 }
 #endif
 
+#if !defined(__EMSCRIPTEN__)
+// A game opened from a file manager has no console, so everything it prints would be lost, including
+// what a tester needs to report. The log sits beside the settings, and the last run's is kept once,
+// since a player usually opens the game again after a crash.
+static void logToFileWithoutConsole(const Options& options) {
+    if (verificationRun(options) || options.frames > 0) return;
+#if !defined(_WIN32)
+    if (isatty(STDOUT_FILENO)) return;
+#endif
+    const std::filesystem::path config = std::filesystem::u8path(settingsFilePath());
+    if (config.empty()) return;
+    std::error_code error;
+    std::filesystem::create_directories(config.parent_path(), error);
+    const std::filesystem::path log = config.parent_path() / "daybreak.log";
+    std::filesystem::rename(log, config.parent_path() / "daybreak-previous.log", error);
+    if (!std::freopen(log.u8string().c_str(), "w", stdout)) return;
+    std::setvbuf(stdout, nullptr, _IOLBF, 4096);
+    // Both streams in one file, in the order they happened.
+#if defined(_WIN32)
+    _dup2(_fileno(stdout), _fileno(stderr));
+#else
+    dup2(fileno(stdout), fileno(stderr));
+#endif
+    std::setvbuf(stderr, nullptr, _IONBF, 0);
+}
+#endif
+
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     auto* app = new App();
     *appstate = app;
@@ -1614,6 +1651,9 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
         return SDL_APP_FAILURE;
     }
     app->opts.bootOpening = resolveBootOpening(app->opts);
+#if !defined(__EMSCRIPTEN__)
+    logToFileWithoutConsole(app->opts);
+#endif
     const bool muteOutput = app->opts.noAudio || (!app->opts.withAudio &&
         (verificationRun(app->opts) || app->opts.frames > 0 || app->opts.audioTest));
     fnd::audio::set_output_muted(muteOutput);

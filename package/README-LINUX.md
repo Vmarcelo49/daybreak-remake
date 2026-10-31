@@ -1,13 +1,16 @@
-# Higurashi Daybreak Kai Fan Remake — Linux release (offline versus)
+# Higurashi Daybreak Kai Fan Remake — Linux release
 
 This package is the playable port of *Higurashi Daybreak* (`DaybreakDX.exe`, Twilight
 Frontier / 07th Expansion) for 64-bit Linux: title screen, character/weapon selection,
-stage settings, VS, a real 1v1 or 2v2 battle, results, and rematch. It is **not** a copy of
+stage settings, VS, a real 1v1 or 2v2 battle, results, rematch, story mode and online play. It is **not** a copy of
 the game: it reads **your own** install's files (`.X` models, `.cnv` images,
 `daybreakXX.dat` bundles) in place, so you need the original game.
 
 Nothing in this archive is game data. The port is at an early-release stage: see
 "What is not supported yet" before reporting something missing.
+
+**Reporting a problem:** attach `daybreak.log`, and `daybreak-previous.log` if the game crashed, from
+`~/.config/daybreak-decomp/`.
 
 ## 1. What you need
 
@@ -79,6 +82,15 @@ instructions for that run, while the remembered folder is only a starting point,
 remembered folder that has since been moved or deleted is reported and skipped instead of
 stopping the launch.
 
+### Playing online
+
+Choose **NETWORK** on the title. To use a room code, first enter the server's address in the **SERVER** row, which you
+get from whoever runs it. The host chooses **HOST A ROOM**, and the room code appears in the lobby. Everyone else
+enters it and chooses **JOIN BY CODE**. Once everyone is ready, you all go to the character select. Other players can
+see your IP address.
+
+Everyone needs this same package and the same game data, or the lobby refuses them.
+
 ## 3. Controls (defaults)
 
 Menus: **arrow keys** move, **Z** confirms, **X** cancels, **Esc** leaves the screen
@@ -106,8 +118,8 @@ saved in `$XDG_CONFIG_HOME/daybreak-decomp/settings.conf`.
 
 ## 4. What is not supported yet
 
-- **Story, prologue and netplay screens.** This is the offline versus front end (decision
-  D6); those title items stay on the title screen with a console note.
+- **Online across all systems.** Linux and Windows play together. The web and macOS builds do not. Routers that
+  use symmetric NAT cannot connect without a relay, and there is none yet.
 - **Texture-resolution selection** (renderer Options row 2) and browser-side settings
   persistence are still open. Toon shading (row 0) and character shadows (row 1) are live.
 - **3v3/4v4**: a match is at most four fighters, two teams of one or two.
