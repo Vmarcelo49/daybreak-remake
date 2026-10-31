@@ -13,6 +13,7 @@ SDL3_VERSION=3.4.16
 GLM_VERSION=1.0.1
 STB_COMMIT=2c980bb59875b0d32144a71867fbdebb2f77cd20   # nothings/stb master, v1.22 stb_vorbis
 PL_MPEG_COMMIT=c871f2be022ece7ef4f64230b4fb8e1fb9eb6023   # phoboslab/pl_mpeg master, 2025-12-30
+GEKKONET_COMMIT=9da2363d7c5a68cc77f8dfe2da7cf51d3afe3bee  # HeatXD/GekkoNet v20261024222910-9da2363
 
 fetch_zip() {  # url destdir name
     local url=$1 dest=$2 name=$3 tmp
@@ -26,6 +27,7 @@ fetch_zip() {  # url destdir name
 }
 
 fetch_zip "https://github.com/g-truc/glm/archive/refs/tags/${GLM_VERSION}.zip" "$tp/glm" "glm ${GLM_VERSION}"
+fetch_zip "https://github.com/HeatXD/GekkoNet/archive/${GEKKONET_COMMIT}.zip" "$tp/GekkoNet" "GekkoNet ${GEKKONET_COMMIT}"
 
 # stb_vorbis.c and stb_truetype.h are single files, not zips: fetch the pinned raw blobs
 # directly. stb_truetype.h is a hard requirement (ui/text.cpp includes it and CMake puts

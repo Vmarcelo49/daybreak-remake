@@ -716,6 +716,12 @@ static bool startCoreBattle(App& app, const MatchSetup& config) {
     try {
         app.coreBattle.start(core, moves, weapons);
         app.coreBattle.set_rollback_stress(app.opts.rollbackStress);
+#ifdef DAYBREAK_ONLINE
+        if (app.opts.netStress > 0) {
+            app.netSession = net::Session::stress(app.coreBattle, app.opts.netStress);
+            app.coreBattle.set_driver(app.netSession.get());
+        }
+#endif
     } catch (const std::exception& error) {
         app.error = std::string("battle: ") + error.what();
         return false;

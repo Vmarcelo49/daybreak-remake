@@ -100,6 +100,8 @@ struct Options {
     std::string language;
     // --rollback-stress=N: every tick rewinds up to N ticks and replays. The capture must not change.
     unsigned rollbackStress = 0;
+    // --net-stress=N: the same through a GekkoNet stress session, which also compares state hashes.
+    unsigned netStress = 0;
     // --texture-pack=<folder>: PNGs at the game's paths, replacing its textures at any size.
     std::string texturePack;
     // --story-team=N: runs team N's six fights (the team-select scene does this in play).
@@ -218,6 +220,9 @@ struct App {
     // values and the effects, instead of the versus vignette's frame-index script.
     // The vendored core drives the battle; `battle` is all the product reads.
     sim::CoreBattle              coreBattle;
+#ifdef DAYBREAK_ONLINE
+    std::unique_ptr<net::Session> netSession;
+#endif
     game::Battle*                battle = &coreBattle;
     std::deque<xm::Controller>   coreShotControllers;   // this frame's shot poses
     bool                         matchMode = false;

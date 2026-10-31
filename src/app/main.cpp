@@ -59,6 +59,9 @@
 #include "settings/user_settings.h"
 #include "hud/hud_bridge.h"
 #include "camera/fighter_pose.h"
+#ifdef DAYBREAK_ONLINE
+#include "net/session.h"
+#endif
 #include "battle/match_view.h"
 #include "hud/view_layout.h"
 #include "camera/arena_camera.h"
@@ -1628,5 +1631,12 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 }
 
 void SDL_AppQuit(void* appstate, SDL_AppResult result) {
+#ifdef DAYBREAK_ONLINE
+    if (static_cast<App*>(appstate)->netSession) {
+        const net::SessionStats& stats = static_cast<App*>(appstate)->netSession->stats();
+        std::printf("[net] %u updates, %u rollbacks, %u desyncs, worst %.2f ms\n", stats.updates, stats.rollbacks,
+                    stats.desyncs, stats.worstUpdate.count() / 1000.0);
+    }
+#endif
     appQuit(static_cast<App*>(appstate), result);
 }

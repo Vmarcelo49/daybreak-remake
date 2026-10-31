@@ -108,15 +108,27 @@ prediction can do. Online, leave only when the round's end is on a confirmed fra
 
 ### 3. GekkoNet on one machine
 
-- Pin a release in `scripts/fetch_deps.sh`, and build it as a separate C++20 static library. Check
-  MinGW first: the project's examples use Visual Studio only. **If it does not build there in 3
-  attempts, stop and ask.**
-- Replace its socket with our adapter, so `asio` is not linked.
-- `src/net/session`, and a `GekkoStressSession` driving the real battle: `--net-stress=8`.
-- Measure the worst frame with `refresh()` included.
+Done on 2026-10-30.
+
+- Commit `9da2363d` is pinned in `scripts/fetch_deps.sh` and built as a separate C++20 static library.
+  It built with GCC and MinGW on the first attempt. Native only, without `asio`.
+- `src/net/session` drives the real battle through `GekkoStressSession`, with `--net-stress=8`.
+- `tests/net_stress_test.cpp` runs a full match. Its MinGW build runs by hand under Wine.
 
 **Done when:** the stress session runs a full match headless, on Linux and under Wine, with no desync
 event, and the worst 8-frame rollback fits inside a 16.7 ms frame with rendering.
+
+Measured on one machine, with an 8-tick rollback on every tick, which is harsher than real play:
+
+| | Mean | Worst | Over 11.4 ms |
+|---|---|---|---|
+| Linux, 4 humans | 1.4 ms | 4.4 ms | 0 |
+| Linux, 4 COM | 2.2 ms | 9.1 ms | 0 |
+
+Those are 3 runs with the machine at a load near 4. At a load near 15, the same test reached 79 ms, at
+different ticks each run. Under Wine the worst was 37 ms, measured only on a loaded machine. So a busy
+player's machine can miss a frame in a rollback, and step 8 has to judge how that feels. 11.4 ms is
+16.7 ms less the 5.3 ms `docs/PERFORMANCE.md` gives the four-view renderer, not measured together.
 
 ### 4. Two instances over UDP
 

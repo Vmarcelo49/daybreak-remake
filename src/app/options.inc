@@ -134,6 +134,7 @@ void usage() {
         "  --sim-roster=<a>,<b>,<c>,<d>  with --match: four <dir>/<name>[:costume][@weaponSlot]\n"
         "                     exactly what the DX9 scene does)\n"
         "  --rollback-stress=N  with --out: every tick rewinds up to N ticks (1..8) and replays\n"
+        "  --net-stress=N     with --out: GekkoNet rolls back N ticks on every tick and checks for desyncs\n"
         "  --local-players=N  verification: open N local human views (1..4) by assigning\n"
         "                     controllers 0..N-1 to the battle panels and give a\n"
         "                     controller with no attached pad a deterministic synthetic\n"
@@ -383,6 +384,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--list") o.list = true;
         else if (a == "--hud-test") o.hudTest = true;
         else if (a == "--hud-probe") { o.hudTest = true; o.hudProbe = true; }
+        else if (!(v = val("--net-stress=")).empty()) o.netStress = static_cast<unsigned>(std::atoi(v.c_str()));
         else if (!(v = val("--rollback-stress=")).empty()) o.rollbackStress = static_cast<unsigned>(std::atoi(v.c_str()));
         else if (!(v = val("--pause-overlay=")).empty()) {
             o.pauseOverlay = std::atoi(v.c_str());
@@ -498,8 +500,8 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
     } else if (o.pauseOverlay > 0) {
         error = "--pause-overlay is a capture instrument: it needs --out";
         return false;
-    } else if (o.rollbackStress > 0) {
-        error = "--rollback-stress is a capture instrument: it needs --out";
+    } else if (o.rollbackStress > 0 || o.netStress > 0) {
+        error = "--rollback-stress and --net-stress are capture instruments: they need --out";
         return false;
     }
     for (const char* mode : {"auto", "player", "front", "top", "bounds", "arena"})

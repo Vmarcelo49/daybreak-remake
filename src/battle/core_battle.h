@@ -96,6 +96,13 @@ private:
 // The port's labels for the core's rows, for the HUD and tools that read a coarse state.
 game::FighterState fighter_state_for_row(unsigned row);
 
+// Takes over what a tick means, such as an online session deciding which ticks run.
+class TickDriver {
+public:
+    virtual ~TickDriver() = default;
+    virtual game::BattleFrame run(const Inputs& inputs) = 0;
+};
+
 class CoreBattle final : public game::Battle {
 public:
     // What a rollback restores: the simulation, and what this class derives from it over ticks,
@@ -138,6 +145,8 @@ public:
     // Verification: every tick rewinds up to `depth` ticks, runs a wrong prediction nobody sees, and
     // replays the real inputs. The result must equal a run without it.
     void set_rollback_stress(unsigned depth) { m_rollbackStress = depth; }
+    void set_driver(TickDriver* driver) { m_driver = driver; }
+    std::uint64_t state_hash() const { return m_battle->stateHash(); }
     void set_paused(bool paused) override { m_paused = paused; }
     void set_primary_listener_fighter(int fighter) override { m_listener = fighter; }
 
@@ -154,6 +163,9 @@ private:
 
     std::array<ReportedTick, kReportedTicks> m_reported{};
     unsigned m_rollbackStress = 0;
+    TickDriver* m_driver = nullptr;
+    // Stays out of a snapshot: a replayed tick reports the end only once, like its other events.
+    bool m_roundAnnounced = false;
     std::array<Snapshot, kStressRing> m_stressStates{};
     std::array<Inputs, kStressRing> m_stressInputs{};
     std::unique_ptr<sim::Battle> m_battle;

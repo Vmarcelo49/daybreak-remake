@@ -233,6 +233,34 @@ endif()
 add_library(battle_backend STATIC src/battle/core_battle.cpp)
 target_link_libraries(battle_backend PUBLIC battle_core gameplay)
 
+# Online play (docs/ONLINE-PLAN.md). Its own target because GekkoNet needs C++20; only
+# src/net/session.cpp includes its header. Native only, and its asio socket stays out.
+if(NOT EMSCRIPTEN)
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/GekkoNet/GekkoLib/src/gekkonet.cpp")
+        message(FATAL_ERROR "third_party/GekkoNet is missing — run scripts/fetch_deps.sh")
+    endif()
+    file(GLOB GEKKONET_SOURCES third_party/GekkoNet/GekkoLib/src/*.cpp)
+    add_library(gekkonet STATIC ${GEKKONET_SOURCES})
+    target_compile_features(gekkonet PRIVATE cxx_std_20)
+    set_target_properties(gekkonet PROPERTIES CXX_STANDARD 20 CXX_EXTENSIONS ON)
+    target_compile_definitions(gekkonet PUBLIC GEKKONET_STATIC GEKKONET_NO_ASIO)
+    target_include_directories(gekkonet
+        PUBLIC third_party/GekkoNet/GekkoLib/include
+        PRIVATE third_party/GekkoNet/GekkoLib/include/private third_party/GekkoNet/GekkoLib/thirdparty)
+    target_compile_options(gekkonet PRIVATE -w)
+
+    add_library(net_session STATIC src/net/session.cpp)
+    target_link_libraries(net_session PUBLIC battle_backend PRIVATE gekkonet)
+    target_compile_definitions(net_session PUBLIC DAYBREAK_ONLINE)
+
+    # Runs on Linux in CTest, and by hand under Wine for the MinGW build.
+    add_executable(net_stress_test tests/net_stress_test.cpp)
+    target_link_libraries(net_stress_test PRIVATE net_session)
+    if(MINGW)
+        target_link_options(net_stress_test PRIVATE -static)
+    endif()
+endif()
+
 if(NOT CMAKE_CROSSCOMPILING)
     add_executable(simctl src/battle/simctl.cpp)
     target_link_libraries(simctl PRIVATE battle_core)
@@ -242,6 +270,9 @@ endif()
 
 add_executable(daybreak src/app/main.cpp)
 target_link_libraries(daybreak PRIVATE battle_backend)
+if(NOT EMSCRIPTEN)
+    target_link_libraries(daybreak PRIVATE net_session)
+endif()
 if(WIN32)
     set_target_properties(daybreak PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
@@ -547,6 +578,8 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME rollback_stress_test COMMAND rollback_stress_test)
     set_tests_properties(rollback_stress_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 400 LABELS asset)
 
+    add_test(NAME net_stress_test COMMAND net_stress_test)
+    set_tests_properties(net_stress_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 400 LABELS asset)
     add_executable(rollback_presentation_test tests/rollback_presentation_test.cpp)
     target_link_libraries(rollback_presentation_test PRIVATE battle_backend)
     add_test(NAME rollback_presentation_test COMMAND rollback_presentation_test)

@@ -146,6 +146,8 @@ void CoreBattle::start(const BattleConfig& config, const std::array<const gamepl
     m_roundReported = false;
     m_economy.reset();
     m_reported = {};
+    m_driver = nullptr;
+    m_roundAnnounced = false;
 }
 
 void CoreBattle::save_state(Snapshot& snapshot) const {
@@ -168,7 +170,7 @@ game::BattleFrame CoreBattle::step(const fnd::input::PlayerState* inputs[game::k
     Inputs next{};
     for (unsigned i = 0; i < 4; ++i)
         if (inputs[i]) next[i] = slot_input(*inputs[i]);
-    return advance(next);
+    return m_driver ? m_driver->run(next) : advance(next);
 }
 
 game::BattleFrame CoreBattle::advance(const Inputs& inputs) {
@@ -250,7 +252,8 @@ game::BattleFrame CoreBattle::advance_once(const Inputs& inputs) {
     const int delta[2] = {match.scoreDelta[0], match.scoreDelta[1]};
     const int deltaTicks[2] = {match.scoreDeltaTicks[0], match.scoreDeltaTicks[1]};
     m_economy.mirror(score, limit, delta, deltaTicks, finishedWinner, match.timed ? match.remainingTicks / 60 : 0);
-    frame.roundOver = over && !m_roundReported;
+    frame.roundOver = over && !m_roundReported && !m_roundAnnounced;
+    m_roundAnnounced = m_roundAnnounced || frame.roundOver;
     frame.roundOverSide = match.winner;
     m_roundReported = over;
     if (match.awardsReady)

@@ -9,18 +9,23 @@ trap 'rm -rf "$out"' EXIT
 
 failed=0
 for frames in 400 1500 3000; do
-    for stress in 0 8; do
+    for mode in rollback-stress=0 rollback-stress=8 net-stress=8; do
         if ! "$daybreak" --headless --no-audio --install="$install" --screen=battle --frames="$frames" --size=640x360 \
-            --rollback-stress="$stress" --out="$out/$stress.ppm" >/dev/null 2>&1; then
-            echo "FAIL: the run at $frames frames, stress $stress"
+            --"$mode" --out="$out/$mode.ppm" >"$out/log" 2>&1; then
+            echo "FAIL: the run at $frames frames, $mode"
             exit 1
         fi
+        case $mode in net-stress*)
+            grep -q ' 0 desyncs' "$out/log" || { echo "FAIL: $mode at $frames frames: $(grep '\[net\]' "$out/log")"; failed=1; }
+        esac
     done
-    if cmp -s "$out/0.ppm" "$out/8.ppm"; then
-        echo "frame $frames: the same pixels"
-    else
-        echo "FAIL: frame $frames differs with rollbacks forced"
-        failed=1
-    fi
+    for mode in rollback-stress=8 net-stress=8; do
+        if cmp -s "$out/rollback-stress=0.ppm" "$out/$mode.ppm"; then
+            echo "frame $frames, $mode: the same pixels"
+        else
+            echo "FAIL: frame $frames differs with $mode"
+            failed=1
+        fi
+    done
 done
 exit "$failed"
