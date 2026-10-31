@@ -146,6 +146,8 @@ public:
     // replays the real inputs. The result must equal a run without it.
     void set_rollback_stress(unsigned depth) { m_rollbackStress = depth; }
     void set_driver(TickDriver* driver) { m_driver = driver; }
+    void hand_slot_to_cpu(unsigned slot) { m_battle->handSlotToCpu(slot); }
+    bool slot_is_cpu(unsigned slot) const { return m_battle->slotIsCpu(slot); }
     std::uint64_t state_hash() const { return m_battle->stateHash(); }
     void set_paused(bool paused) override { m_paused = paused; }
     void set_primary_listener_fighter(int fighter) override { m_listener = fighter; }

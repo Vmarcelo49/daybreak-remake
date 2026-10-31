@@ -55,16 +55,17 @@ Only `src/net/` includes `gekkonet.h`, as `src/battle/battle.cpp` is the only do
 index into a ring of snapshots we own. This cannot serve spectators who join late, which are out of
 this plan. `limited_saving` stays off, because desync detection needs it off.
 
-**Input.** One packed struct per slot: `{buttons, x, z, present}`. `present` is always 1 for a live
-player.
+**Input.** One packed struct per human: `{x, z, buttons, present}`. `present` is always 1 for a live
+player. COM slots send nothing.
 
 **Disconnect.** GekkoNet agrees a session-wide disconnect frame and feeds zeros from there. So
-`present == 0` appears on the same tick for every peer, rollback included, and the battle then calls
-the core's `BattleCpuDriver::set_actor_owners`. No extra message is needed. The ownership in `roster`
-then changes mid-match, so it joins the snapshot.
+`present == 0` appears on the same tick for every peer, rollback included, and the battle then runs
+`RuntimeBattle::set_native_actor_owners`' handoff. No extra message is needed. Zeros before frame 60
+are ignored, since an input delay and the first prediction also read as zeros.
 
-**Lobby.** Host authority, with small reliable messages (sequence and ack) over the same UDP socket,
-because that is the socket NAT punching opens. The host picks stage, rules and seed.
+**Lobby.** Host authority, over the same UDP socket, because that is the socket NAT punching opens.
+There are no acknowledgements: each side keeps resending its whole state until the other's state shows
+it arrived. The host picks stage, rules and seed.
 
 ## Steps
 
@@ -103,8 +104,8 @@ Done on 2026-10-30.
 without them, and no event fires twice. A sound or an effect that a wrong prediction already showed
 stays, and is judged at step 8.
 
-**For step 4:** the app leaves the battle as soon as `economy().roundOver()` is set, which a wrong
-prediction can do. Online, leave only when the round's end is on a confirmed frame.
+The app leaves the battle as soon as `economy().roundOver()` is set, which a wrong prediction can do.
+Step 4 added the confirmed check, for step 6 to use.
 
 ### 3. GekkoNet on one machine
 
@@ -132,15 +133,23 @@ player's machine can miss a frame in a rollback, and step 8 has to judge how tha
 
 ### 4. Two instances over UDP
 
-- `src/net/udp_socket`, the lobby protocol, and the handshake: protocol version, bundle hash, roster,
-  stage, rules, seed. Validate every packet's length and session token, since these come from strangers.
-- `--net-host=PORT` and `--net-join=IP:PORT`, usable headless with scripted input.
-- A test proxy in `tools/` that adds delay, jitter, loss and duplication.
+Done on 2026-10-30.
+
+- `src/net/udp_socket`, `src/net/lobby`, and the handshake: protocol version, bundle hash, roster,
+  stage, rules, seed. Only the match's own peers, with its token, reach GekkoNet.
+- `netctl`, a headless peer with no window, takes `--host PORT` and `--join IP:PORT`. `daybreak` gets its
+  way in at step 6, through the screens.
+- `tools/net_proxy.py` adds delay, jitter, loss and duplication.
 - Disconnect to COM.
+- The bundle hash reads sizes and each bundle's first and last megabyte, not 4.6 GB.
 
 **Done when:** a CTest runs 2 and 4 headless instances on localhost through the proxy (100 ms, 5%
 loss), 10,000 ticks, with equal `stateHash`; killing one instance mid-match leaves the rest equal, with
 COM in that slot; a different bundle hash is refused.
+
+**For step 6:** leave the battle on `Session::round_over_confirmed`, not `economy().roundOver()`. Sounds
+filtered by `controlled_slots` still treat every human as local. Everyone waits out GekkoNet's default
+5-second timeout when a player drops, which step 8 has to judge.
 
 ### 5. Linux with Windows
 
@@ -150,6 +159,9 @@ COM in that slot; a different bundle hash is refused.
   `-ffp-contract=off`, and confirm that the fingerprints hold.
 
 **Done when:** all 46 combos match between Linux and MinGW for 10,000 ticks.
+
+So far: `netctl` on Linux against the MinGW build under Wine played 3,600 frames of one match with all
+hashes equal.
 
 The risk is `std::sin`, `cos` and `atan2` in about 46 core files and `long double` in 8. If they differ,
 replace them with one implementation under `PATCHES.md`, with citations, starting from the first

@@ -232,6 +232,9 @@ public:
     void fill_special_for_test();
     // FNV-1a over every completed tick's actor states, projectile count and RNG cursor.
     std::uint64_t hash() const;
+    // Hands a human's slot to the CPU from this tick on. Repeating it changes nothing.
+    void handSlotToCpu(unsigned slot);
+    bool slotIsCpu(unsigned slot) const;
     void saveState(BattleSnapshot& snapshot) const;
     // events() is empty until the next step.
     void loadState(const BattleSnapshot& snapshot);

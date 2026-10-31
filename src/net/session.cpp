@@ -1,34 +1,86 @@
 #include "net/session.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <gekkonet.h>
 #include <stdexcept>
+#include <vector>
 
 namespace net {
 
 namespace {
 
-// One slot's input on the wire: small, and the same bytes on every machine.
+// One player's input on the wire: small, and the same bytes on every machine. `present` is 1 for a
+// live player. GekkoNet feeds a dropped player zeros from a frame all peers agree on, so its 0 tells
+// every peer the same tick to hand that slot to COM, even through a rollback.
 struct WireInput {
     std::int8_t x, z;
-    std::uint8_t buttons;
+    std::uint8_t buttons, present;
 };
-static_assert(sizeof(WireInput) == 3);
+static_assert(sizeof(WireInput) == 4);
 
 WireInput to_wire(const sim::SlotInput& input) {
-    return {static_cast<std::int8_t>(input.x), static_cast<std::int8_t>(input.z), static_cast<std::uint8_t>(input.buttons)};
+    return {static_cast<std::int8_t>(input.x), static_cast<std::int8_t>(input.z), static_cast<std::uint8_t>(input.buttons), 1};
 }
 
-sim::Inputs from_wire(const unsigned char* bytes) {
-    sim::Inputs inputs{};
-    for (size_t i = 0; i < inputs.size(); ++i) {
-        WireInput wire;
-        std::memcpy(&wire, bytes + i * sizeof wire, sizeof wire);
-        inputs[i] = {wire.x, wire.z, wire.buttons};
-    }
-    return inputs;
+// GekkoNet's adapter has no context pointer, and a process plays one match.
+UdpSocket* g_socket = nullptr;
+Lobby* g_lobby = nullptr;
+std::array<Address, 4> g_peers{};
+std::uint8_t g_peerCount = 0;
+std::uint32_t g_token = 0;
+constexpr size_t kGameHeader = 1 + sizeof g_token;
+
+constexpr unsigned kSkipEvery = 8;
+// The first frames have no input yet, which reads as zeros: an input delay's worth, and a prediction
+// before the first packet. By this frame a 0 can only mean a player left.
+constexpr int kFirstLiveFrame = 60;
+
+void adapter_send(GekkoNetAddress* address, const char* data, int length) {
+    if (!g_socket || !address || address->size != sizeof(Address) || length < 0) return;
+    std::vector<std::uint8_t> packet(kGameHeader + static_cast<size_t>(length));
+    packet[0] = kGamePacket;
+    std::memcpy(packet.data() + 1, &g_token, sizeof g_token);
+    std::memcpy(packet.data() + kGameHeader, data, static_cast<size_t>(length));
+    Address to;
+    std::memcpy(&to, address->data, sizeof to);
+    g_socket->send(to, packet.data(), packet.size());
 }
+
+GekkoNetResult** adapter_receive(int* length) {
+    static std::vector<GekkoNetResult*> results;
+    results.clear();
+    Address from;
+    std::vector<std::uint8_t> packet;
+    while (g_socket && g_socket->receive(from, packet)) {
+        if (packet.empty()) continue;
+        if (packet[0] == kLobbyPacket) {
+            if (g_lobby) g_lobby->handle(from, packet);
+            continue;
+        }
+        // Only the match's own peers reach GekkoNet, and only with the match's token.
+        if (packet[0] != kGamePacket || packet.size() < kGameHeader) continue;
+        if (std::memcmp(packet.data() + 1, &g_token, sizeof g_token) != 0) continue;
+        bool known = false;
+        for (std::uint8_t i = 0; i < g_peerCount; ++i) known = known || g_peers[i] == from;
+        if (!known) continue;
+        auto* result = static_cast<GekkoNetResult*>(std::malloc(sizeof(GekkoNetResult)));
+        result->addr.size = sizeof from;
+        result->addr.data = std::malloc(sizeof from);
+        std::memcpy(result->addr.data, &from, sizeof from);
+        result->data_len = static_cast<unsigned>(packet.size() - kGameHeader);
+        result->data = std::malloc(result->data_len ? result->data_len : 1);
+        std::memcpy(result->data, packet.data() + kGameHeader, result->data_len);
+        results.push_back(result);
+    }
+    *length = static_cast<int>(results.size());
+    return results.data();
+}
+
+void adapter_free(void* data) { std::free(data); }
+
+GekkoNetAdapter g_adapter{adapter_send, adapter_receive, adapter_free};
 
 void merge(game::BattleFrame& into, game::BattleFrame&& frame) {
     const auto append = [](auto& to, auto& from) { to.insert(to.end(), from.begin(), from.end()); };
@@ -48,6 +100,7 @@ Session::Session(sim::CoreBattle& battle) : m_battle(battle) {}
 
 Session::~Session() {
     if (m_session) gekko_destroy(&m_session);
+    if (m_localPlayer >= 0) g_socket = nullptr, g_lobby = nullptr;
 }
 
 std::unique_ptr<Session> Session::stress(sim::CoreBattle& battle, unsigned distance) {
@@ -65,29 +118,94 @@ std::unique_ptr<Session> Session::stress(sim::CoreBattle& battle, unsigned dista
     return session;
 }
 
+std::unique_ptr<Session> Session::online(sim::CoreBattle& battle, UdpSocket& socket, Lobby& lobby, const MatchPlan& plan,
+                                         std::uint8_t localPeer, unsigned inputDelay) {
+    std::unique_ptr<Session> session(new Session(battle));
+    if (!gekko_create(&session->m_session, GekkoGameSession)) throw std::runtime_error("net: no session");
+    g_socket = &socket;
+    g_lobby = &lobby;
+    g_peers = plan.peers;
+    g_peerCount = plan.peerCount;
+    g_token = plan.token;
+
+    GekkoConfig config{};
+    config.num_players = plan.peerCount;
+    config.max_input_prediction_window = kPredictionWindow;
+    config.input_size = sizeof(WireInput);
+    config.state_size = sizeof(std::uint32_t);
+    config.desync_detection = true;
+    gekko_start(session->m_session, &config);
+    gekko_net_adapter_set(session->m_session, &g_adapter);
+
+    session->m_players = plan.peerCount;
+    session->m_localPlayer = localPeer;
+    for (size_t slot = 0; slot < plan.slots.size(); ++slot)
+        if (plan.slots[slot].peer >= 0) session->m_playerSlot[static_cast<size_t>(plan.slots[slot].peer)] = static_cast<int>(slot);
+    for (std::uint8_t peer = 0; peer < plan.peerCount; ++peer) {
+        if (peer == localPeer) {
+            gekko_add_actor(session->m_session, GekkoLocalPlayer, nullptr);
+            gekko_set_local_delay(session->m_session, peer, static_cast<unsigned char>(inputDelay));
+        } else {
+            Address address = plan.peers[peer];
+            GekkoNetAddress remote{&address, sizeof address};
+            gekko_add_actor(session->m_session, GekkoRemotePlayer, &remote);
+        }
+    }
+    return session;
+}
+
 game::BattleFrame Session::run(const sim::Inputs& inputs) {
     const auto start = std::chrono::steady_clock::now();
-    for (int i = 0; i < 4; ++i) {
-        WireInput wire = to_wire(inputs[static_cast<size_t>(i)]);
-        gekko_add_local_input(m_session, i, &wire);
+    game::BattleFrame frame;
+    // Running ahead of the slowest peer only causes rollbacks, so give it a tick now and then. Not
+    // every tick: the session measures who is ahead only while it advances.
+    if (m_localPlayer >= 0 && ++m_ticks % kSkipEvery == 0 && gekko_frames_ahead(m_session) >= 1.f) {
+        ++m_stats.skippedTicks;
+        gekko_network_poll(m_session);
+        return frame;
+    }
+    if (m_localPlayer >= 0) {
+        WireInput wire = to_wire(inputs[static_cast<size_t>(m_playerSlot[static_cast<size_t>(m_localPlayer)])]);
+        gekko_add_local_input(m_session, m_localPlayer, &wire);
+    } else {
+        for (int i = 0; i < m_players; ++i) {
+            WireInput wire = to_wire(inputs[static_cast<size_t>(i)]);
+            gekko_add_local_input(m_session, i, &wire);
+        }
     }
 
-    game::BattleFrame frame;
     int count = 0;
     GekkoGameEvent** events = gekko_update_session(m_session, &count);
     for (int i = 0; i < count; ++i) {
         const GekkoGameEvent& event = *events[i];
         if (event.type == GekkoAdvanceEvent) {
             if (event.data.adv.rolling_back) ++m_stats.replayedTicks;
-            merge(frame, m_battle.advance(from_wire(event.data.adv.inputs)));
+            sim::Inputs ticked{};
+            for (int player = 0; player < m_players; ++player) {
+                WireInput wire;
+                std::memcpy(&wire, event.data.adv.inputs + static_cast<size_t>(player) * sizeof wire, sizeof wire);
+                const int slot = m_playerSlot[static_cast<size_t>(player)];
+                if (wire.present) ticked[static_cast<size_t>(slot)] = {wire.x, wire.z, wire.buttons};
+                else if (event.data.adv.frame >= kFirstLiveFrame) m_battle.hand_slot_to_cpu(static_cast<unsigned>(slot));
+            }
+            merge(frame, m_battle.advance(ticked));
+            m_frame = event.data.adv.frame + 1;
+            if (!m_battle.economy().roundOver()) m_roundOverFrame = -1;
+            else if (m_roundOverFrame < 0) m_roundOverFrame = event.data.adv.frame;
         } else if (event.type == GekkoSaveEvent) {
             const auto slot = static_cast<std::uint32_t>(event.data.save.frame + 1) % kSlots;
             m_battle.save_state(m_slots[slot]);
             const std::uint64_t hash = m_battle.state_hash();
-            *event.data.save.checksum = static_cast<unsigned>(hash ^ (hash >> 32)) + (m_corruptNextHash ? 1u : 0u);
+            const auto folded = static_cast<std::uint32_t>(hash ^ (hash >> 32));
+            *event.data.save.checksum = folded + (m_corruptNextHash ? 1u : 0u);
             m_corruptNextHash = false;
             *event.data.save.state_len = sizeof slot;
             std::memcpy(event.data.save.state, &slot, sizeof slot);
+            if (m_hashLog) {
+                // A rollback saves its frames again, and the last value stands.
+                while (!m_hashLog->empty() && m_hashLog->back().first >= event.data.save.frame) m_hashLog->pop_back();
+                m_hashLog->emplace_back(event.data.save.frame, folded);
+            }
         } else if (event.type == GekkoLoadEvent) {
             std::uint32_t slot;
             std::memcpy(&slot, event.data.load.state, sizeof slot);
@@ -99,6 +217,7 @@ game::BattleFrame Session::run(const sim::Inputs& inputs) {
     int sessionCount = 0;
     GekkoSessionEvent** sessionEvents = gekko_session_events(m_session, &sessionCount);
     for (int i = 0; i < sessionCount; ++i) {
+        if (sessionEvents[i]->type == GekkoPlayerDisconnected) ++m_stats.disconnects;
         if (sessionEvents[i]->type != GekkoDesyncDetected) continue;
         const int desyncFrame = sessionEvents[i]->data.desynced.frame;
         if (m_stats.desyncs++ == 0) m_stats.firstDesyncFrame = desyncFrame;

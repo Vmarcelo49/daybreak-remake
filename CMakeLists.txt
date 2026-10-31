@@ -249,15 +249,21 @@ if(NOT EMSCRIPTEN)
         PRIVATE third_party/GekkoNet/GekkoLib/include/private third_party/GekkoNet/GekkoLib/thirdparty)
     target_compile_options(gekkonet PRIVATE -w)
 
-    add_library(net_session STATIC src/net/session.cpp)
+    add_library(net_session STATIC src/net/session.cpp src/net/udp_socket.cpp src/net/lobby.cpp)
     target_link_libraries(net_session PUBLIC battle_backend PRIVATE gekkonet)
+    if(WIN32)
+        target_link_libraries(net_session PRIVATE ws2_32)
+    endif()
     target_compile_definitions(net_session PUBLIC DAYBREAK_ONLINE)
 
     # Runs on Linux in CTest, and by hand under Wine for the MinGW build.
     add_executable(net_stress_test tests/net_stress_test.cpp)
     target_link_libraries(net_stress_test PRIVATE net_session)
+    add_executable(netctl src/net/netctl.cpp)
+    target_link_libraries(netctl PRIVATE net_session)
     if(MINGW)
         target_link_options(net_stress_test PRIVATE -static)
+        target_link_options(netctl PRIVATE -static)
     endif()
 endif()
 
@@ -578,6 +584,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME rollback_stress_test COMMAND rollback_stress_test)
     set_tests_properties(rollback_stress_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 400 LABELS asset)
 
+    add_test(NAME net_lobby_test COMMAND net_lobby_test)
+    add_executable(net_lobby_test tests/net_lobby_test.cpp)
+    target_link_libraries(net_lobby_test PRIVATE net_session)
+    # Real instances over a bad localhost network. Skips without an install.
+    add_test(NAME net_play_check COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/net_play_check.py
+        $<TARGET_FILE:netctl> ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak)
+    set_tests_properties(net_play_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 500 LABELS asset)
     add_test(NAME net_stress_test COMMAND net_stress_test)
     set_tests_properties(net_stress_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 400 LABELS asset)
     add_executable(rollback_presentation_test tests/rollback_presentation_test.cpp)

@@ -195,6 +195,7 @@ struct Battle::Impl {
         visit(c.native_contact_mode); visit(c.native_extra_yaw); visit(c.native_orientation34);
         visit(c.match.ready); visit(c.match.presentation_phase);
         visit(self.ticks); visit(self.victoryResolved); visit(self.tacticsHeld);
+        visit(self.roster.owner);
         for (unsigned i = 0; i < 4; ++i) {
             auto& a = self.world.actors[i];
             visit(a.position); visit(a.heading); visit(a.grounded); visit(a.collided);
@@ -326,6 +327,7 @@ struct BattleSnapshot::State {
     LocalNormalProjectiles projectiles;
     BattleVisualEffects effects;
     BattleCpuDriver cpu;
+    LocalBattleRoster roster;
     unsigned ticks;
     bool victoryResolved;
     std::array<bool, 4> tacticsHeld;
@@ -341,6 +343,7 @@ struct BattleSnapshot::State {
         to.projectiles = from.projectiles;
         to.effects = from.effects;
         to.cpu = from.cpu;
+        to.roster = from.roster;
         to.ticks = from.ticks;
         to.victoryResolved = from.victoryResolved;
         to.tacticsHeld = from.tacticsHeld;
@@ -368,6 +371,19 @@ void Battle::loadState(const BattleSnapshot& snapshot) {
     BattleSnapshot::State::copy(*m_impl, *snapshot.m_state);
     m_impl->events = {};
 }
+
+// RuntimeBattle::set_native_actor_owners, for a slot whose player left.
+void Battle::handSlotToCpu(unsigned slot) {
+    auto owners = m_impl->roster.owner;
+    if (owners.at(slot) >= 4) return;
+    owners[slot] = 4;
+    auto& combat = m_impl->combat;
+    m_impl->cpu.set_actor_owners(owners, [&](unsigned actor, KeiichiCpuInput& input) { combat.handoff_native_cpu_input(actor, input); });
+    m_impl->roster.owner = owners;
+    combat.configure_voice_selection(m_impl->voices, owners);
+}
+
+bool Battle::slotIsCpu(unsigned slot) const { return m_impl->roster.owner.at(slot) >= 4; }
 
 std::uint64_t Battle::stateHash() const {
     std::uint64_t digest = 1469598103934665603ull;
