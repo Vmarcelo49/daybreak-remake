@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <random>
 
@@ -215,7 +216,7 @@ std::uint64_t game_data_hash(const std::string& gameDir) {
     bool any = false;
     for (const char* name : {"daybreak00.dat", "daybreak01.dat", "daybreak02.dat", "daybreak03.dat", "daybreak04.dat",
                              "daybreak05.dat", "daybreak06.dat", "daybreak07.dat"}) {
-        std::ifstream file(gameDir + "/" + name, std::ios::binary | std::ios::ate);
+        std::ifstream file(std::filesystem::u8path(gameDir + "/" + name), std::ios::binary | std::ios::ate);
         if (!file) continue;
         any = true;
         const std::streamoff size = file.tellg();

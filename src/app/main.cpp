@@ -1558,7 +1558,12 @@ static void logToFileWithoutConsole(const Options& options) {
     std::filesystem::create_directories(config.parent_path(), error);
     const std::filesystem::path log = config.parent_path() / "daybreak.log";
     std::filesystem::rename(log, config.parent_path() / "daybreak-previous.log", error);
-    if (!std::freopen(log.u8string().c_str(), "w", stdout)) return;
+#if defined(_WIN32)
+    // The folder holds the user's name, which a narrow open misreads when it is not plain English.
+    if (!_wfreopen(log.c_str(), L"w", stdout)) return;
+#else
+    if (!std::freopen(log.c_str(), "w", stdout)) return;
+#endif
     std::setvbuf(stdout, nullptr, _IOLBF, 4096);
     // Both streams in one file, in the order they happened.
 #if defined(_WIN32)

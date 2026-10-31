@@ -4,6 +4,7 @@
 #include <fstream>
 #include <limits>
 #include <stdexcept>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -17,7 +18,8 @@ class LegacyArchive {
     }
 public:
     // 0x662d10: uint16 count; count * 268 byte XOR-obfuscated index.
-    explicit LegacyArchive(const std::string& path):file_(path,std::ios::binary) {
+    // Port patch (PATCHES.md): path is UTF-8, which a narrow open misreads on Windows.
+    explicit LegacyArchive(const std::string& path):file_(std::filesystem::u8path(path),std::ios::binary) {
         if(!file_) throw std::runtime_error("Cannot open archive");
         file_.seekg(0,std::ios::end);
         auto end=file_.tellg();

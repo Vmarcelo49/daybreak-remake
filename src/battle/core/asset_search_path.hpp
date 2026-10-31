@@ -45,7 +45,7 @@ public:
         }
         auto it=loose_.find(key);
         if(it!=loose_.end()) {
-            std::ifstream file(it->second,std::ios::binary);
+            std::ifstream file(std::filesystem::u8path(it->second),std::ios::binary);
             if(!file) throw std::runtime_error("Loose asset read failed: "+name);
             return {it->second,std::vector<std::uint8_t>((std::istreambuf_iterator<char>(file)),std::istreambuf_iterator<char>())};
         }

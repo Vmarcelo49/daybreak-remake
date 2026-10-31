@@ -78,14 +78,14 @@ LocalBattleRoster make_roster(const BattleConfig& config) {
 
 AssetSearchPath mount_assets(const std::string& gameDir) {
     AssetSearchPath assets;
-    const std::filesystem::path dir(gameDir.empty() ? "." : gameDir);
+    const std::filesystem::path dir = std::filesystem::u8path(gameDir.empty() ? "." : gameDir);
     // Without the archives this is a prepared tree of loose payloads: the web client's.
     if (!std::filesystem::exists(dir / "daybreak00.dat")) {
         assets.index_directory(dir.string());
         return assets;
     }
     for (const char* name : {"daybreak07.dat", "daybreak04.dat", "daybreak00.dat"})
-        assets.append((dir / name).string());
+        assets.append((dir / name).u8string());
     return assets;
 }
 
