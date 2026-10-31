@@ -80,6 +80,8 @@ public:
     virtual bool long_stopped() const { return false; }
     // The status at +0x7f8 runs: the bucket sits on this fighter's head.
     virtual bool bucketed() const { return false; }
+    // This fighter's own view is obscured; `level` is the grey it shows, 0 to 1.
+    virtual bool vision(float&) const { return false; }
     virtual bool draws_item_model(int model) const = 0;
     // The hand a drawn item model is bound to: 0, 1, or -1 when it is not drawn.
     virtual int item_model_hand(int model) const = 0;

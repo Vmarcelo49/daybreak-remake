@@ -217,7 +217,15 @@ struct ViewCamera {
     glm::mat4    viewProj{1.f};
     glm::vec3    eye{0.f};
     ViewportRect rect{};   // empty -> the whole target (the single-view path)
+    // FUN_006396f0's obscured view: this fighter sees only itself and the global effects,
+    // over a grey of `visionLevel`. -1 is an ordinary view.
+    int          visionViewer = -1;
+    float        visionLevel = 0.f;
 };
+
+// Who a draw belongs to, for an obscured view: a fighter's index, or one of these.
+inline constexpr int8_t kOwnerGlobal = -1;   // global effects: every view
+inline constexpr int8_t kOwnerHidden = -2;   // the stage and the shots: no obscured view
 
 inline constexpr size_t kMaxViewCameras = 4;
 
@@ -406,6 +414,7 @@ public:
         int renderMode = -1; // current projectile record +0x7c (FUN_005f60b0)
         bool invert = false; // draw in Pass::EffectInvert
         bool toon = false;   // a solid prop drawn with the character technique
+        int8_t owner = kOwnerGlobal;
         // Pre-evaluated node matrices for an instance whose pose is not persistent — an
         // effect card is sampled from its own model at its age and dropped at the end of the
         // frame, so there is no controller to hold (render/fx_cards.h's cardAnimationSeconds
@@ -413,6 +422,8 @@ public:
         const std::vector<glm::mat4>* poseWorld = nullptr;
     };
     void setEffectInstances(const std::vector<EffectInstance>& instances);
+    // The owner of each scene model's own draws; a model past the end stays hidden.
+    void setModelOwners(const std::vector<int8_t>& owners);
     // Grows the per-draw uniform buffer (and rebinds it) when the draw list outgrows it.
     bool ensureDrawCapacity(size_t draws, std::string& error);
 
@@ -496,6 +507,7 @@ public:
 
 private:
     struct DrawItem {
+        int8_t     owner = kOwnerHidden;
         WGPUBuffer vbuf = nullptr, ibuf = nullptr;   // borrowed; owned by buffers_
         // Borrowed secondary lighting-normal stream (issue #25), or the shared zero
         // stream for a mesh that has none. Always valid: the pipeline's second vertex
@@ -722,6 +734,10 @@ private:
     bool ensurePaletteCapacity(size_t count, std::string& error);
     // setModelVisibility() state, re-applied wherever draws_ is rebuilt.
     std::vector<bool> modelVisible_;
+    std::vector<int8_t> modelOwner_;
+    WGPURenderPipeline visionPipeline_ = nullptr;
+    WGPUTextureFormat  visionFormat_ = WGPUTextureFormat_Undefined;
+    bool ensureVisionPipeline(WGPUTextureFormat format, std::string& error);
     void applyModelVisibility();
 
     WGPUTexture     depthTex_ = nullptr;

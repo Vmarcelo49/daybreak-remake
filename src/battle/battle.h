@@ -207,6 +207,10 @@ public:
     bool time_stop_active() const;
     bool long_stopped(unsigned slot) const;
     bool bucketed(unsigned slot) const;
+    // The view of a fighter under the flash (+0x7f0) or the bucket (+0x7f8): obscured, and the
+    // grey the overlay leaves over the black clear, 0 to 1.
+    struct Vision { bool obscured = false; float level = 0.f; };
+    Vision vision(unsigned slot) const;
     ActorAnimation animation(unsigned slot) const;
     SpecialState special(unsigned slot) const;
     NoticeState notice(unsigned slot) const;

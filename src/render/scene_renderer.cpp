@@ -513,6 +513,8 @@ void SceneRenderer::shutdown() {
     if (shadowSampler_) wgpuSamplerRelease(shadowSampler_);
     shadowSampler_ = nullptr;
     if (shadowPipeline_) wgpuRenderPipelineRelease(shadowPipeline_);
+    if (visionPipeline_) wgpuRenderPipelineRelease(visionPipeline_);
+    visionPipeline_ = nullptr;
     if (shadowPipelineLayout_) wgpuPipelineLayoutRelease(shadowPipelineLayout_);
     shadowPipeline_ = nullptr;
     shadowPipelineLayout_ = nullptr;
@@ -1041,9 +1043,70 @@ void SceneRenderer::setModelVisibility(const std::vector<bool>& visible) {
 }
 
 void SceneRenderer::applyModelVisibility() {
-    for (DrawItem& d : draws_)
-        if (!d.instance && d.modelIndex < modelVisible_.size())
-            d.visible = modelVisible_[d.modelIndex];
+    for (DrawItem& d : draws_) {
+        if (d.instance) continue;
+        if (d.modelIndex < modelVisible_.size()) d.visible = modelVisible_[d.modelIndex];
+        d.owner = d.modelIndex < modelOwner_.size() ? modelOwner_[d.modelIndex] : kOwnerHidden;
+    }
+}
+
+void SceneRenderer::setModelOwners(const std::vector<int8_t>& owners) {
+    modelOwner_ = owners;
+    applyModelVisibility();
+}
+
+// One fullscreen triangle whose colour is the pass's blend constant, so a view's grey
+// needs no uniform. Depth always and unwritten: the view's own draws come after it.
+bool SceneRenderer::ensureVisionPipeline(WGPUTextureFormat format, std::string& error) {
+    if (visionPipeline_ && visionFormat_ == format) return true;
+    if (visionPipeline_) wgpuRenderPipelineRelease(visionPipeline_);
+    static const char* const kVisionWGSL = R"(
+@vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
+    return vec4f(f32(i & 1u) * 4.0 - 1.0, f32(i & 2u) * 2.0 - 1.0, 0.0, 1.0);
+}
+@fragment fn fs() -> @location(0) vec4f { return vec4f(1.0); }
+)";
+    WGPUShaderModule shader = gpu::createShaderModule(device_, kVisionWGSL);
+    WGPUBlendState blend = {};
+    blend.color.srcFactor = WGPUBlendFactor_Constant;
+    blend.color.dstFactor = WGPUBlendFactor_Zero;
+    blend.color.operation = WGPUBlendOperation_Add;
+    blend.alpha.srcFactor = WGPUBlendFactor_One;
+    blend.alpha.dstFactor = WGPUBlendFactor_Zero;
+    blend.alpha.operation = WGPUBlendOperation_Add;
+    WGPUColorTargetState colorTarget = {};
+    colorTarget.format = format;
+    colorTarget.writeMask = WGPUColorWriteMask_All;
+    colorTarget.blend = &blend;
+    WGPUFragmentState fs = {};
+    fs.module = shader;
+    fs.entryPoint = sv("fs");
+    fs.targetCount = 1;
+    fs.targets = &colorTarget;
+    WGPUDepthStencilState depth = {};
+    depth.format = WGPUTextureFormat_Depth24PlusStencil8;
+    depth.depthWriteEnabled = WGPUOptionalBool_False;
+    depth.depthCompare = WGPUCompareFunction_Always;
+    for (WGPUStencilFaceState* s : {&depth.stencilFront, &depth.stencilBack}) {
+        s->compare = WGPUCompareFunction_Always;
+        s->failOp = WGPUStencilOperation_Keep;
+        s->depthFailOp = WGPUStencilOperation_Keep;
+        s->passOp = WGPUStencilOperation_Keep;
+    }
+    WGPURenderPipelineDescriptor rpd = {};
+    rpd.vertex.module = shader;
+    rpd.vertex.entryPoint = sv("vs");
+    rpd.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+    rpd.primitive.cullMode = WGPUCullMode_None;
+    rpd.depthStencil = &depth;
+    rpd.multisample.count = 1;
+    rpd.multisample.mask = 0xFFFFFFFFu;
+    rpd.fragment = &fs;
+    visionPipeline_ = wgpuDeviceCreateRenderPipeline(device_, &rpd);
+    wgpuShaderModuleRelease(shader);
+    visionFormat_ = format;
+    if (!visionPipeline_) error = "vision pipeline creation failed";
+    return visionPipeline_ != nullptr;
 }
 
 void SceneRenderer::setTextureOverrides(const std::vector<TextureOverride>& overrides) {
@@ -1201,6 +1264,7 @@ void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instan
             }
             if (e.invert) d.pass = Pass::EffectInvert;
             if (e.toon) d.toon = true;
+            d.owner = e.owner;
             for (const auto& offset : offsets)
                 if (offset.first == t.paletteOffset) d.paletteOffset = offset.second;
             if (t.modelIndex < textureVariants_.size())
@@ -1445,6 +1509,12 @@ bool SceneRenderer::render(const Target& target, std::string& error) {
 
 bool SceneRenderer::renderViews(const Target& target, const std::vector<ViewCamera>& views,
                                 std::string& error) {
+    if (views.size() == 1 && views[0].visionViewer >= 0) {
+        std::vector<ViewCamera> whole = views;
+        if (whole[0].rect.empty())
+            whole[0].rect = ViewportRect{0.f, 0.f, (float)target.width, (float)target.height};
+        return renderImpl(target, &whole, error);
+    }
     if (views.size() <= 1) return renderImpl(target, nullptr, error);
     if (views.size() > kMaxViewCameras) {
         error = "too many views for one frame";
@@ -1939,6 +2009,18 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
             wgpuRenderPassEncoderSetViewport(pass, rect.x, rect.y, rect.w, rect.h, 0.f, 1.f);
             wgpuRenderPassEncoderSetScissorRect(pass, (uint32_t)rect.x, (uint32_t)rect.y,
                                                 (uint32_t)rect.w, (uint32_t)rect.h);
+            if ((*views)[view].visionViewer >= 0) {
+                if (!ensureVisionPipeline(target.format, error)) {
+                    wgpuRenderPassEncoderEnd(pass);
+                    wgpuRenderPassEncoderRelease(pass);
+                    return false;
+                }
+                const double level = (*views)[view].visionLevel;
+                const WGPUColor grey{level, level, level, 1.0};
+                wgpuRenderPassEncoderSetPipeline(pass, visionPipeline_);
+                wgpuRenderPassEncoderSetBlendConstant(pass, &grey);
+                wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+            }
             wgpuRenderPassEncoderSetBindGroup(pass, 0, viewCameraGroups_[view], 0, nullptr);
             wgpuRenderPassEncoderSetBindGroup(
                 pass, 3, shadowsOn ? shadowTargets_[view].group : shadowPlaceholderGroup_, 0,
@@ -1957,6 +2039,9 @@ bool SceneRenderer::renderImpl(const Target& target, const std::vector<ViewCamer
             // banked capture byte-identical.
             if (d.pass == Pass::Outline && !(appearance_.toon && toonRampReady_)) continue;
             if (!d.visible) continue;   // unbound attachment (FUN_00434a70 clear)
+            if (multiView && (*views)[view].visionViewer >= 0 && d.owner != kOwnerGlobal &&
+                d.owner != (*views)[view].visionViewer)
+                continue;
             // The receiver count is a per-frame fact, not a per-view one: view 0 alone
             // reports it, so a 4-view frame does not multiply it by four.
             if (view == 0 && appearance_.shadows && d.receiver && d.pass == Pass::Opaque)
@@ -2118,7 +2203,7 @@ bool SceneRenderer::captureImpl(uint32_t width, uint32_t height, std::vector<uin
     target.width = width;
     target.height = height;
     if (ok && withScene) {
-        ok = (views && views->size() > 1) ? renderViews(target, *views, error) : render(target, error);
+        ok = views ? renderViews(target, *views, error) : render(target, error);
     } else if (ok) {
         // No scene: clear the target to opaque black so the UI is composited over a defined
         // background rather than uninitialised memory.

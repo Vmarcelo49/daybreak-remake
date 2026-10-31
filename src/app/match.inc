@@ -221,6 +221,12 @@ static void buildFrameViews(App& app, uint32_t width, uint32_t height,
         frameView.camera.rect = app.matchViewCount > 1 && !oneView
             ? render::ViewportRect{rect.x, rect.y, rect.w, rect.h}
             : render::ViewportRect{};
+        float visionLevel = 0.f;
+        if (!oneView && view.fighter < app.battle->fighter_count() &&
+            app.battle->fighter(view.fighter).vision(visionLevel)) {
+            frameView.camera.visionViewer = view.fighter;
+            frameView.camera.visionLevel = visionLevel;
+        }
         frameView.camera.eye = glm::mix(view.previousEye, view.camera.eye(), app.matchAlpha);
         const glm::vec3 target = glm::mix(view.previousTarget, view.camera.target(), app.matchAlpha);
         // With nothing interpolated (alpha 1: D9's historical capture recipes, and the live
@@ -292,6 +298,20 @@ static void placeMatchFighters(App& app) {
     }
     app.renderer.setModelMatrices(app.modelMatrices);
     applyWeaponVisibility(app);
+    std::vector<int8_t> owners(app.scene.models.size(), render::kOwnerHidden);
+    int8_t rigOwner = render::kOwnerHidden;
+    for (size_t i = 0; i < app.scene.models.size(); ++i) {
+        for (int fighter = 0; fighter < app.battle->fighter_count(); ++fighter)
+            if (i == app.matchRig[fighter]) {
+                rigOwner = static_cast<int8_t>(fighter);
+                owners[i] = rigOwner;
+            }
+        if (app.scene.models[i].attachFrame >= 0) owners[i] = rigOwner;
+    }
+    for (int fighter = 0; fighter < app.battle->fighter_count(); ++fighter)
+        for (const int trail : app.trailModels[static_cast<size_t>(fighter)])
+            if (trail >= 0) owners[static_cast<size_t>(trail)] = static_cast<int8_t>(fighter);
+    app.renderer.setModelOwners(owners);
     for (int i = 0; i < app.battle->fighter_count(); ++i) {
         const auto& fighter = app.battle->fighter(i);
         if (const auto* moves = fighter.moves()) {
@@ -655,6 +675,7 @@ static void placeFxCards(App& app) {
                 const size_t frame = (size_t)app.auraAttach[i].frame[point];
                 if (frame >= app.worlds[rig].size()) continue;
                 instances.push_back({card, base * app.worlds[rig][frame]});
+                instances.back().owner = static_cast<int8_t>(i);
             }
         }
         // FUN_004203f0: while +0x82c runs, data/aura/06.x draws on Bip01_Spine at 128 times
@@ -680,6 +701,7 @@ static void placeFxCards(App& app) {
             instance.model = matchRenderMatrix(app, fighter) * app.worlds[rig][(size_t)frame] *
                              glm::scale(glm::mat4(1.f), glm::vec3(scale));
             instance.billboard = false;
+            instance.owner = static_cast<int8_t>(fighter);
             instances.push_back(instance);
             return &instances.back();
         };
@@ -732,6 +754,7 @@ static void placeFxCards(App& app) {
                 }
             }
             instances.push_back({card,p.modelMatrix,p.billboard,pose,p.textureOverrides,p.tint});
+            instances.back().owner = render::kOwnerHidden;
             ++app.fxShotCards;
         });
     }

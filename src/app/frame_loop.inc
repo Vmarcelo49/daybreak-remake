@@ -608,7 +608,8 @@ static SDL_AppResult appIterate(App* app) {
                 // Only more than one view takes the split-screen scene pass; a single view
                 // keeps render()'s exact commands (and the banked captures' pixels).
                 const std::vector<render::ViewCamera>* viewArg =
-                    (app->matchMode || app->resultOverScene) && frameCameras.size() > 1
+                    (app->matchMode || app->resultOverScene) &&
+                    (frameCameras.size() > 1 || frameCameras[0].visionViewer >= 0)
                         ? &frameCameras : nullptr;
                 ScreenCaptureHook overlay{&app->screens, &app->uiRenderer, &app->error, true};
                 render::SceneRenderer::UiHook uiHook = nullptr;
@@ -699,7 +700,8 @@ static SDL_AppResult appIterate(App* app) {
         target.format = app->sc.format;
         target.width = app->sc.width;
         target.height = app->sc.height;
-        const bool multiView = (app->matchMode || app->resultOverScene) && frameCameras.size() > 1;
+        const bool multiView = (app->matchMode || app->resultOverScene) &&
+                               (frameCameras.size() > 1 || frameCameras[0].visionViewer >= 0);
         const bool sceneOk = multiView ? app->renderer.renderViews(target, frameCameras, app->error)
                                        : app->renderer.render(target, app->error);
         if (!sceneOk) {
