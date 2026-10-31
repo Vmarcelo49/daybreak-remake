@@ -30,7 +30,7 @@ From 2026-10-30, on one machine. All tier 5 or below, and none of it says anythi
 
 | Result | Limits |
 |---|---|
-| 24,029 forced rollbacks of 8 ticks, over 5 runs on one roster with up to 51 live projectiles and HP reaching 0, never diverged | The harness copies `Impl`, its fingerprint is partial, and `resolve_victory` was empty |
+| 25,029 forced rollbacks of 8 ticks, over 5 runs on one roster with up to 51 live projectiles and HP reaching 0, never diverged | The harness copies `Impl`, its fingerprint is partial, and `resolve_victory` was empty |
 | The whole state copies with `=`, in about 10 µs on a warm ring, over 113 KB plus heap | Measured once by the first report, in the same harness |
 | A tick costs at most 109 µs with 4 idle humans and 327 µs with 4 COMs | Excludes `CoreFighter::refresh()` and rendering |
 | `simctl` built with MinGW under Wine gave the Linux hash on 3 rosters at 3,600 ticks | The hash is partial. No native Windows, and no human input script |
