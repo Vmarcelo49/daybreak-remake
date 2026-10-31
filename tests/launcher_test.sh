@@ -174,6 +174,15 @@ run "$drop" "$work/home" "$work/config-fresh" "$work/data" "$work/cwd"
 [ "$status" = 0 ] || bad "drop-in: expected exit 0, got $status"
 expect "drop-in: uses the package folder" "$err" "(the package folder)"
 
+# --- in a subfolder of the game, which is what an archive tool usually makes ---------
+nested="$work/nested game"
+make_install "$nested"
+make_package "$nested/daybreak-package"
+run "$nested/daybreak-package" "$work/home" "$work/config-nested" "$work/data" "$work/cwd"
+[ "$status" = 0 ] || bad "subfolder: expected exit 0, got $status"
+expect "subfolder: uses the game above the package" "$out" "STUB --install=$nested --screen=title"
+expect "subfolder: says where it found it" "$err" "(the folder above the package)"
+
 # --- a remembered folder that is gone falls through to the next candidate -----------
 mkdir -p "$work/config-stale/daybreak-decomp" "$work/data-stale/Higurashi-Daybreak"
 printf 'version = 4\n\n[game]\ninstall_dir = %s\n' "$work/gone" \

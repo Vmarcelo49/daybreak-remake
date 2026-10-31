@@ -1237,6 +1237,22 @@ bool initScreens(App& app) {
         }
     }
 #endif
+#if !defined(_WIN32)
+    // Opened directly from a file manager, past the launcher. The package sits in the game folder,
+    // or in a subfolder an archive tool made for it.
+    if (install.empty() && app.userSettings.installDir.empty()) {
+        if (const char* base = SDL_GetBasePath()) {
+            std::error_code fileError;
+            for (const std::filesystem::path& folder : {std::filesystem::u8path(base), std::filesystem::u8path(base).parent_path().parent_path()}) {
+                if (std::filesystem::is_regular_file(folder / "daybreak00.dat", fileError)) {
+                    install = folder.u8string();
+                    installSource = "beside the package";
+                    break;
+                }
+            }
+        }
+    }
+#endif
     if (!install.empty()) {
         // An explicit folder that is unusable is a mistake worth failing on: silently
         // falling through to the filesystem would report a missing asset several screens

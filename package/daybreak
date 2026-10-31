@@ -22,7 +22,8 @@
 #      one is read once, after 3 and before 4, so an existing answer is not asked for
 #      again. Its folder is handed to the binary, which writes it into settings.conf, and
 #      the retired file is then removed (see the migration block at the end).
-#   4. the folder this package was unpacked into (unpack inside your game folder)
+#   4. the folder this package was unpacked into, or the one above it: an archive tool
+#      extracting into the game folder usually makes a subfolder of the archive's name
 #   5. the current working directory
 #   6. $XDG_DATA_HOME/Higurashi-Daybreak (~/.local/share/Higurashi-Daybreak)
 #   7. ~/Higurashi-Daybreak, ~/Daybreak, ~/Games/Higurashi-Daybreak, ~/Games/Daybreak
@@ -98,7 +99,8 @@ usage: daybreak [--install=DIR] [--screen=ID] [other flags]
 The game folder is looked up in this order:
   1. --install=DIR                     2. \$DAYBREAK_INSTALL
   3. the remembered folder (\$XDG_CONFIG_HOME/daybreak-decomp/settings.conf)
-  4. this package's folder             5. the current directory
+  4. this package's folder, or the one above it
+  5. the current directory
   6. \$XDG_DATA_HOME/Higurashi-Daybreak
   7. ~/Higurashi-Daybreak, ~/Daybreak, ~/Games/Higurashi-Daybreak, ~/Games/Daybreak
 With no usable folder it asks once and remembers the answer.
@@ -271,6 +273,7 @@ if [ -z "$install" ] && [ -z "$explicit_dir" ]; then
     fi
 fi
 [ -z "$install" ] && [ -z "$explicit_dir" ] && try "the package folder" "$here"
+[ -z "$install" ] && [ -z "$explicit_dir" ] && try "the folder above the package" "$(dirname -- "$here")"
 [ -z "$install" ] && [ -z "$explicit_dir" ] && try "the current directory" "$(pwd -P)"
 if [ -z "$install" ] && [ -z "$explicit_dir" ]; then
     case ${XDG_DATA_HOME:-} in
@@ -332,9 +335,7 @@ if [ -z "$install" ]; then
         no_install_message
         notify_gui "Higurashi Daybreak Kai Fan Remake could not start: no game folder was found.
 
-Point the launcher at your copy of the game:
-    ./daybreak --install=\"/path/to/Higurashi-Daybreak\"
-or set DAYBREAK_INSTALL to that folder."
+Extract this package inside your Higurashi Daybreak folder, beside daybreak00.dat, and open it again."
         exit 1
     fi
 fi

@@ -26,18 +26,19 @@ Nothing in this archive is game data. The port is at an early-release stage: see
 
 ## 2. Unpack and run
 
+1. Extract this archive **inside your Higurashi Daybreak folder**, the one with `daybreak00.dat`. A subfolder named
+   after the archive is fine.
+2. Open `daybreak` from your file manager. If yours shows it as text instead of running it, open `daybreak-bin`.
+
+That is all, with no terminal. The game remembers its folder afterwards.
+
+From a terminal, you can also run it from anywhere and name the folder:
+
 ```bash
-tar -xzf daybreak-0.1.0-linux-x86_64.tar.gz
-cd daybreak-0.1.0-linux-x86_64
 ./daybreak --install="/path/to/Higurashi-Daybreak"
 ```
 
-`./daybreak` is the launcher: it finds the game folder, remembers it, and starts the title
-screen. After the first successful launch, plain `./daybreak` is enough. You can also
-double-click `daybreak` in a file manager (a dialog appears if something is wrong).
-
-If the launcher cannot find a game folder it prints the list of places it looked and asks
-you for the folder — or tells you exactly what to run when there is no terminal.
+If it cannot find a game folder, a terminal lists where it looked and asks, and a double-click shows a dialog.
 
 ### Where to point it
 
@@ -48,8 +49,7 @@ The launcher looks for `daybreak00.dat` in this order, first hit wins:
 3. the remembered folder: `[game] install_dir` in
    `$XDG_CONFIG_HOME/daybreak-decomp/settings.conf`
    (`~/.config/daybreak-decomp/settings.conf` by default)
-4. the folder this package was unpacked into (unpack it inside your game folder and it
-   just works)
+4. the folder this package was unpacked into, or the one above it
 5. the current working directory
 6. `$XDG_DATA_HOME/Higurashi-Daybreak` (`~/.local/share/Higurashi-Daybreak`)
 7. `~/Higurashi-Daybreak`, `~/Daybreak`, `~/Games/Higurashi-Daybreak`, `~/Games/Daybreak`
