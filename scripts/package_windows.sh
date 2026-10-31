@@ -41,8 +41,8 @@ cat > "$stage/LICENSES/README.md" <<'NOTICES'
 # Windows package notices
 
 The port uses the Golden Witch License (daybreak-decomp.txt). SDL3 uses the zlib
-license. wgpu-native and its distribution wrapper, GLM, stb, pl_mpeg, GekkoNet and
-zpp_bits use the included MIT, BSD and public-domain notices. Gyrotrope Black and Noto Sans CJK JP use
+license. wgpu-native and its distribution wrapper, GLM, stb, pl_mpeg, GekkoNet, zpp_bits
+and musl's math use the included MIT, BSD and public-domain notices. Gyrotrope Black and Noto Sans CJK JP use
 SIL-OFL-1.1.txt. Fonts are redistributed without modification.
 
 The MinGW GCC runtime is linked statically under GPL-3.0.txt with the permission

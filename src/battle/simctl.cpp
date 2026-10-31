@@ -23,6 +23,8 @@ const char kUsage[] =
     "  --time-limit S round time limit in seconds (default: the match's own)\n"
     "  --script FILE  input plan (see src/battle/script.h)\n"
     "  --trace FILE   write one JSON line per tick\n"
+    "  --busy         humans press everything, repeatably, instead of a script\n"
+    "  --hash-log F   write stateHash per tick, to find where two builds part\n"
     "  --list         print every legal combo and exit\n";
 
 std::string find_game(const std::string& explicitDir) {
@@ -51,6 +53,23 @@ sim::Slot parse_slot(const std::string& text) {
     return slot;
 }
 
+// Every button in shifting combinations, so a comparison between builds reaches most of the code.
+sim::Inputs busy_inputs(unsigned tick) {
+    sim::Inputs inputs{};
+    for (unsigned i = 0; i < 4; ++i) {
+        const unsigned bits = ((tick / (7u + i * 5u)) * 2654435761u + i * 40503u) >> 16;
+        inputs[i].x = static_cast<int>(bits & 3u) - 1;
+        inputs[i].z = static_cast<int>((bits >> 2) & 3u) - 1;
+        if (bits & 0x10u) inputs[i].buttons |= sim::Shoot;
+        if (bits & 0x20u) inputs[i].buttons |= sim::Melee;
+        if ((bits & 0xc0u) == 0xc0u) inputs[i].buttons |= sim::Jump;
+        if ((bits & 0x300u) == 0x300u) inputs[i].buttons |= sim::Guard;
+        if ((bits & 0xc00u) == 0xc00u) inputs[i].buttons |= sim::Target;
+        if ((bits & 0x3000u) == 0x3000u) inputs[i].buttons |= sim::Tactics;
+    }
+    return inputs;
+}
+
 void write_trace(std::ostream& out, const sim::Battle& battle) {
     out << "{\"tick\":" << battle.tick() << ",\"phase\":" << battle.scene_phase()
         << ",\"projectiles\":" << battle.live_projectiles() << ",\"actors\":[";
@@ -68,7 +87,8 @@ void write_trace(std::ostream& out, const sim::Battle& battle) {
 
 int main(int argc, char** argv) try {
     sim::BattleConfig config;
-    std::string gameDir, scriptPath, tracePath;
+    std::string gameDir, scriptPath, tracePath, hashLogPath;
+    bool busy = false;
     unsigned ticks = 3600, rosterCount = 0;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -89,6 +109,8 @@ int main(int argc, char** argv) try {
         else if (arg == "--time-limit") config.timeLimitSeconds = static_cast<unsigned>(std::stoul(value()));
         else if (arg == "--script") scriptPath = value();
         else if (arg == "--trace") tracePath = value();
+        else if (arg == "--busy") busy = true;
+        else if (arg == "--hash-log") hashLogPath = value();
         else throw std::invalid_argument("unknown argument " + arg);
     }
     if (rosterCount != 4) {
@@ -110,19 +132,26 @@ int main(int argc, char** argv) try {
         if (!trace) throw std::runtime_error("cannot write " + tracePath);
     }
 
+    std::ofstream hashLog;
+    if (!hashLogPath.empty()) {
+        hashLog.open(hashLogPath);
+        if (!hashLog) throw std::runtime_error("cannot write " + hashLogPath);
+    }
+
     sim::Battle battle(config);
     std::set<unsigned> states[4];
     int minHp[4] = {1 << 30, 1 << 30, 1 << 30, 1 << 30};
     for (unsigned t = 0; t < ticks; ++t) {
-        battle.step(sim::script_inputs(script, t));
+        battle.step(busy ? busy_inputs(t) : sim::script_inputs(script, t));
         for (unsigned i = 0; i < 4; ++i) {
             const sim::ActorState a = battle.actor(i);
             states[i].insert(a.state);
             minHp[i] = std::min(minHp[i], a.hp);
         }
         if (trace.is_open()) write_trace(trace, battle);
+        if (hashLog.is_open()) hashLog << t << ' ' << battle.stateHash() << '\n';
     }
-    std::printf("{\"ticks\":%u,\"hash\":\"%016llx\",\"phase\":%u,\"finished\":%d,\"actors\":[", battle.tick(),
+    std::printf("{\"state_hash\":\"%016llx\",\"ticks\":%u,\"hash\":\"%016llx\",\"phase\":%u,\"finished\":%d,\"actors\":[", static_cast<unsigned long long>(battle.stateHash()), battle.tick(),
                 static_cast<unsigned long long>(battle.hash()), battle.scene_phase(), battle.match_finished() ? 1 : 0);
     for (unsigned i = 0; i < 4; ++i) {
         const sim::Slot& slot = config.slots[i];

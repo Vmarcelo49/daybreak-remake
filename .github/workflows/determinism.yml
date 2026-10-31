@@ -1,0 +1,46 @@
+name: Determinism
+
+# Online peers on Linux and Windows must compute the same floats (docs/ONLINE-PLAN.md, step 5). This
+# compares math digests on a real Windows machine, which needs no game data. Wine is not enough: it
+# has its own C runtime, and Windows sets up the x87 differently.
+on:
+  push:
+    branches: [main]
+    paths: [VERSION]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the cross compiler
+        run: sudo apt-get update && sudo apt-get install -y g++-mingw-w64-x86-64
+      - name: Build for both targets
+        run: |
+          gcc -c -O3 -w -ffp-contract=off -Isrc src/battle/det_math.c -o det_math.o
+          g++ -std=c++17 -O3 -ffp-contract=off -Isrc tests/math_fingerprint.cpp det_math.o -o math_fingerprint
+          x86_64-w64-mingw32-gcc -c -O3 -w -ffp-contract=off -Isrc src/battle/det_math.c -o det_math.obj
+          x86_64-w64-mingw32-g++ -std=c++17 -O3 -ffp-contract=off -static -Isrc tests/math_fingerprint.cpp det_math.obj -o math_fingerprint.exe
+      - name: Run on Linux
+        run: ./math_fingerprint > linux.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: math-fingerprint
+          path: |
+            linux.txt
+            math_fingerprint.exe
+
+  compare-on-windows:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: math-fingerprint
+      - name: Run on Windows and compare
+        shell: bash
+        run: |
+          ./math_fingerprint.exe | tr -d '\r' > windows.txt
+          paste linux.txt windows.txt
+          diff linux.txt windows.txt

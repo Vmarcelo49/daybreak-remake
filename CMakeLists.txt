@@ -221,6 +221,13 @@ target_include_directories(battle_core
 # Bodies stay out of every other TU's compile: the core's public control headers then
 # declare them, as its own build does.
 target_compile_definitions(battle_core PRIVATE DAYBREAK_COMPILED_NATIVE_BODIES=1)
+# Online peers must compute the same floats: no fused multiply-adds where only some targets have them,
+# and one sin, cos and atan2 instead of each C runtime's.
+add_library(det_math STATIC src/battle/det_math.c)
+target_include_directories(det_math PUBLIC src)
+target_compile_options(det_math PRIVATE -w -ffp-contract=off)
+target_link_libraries(battle_core PUBLIC det_math)
+target_compile_options(battle_core PRIVATE -ffp-contract=off)
 target_compile_options(battle_core PRIVATE -w
     "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/battle/core_prelude.h")
 target_link_libraries(battle_core PRIVATE battle_core_zlib)
@@ -259,17 +266,25 @@ if(NOT EMSCRIPTEN)
     # Runs on Linux in CTest, and by hand under Wine for the MinGW build.
     add_executable(net_stress_test tests/net_stress_test.cpp)
     target_link_libraries(net_stress_test PRIVATE net_session)
+    add_executable(math_fingerprint tests/math_fingerprint.cpp)
+    target_link_libraries(math_fingerprint PRIVATE det_math)
     add_executable(netctl src/net/netctl.cpp)
     target_link_libraries(netctl PRIVATE net_session)
     if(MINGW)
         target_link_options(net_stress_test PRIVATE -static)
         target_link_options(netctl PRIVATE -static)
+        target_link_options(math_fingerprint PRIVATE -static)
     endif()
 endif()
 
-if(NOT CMAKE_CROSSCOMPILING)
+if(NOT EMSCRIPTEN)
     add_executable(simctl src/battle/simctl.cpp)
     target_link_libraries(simctl PRIVATE battle_core)
+    if(MINGW)
+        target_link_options(simctl PRIVATE -static)
+    endif()
+endif()
+if(NOT CMAKE_CROSSCOMPILING)
     add_executable(simfuzz src/battle/simfuzz.cpp)
     target_link_libraries(simfuzz PRIVATE battle_core)
 endif()
@@ -584,6 +599,11 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME rollback_stress_test COMMAND rollback_stress_test)
     set_tests_properties(rollback_stress_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 400 LABELS asset)
 
+    # Online peers must simulate alike. Skips without an install, Wine or a Windows build.
+    add_test(NAME cross_build_check COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/cross_build_check.py
+        $<TARGET_FILE:simctl> ${CMAKE_CURRENT_SOURCE_DIR}/build/windows/simctl.exe ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak)
+    set_tests_properties(cross_build_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 500 LABELS asset)
+    add_test(NAME math_accuracy_test COMMAND math_fingerprint --check)
     add_test(NAME net_lobby_test COMMAND net_lobby_test)
     add_executable(net_lobby_test tests/net_lobby_test.cpp)
     target_link_libraries(net_lobby_test PRIVATE net_session)
