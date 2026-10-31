@@ -229,6 +229,16 @@ std::unique_ptr<Session> Session::online(sim::CoreBattle& battle, UdpSocket& soc
     return session;
 }
 
+void Session::read_session_events() {
+    int count = 0;
+    GekkoSessionEvent** events = gekko_session_events(m_session, &count);
+    for (int i = 0; i < count; ++i) {
+        if (events[i]->type == GekkoPlayerDisconnected) ++m_stats.disconnects;
+        if (events[i]->type != GekkoDesyncDetected) continue;
+        if (m_stats.desyncs++ == 0) m_stats.firstDesyncFrame = events[i]->data.desynced.frame;
+    }
+}
+
 game::BattleFrame Session::run(const sim::Inputs& inputs) {
     const auto start = std::chrono::steady_clock::now();
     game::BattleFrame frame;
@@ -237,6 +247,8 @@ game::BattleFrame Session::run(const sim::Inputs& inputs) {
     if (m_localPlayer >= 0 && ++m_ticks % kSkipEvery == 0 && gekko_frames_ahead(m_session) >= 1.f) {
         ++m_stats.skippedTicks;
         gekko_network_poll(m_session);
+        // The next update clears what this poll raised.
+        read_session_events();
         return frame;
     }
     if (m_localPlayer >= 0) {
@@ -289,14 +301,7 @@ game::BattleFrame Session::run(const sim::Inputs& inputs) {
         }
     }
 
-    int sessionCount = 0;
-    GekkoSessionEvent** sessionEvents = gekko_session_events(m_session, &sessionCount);
-    for (int i = 0; i < sessionCount; ++i) {
-        if (sessionEvents[i]->type == GekkoPlayerDisconnected) ++m_stats.disconnects;
-        if (sessionEvents[i]->type != GekkoDesyncDetected) continue;
-        const int desyncFrame = sessionEvents[i]->data.desynced.frame;
-        if (m_stats.desyncs++ == 0) m_stats.firstDesyncFrame = desyncFrame;
-    }
+    read_session_events();
 
     const auto spent = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start);
     m_stats.worstUpdate = std::max(m_stats.worstUpdate, spent);
