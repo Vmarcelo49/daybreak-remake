@@ -153,19 +153,33 @@ filtered by `controlled_slots` still treat every human as local. Everyone waits 
 
 ### 5. Linux with Windows
 
-- Build `simctl` when cross-compiling, and add a test that compares hashes across builds using busy
-  scripted input and `stateHash`.
-- Both release builds use the same compiler family and flags. Disable floating-point contraction with
-  `-ffp-contract=off`, and confirm that the fingerprints hold.
+Done on 2026-10-30.
+
+- `simctl` builds for Windows too, with `--busy` and `--hash-log`, and `tests/cross_build_check.py`
+  compares builds. It skips without Wine or `build/windows/simctl.exe`.
+- The two C runtimes differ in the last bits of `sin`, `cos` and `atan2`, in doubles. The core casts to
+  float at once, which hides it until a rare value rounds the other way. So the core now uses
+  `src/battle/det_math.c`, musl's code, through a macro in `core_prelude.h` and with its headers
+  untouched. `pow` was only ever squaring. `fmod`, `sqrt` and the rounding functions stay in the C
+  runtime, whose answers are exact by definition.
+- `battle_core` builds with `-ffp-contract=off`.
+- `.github/workflows/determinism.yml` compares math digests on a real Windows machine.
 
 **Done when:** all 46 combos match between Linux and MinGW for 10,000 ticks.
 
-So far: `netctl` on Linux against the MinGW build under Wine played 3,600 frames of one match with all
-hashes equal.
+Result: 36 matches of 10,000 ticks cover the 46 combos as human, COM and a human among COMs, with equal
+`stateHash` and `hash`. The fingerprints did not move, and `det_math` stays within 1 ulp of glibc with
+no float differing in 4 million samples of each function. On a real Windows machine, every math digest
+equals Linux's, the x87 long double included.
 
-The risk is `std::sin`, `cos` and `atan2` in about 46 core files and `long double` in 8. If they differ,
-replace them with one implementation under `PATCHES.md`, with citations, starting from the first
-diverging field. The attempt ceiling applies. Past it, ask whether to ship same-platform play first.
+Limits:
+
+- The whole simulation ran under Wine only, since a real Windows machine in CI has no game data. Step 8
+  is the first full match on real Windows.
+- The workflow's executable links Ubuntu's MinGW runtime, while `build.sh windows` links UCRT here.
+- MinGW's startup sets the x87 to 64 bits on the main thread, where the simulation runs. A new Windows
+  thread starts at 53, so the simulation must not move to another thread.
+- macOS, ARM and the web were not compared, and FMA is the risk on ARM.
 
 ### 6. Screens
 
