@@ -161,6 +161,41 @@ struct ActorState {
     int actionCamera = -1; // +0x684: the data/camera/01.x clip the actor asks for, -1 for none
 };
 
+// The original's test keys, then the port's own (docs/DEBUG-KEYS.md).
+enum DebugKey : unsigned {
+    DebugRestoreHealth = 1,  // F1
+    DebugStopCpu = 2,        // F2
+    DebugResumeCpu = 4,      // F3
+    DebugFillSpecial = 8,    // F4
+    DebugRefillAmmo = 16,    // F5, port rule
+    DebugReport = 32,        // F6, port rule: the host prints debug_fighter; the battle ignores it
+};
+
+// What a fighter's state is, beyond what the product draws. For debugging only.
+struct DebugFighter {
+    int character = 0, weapon = 0;
+    unsigned state = 0, phase = 0, frame = 0;
+    int hp = 0, gauge = 0;
+    bool cpu = false;        // the CPU driver is deciding for this slot now
+    bool special = false;    // a hypermode is running
+    int specialCharge = 0, specialLimit = 0;
+    std::array<int, 8> status{};     // hit status durations: 0 burning, 5 flash, 7 bucket
+    int trapRank = 0, trapRankTimer = 0;  // +0xaf60, +0xaf64: Satoko 1's trap level
+    std::array<int, 2> rounds{};
+};
+
+// A weapon's bullets as its data declares them, for reading a combo before testing it.
+struct BulletInfo {
+    struct Hit {
+        int start = 0, extent = 0, shape = 0, damage = 0, statusPower = 0, statusDuration = 0;
+        unsigned flags = 0, status = 0;  // status: bit N is hit status N (flags & 0x40 << N)
+    };
+    int slot = 0, magazine = -1, registration = 0;
+    std::string name, model;  // name: the comment on the slot's line in the item's .ini, CP932
+    std::vector<Hit> hits;
+};
+std::vector<BulletInfo> weapon_bullets(const std::string& gameDir, int character, int weapon);
+
 // The bound animation sets. The two channels are the rig's lower and upper body; a row usually
 // binds the same set to both.
 struct ActorAnimation {
@@ -235,8 +270,10 @@ public:
     void bone_poses(unsigned slot, std::vector<std::string>& names, std::vector<Matrix>& model) const;
     // Every row the slot's NN.dat declares, for coverage reports.
     std::vector<unsigned> declared_rows(unsigned slot) const;
-    // Test seam for the original's keyboard shortcut (fill_keyboard_special): a full hypermode meter.
-    void fill_special_for_test();
+    // The battle scene's test keys, held for one tick (DebugKey bits). Inert in a story battle and
+    // while paused, as FUN_00634f60's are. The caller keeps them out of an online match.
+    void apply_debug_keys(unsigned keys);
+    DebugFighter debug_fighter(unsigned slot) const;
     // FNV-1a over every completed tick's actor states, projectile count and RNG cursor.
     std::uint64_t hash() const;
     // Hands a human's slot to the CPU from this tick on. Repeating it changes nothing.

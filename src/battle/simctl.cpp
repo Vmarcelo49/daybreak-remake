@@ -1,14 +1,18 @@
 // Headless driver for the vendored simulation: run any roster, optionally with a script, and
 // write per-tick traces. Runs at many times real time, with no window, audio or device.
 #include "battle/battle.h"
+#include "battle/debug_tools.h"
 #include "battle/script.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
+#include <optional>
 #include <set>
 
 namespace {
@@ -21,10 +25,14 @@ const char kUsage[] =
     "  --ticks N      updates to run (default 3600)\n"
     "  --seed N       battle RNG seed (default 1)\n"
     "  --time-limit S round time limit in seconds (default: the match's own)\n"
+    "  --special-mode M every slot's hypermode: 0 Oyashiro, 1 Friendship, 2 Kakera (default 1)\n"
     "  --script FILE  input plan (see src/battle/script.h)\n"
     "  --trace FILE   write one JSON line per tick\n"
     "  --busy         humans press everything, repeatably, instead of a script\n"
     "  --hash-log F   write stateHash per tick, to find where two builds part\n"
+    "  --debug-keys K test keys by tick, e.g. f2@0,f4@300 (docs/DEBUG-KEYS.md)\n"
+    "  --events FILE  what happened, one line per change: rows, hits, status, new bullets (- for stdout)\n"
+    "  --bullets C:W  print the combo's bullets as its data declares them, and exit; names are CP932\n"
     "  --list         print every legal combo and exit\n";
 
 std::string find_game(const std::string& explicitDir) {
@@ -83,11 +91,72 @@ void write_trace(std::ostream& out, const sim::Battle& battle) {
     out << "]}\n";
 }
 
+void print_bullets(const std::string& gameDir, const sim::Slot& combo) {
+    for (const sim::BulletInfo& bullet : sim::weapon_bullets(gameDir, combo.character, combo.weapon)) {
+        std::printf("%2d mag=%2d reg=%3d model=%-8s %s\n", bullet.slot, bullet.magazine, bullet.registration,
+                    bullet.model.c_str(), bullet.name.c_str());
+        for (const sim::BulletInfo::Hit& hit : bullet.hits)
+            std::printf("     from=%d radius=%d shape=%d damage=%d flags=%#x status=%#x power=%d duration=%d\n", hit.start,
+                        hit.extent, hit.shape, hit.damage, hit.flags, hit.status, hit.statusPower, hit.statusDuration);
+    }
+}
+
+// The changes worth reading from a tick, so a combo's behaviour fits on a screen.
+class EventLog {
+public:
+    explicit EventLog(std::ostream& out) : m_out(out) {}
+
+    void record(const sim::Battle& battle) {
+        const unsigned tick = battle.tick() - 1;
+        for (unsigned i = 0; i < 4; ++i) {
+            const sim::DebugFighter f = battle.debug_fighter(i);
+            Seen& seen = m_seen[i];
+            if (f.state != seen.state)
+                m_out << "t=" << tick << " slot" << i << " row " << seen.state << " -> " << f.state << '\n';
+            if (f.hp != seen.hp && m_started)
+                m_out << "t=" << tick << " slot" << i << " hp " << seen.hp << " -> " << f.hp << '\n';
+            if (f.trapRank != seen.rank && m_started)
+                m_out << "t=" << tick << " slot" << i << " trap level " << seen.rank << " -> " << f.trapRank << '\n';
+            if (f.special != seen.special && m_started)
+                m_out << "t=" << tick << " slot" << i << " hypermode " << (f.special ? "on" : "off") << '\n';
+            for (size_t s = 0; s < f.status.size(); ++s)
+                if ((f.status[s] != 0) != (seen.status[s] != 0) && m_started)
+                    m_out << "t=" << tick << " slot" << i << " status " << s << (f.status[s] ? " on for " : " off")
+                          << (f.status[s] ? std::to_string(f.status[s]) : "") << '\n';
+            seen = {f.state, f.hp, f.trapRank, f.special, f.status};
+        }
+        std::map<std::array<int, 3>, int> live;
+        battle.for_each_projectile([&](const sim::ProjectileState& shot) { ++live[{shot.owner, shot.item, shot.row}]; });
+        for (const auto& [key, count] : live) {
+            const auto before = m_live.find(key);
+            if (before == m_live.end() || count > before->second)
+                m_out << "t=" << tick << " slot" << key[0] << " bullet " << key[1] << ':' << key[2] << " live=" << count << '\n';
+        }
+        m_live = std::move(live);
+        m_started = true;
+    }
+
+private:
+    struct Seen {
+        unsigned state = ~0u;
+        int hp = 0, rank = 0;
+        bool special = false;
+        std::array<int, 8> status{};
+    };
+    std::ostream& m_out;
+    std::array<Seen, 4> m_seen{};
+    std::map<std::array<int, 3>, int> m_live;
+    bool m_started = false;
+};
+
 }  // namespace
 
 int main(int argc, char** argv) try {
     sim::BattleConfig config;
-    std::string gameDir, scriptPath, tracePath, hashLogPath;
+    std::string gameDir, scriptPath, tracePath, hashLogPath, eventsPath;
+    std::vector<sim::ScheduledKey> debugKeys;
+    bool listBullets = false;
+    sim::Slot bulletsCombo;
     bool busy = false;
     unsigned ticks = 3600, rosterCount = 0;
     for (int i = 1; i < argc; ++i) {
@@ -101,24 +170,38 @@ int main(int argc, char** argv) try {
                 for (int w = 0; w < sim::weapon_count(c); ++w) std::printf("%s:%d\n", sim::character_name(c).c_str(), w);
             return 0;
         } else if (arg == "--roster") {
-            for (; rosterCount < 4; ++rosterCount) config.slots[rosterCount] = parse_slot(value());
+            for (; rosterCount < 4; ++rosterCount) {
+                const unsigned mode = config.slots[rosterCount].specialMode;
+                config.slots[rosterCount] = parse_slot(value());
+                config.slots[rosterCount].specialMode = mode;
+            }
         } else if (arg == "--game") gameDir = value();
         else if (arg == "--stage") config.stage = static_cast<unsigned>(std::stoul(value()));
         else if (arg == "--ticks") ticks = static_cast<unsigned>(std::stoul(value()));
         else if (arg == "--seed") config.seed = static_cast<std::uint32_t>(std::stoul(value()));
         else if (arg == "--time-limit") config.timeLimitSeconds = static_cast<unsigned>(std::stoul(value()));
-        else if (arg == "--script") scriptPath = value();
+        else if (arg == "--special-mode") {
+            const unsigned mode = static_cast<unsigned>(std::stoul(value()));
+            for (sim::Slot& slot : config.slots) slot.specialMode = mode;
+        } else if (arg == "--script") scriptPath = value();
         else if (arg == "--trace") tracePath = value();
         else if (arg == "--busy") busy = true;
         else if (arg == "--hash-log") hashLogPath = value();
+        else if (arg == "--debug-keys") debugKeys = sim::parse_debug_keys(value());
+        else if (arg == "--events") eventsPath = value();
+        else if (arg == "--bullets") { bulletsCombo = parse_slot(value()); listBullets = true; }
         else throw std::invalid_argument("unknown argument " + arg);
     }
-    if (rosterCount != 4) {
+    if (rosterCount != 4 && !listBullets) {
         std::fputs(kUsage, stderr);
         return 2;
     }
     config.gameDir = find_game(gameDir);
     if (config.gameDir.empty()) throw std::runtime_error("no game install found; pass --game or set GAME_DIR");
+    if (listBullets) {
+        print_bullets(config.gameDir, bulletsCombo);
+        return 0;
+    }
 
     std::vector<sim::ScriptSpan> script;
     if (!scriptPath.empty()) {
@@ -138,11 +221,24 @@ int main(int argc, char** argv) try {
         if (!hashLog) throw std::runtime_error("cannot write " + hashLogPath);
     }
 
+    std::ofstream eventsFile;
+    if (!eventsPath.empty() && eventsPath != "-") {
+        eventsFile.open(eventsPath);
+        if (!eventsFile) throw std::runtime_error("cannot write " + eventsPath);
+    }
+    std::optional<EventLog> events;
+    if (!eventsPath.empty()) events.emplace(eventsPath == "-" ? std::cout : eventsFile);
+
     sim::Battle battle(config);
     std::set<unsigned> states[4];
     int minHp[4] = {1 << 30, 1 << 30, 1 << 30, 1 << 30};
     for (unsigned t = 0; t < ticks; ++t) {
         battle.step(busy ? busy_inputs(t) : sim::script_inputs(script, t));
+        const unsigned keys = sim::debug_keys_at(debugKeys, t);
+        battle.apply_debug_keys(keys);
+        if (keys & sim::DebugReport)
+            for (unsigned i = 0; i < 4; ++i) std::cout << sim::debug_report(battle, i) << '\n';
+        if (events) events->record(battle);
         for (unsigned i = 0; i < 4; ++i) {
             const sim::ActorState a = battle.actor(i);
             states[i].insert(a.state);

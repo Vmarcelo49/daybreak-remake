@@ -1,0 +1,14 @@
+# Satoko 1 enters hypermode and places one trap of each kind, far from the idle enemies.
+# Run with --debug-keys f2@0,f4@150 so the gauge is full at the chord. Commands are blocked until
+# about tick 180, so the chord waits for tick 200.
+# Holding Shoot 20 ticks then releasing: forward (z=-1) row 451, neutral 450, sideways 452; in the
+# air 460. Friendship (--special-mode 1) places the tagged bullets 1, 3, 5; Oyashiro (0) places 0, 2, 4.
+0 200 203 melee shoot
+0 300 345 z=-1
+0 310 340 shoot
+0 400 430 shoot
+0 500 545 x=1
+0 510 540 shoot
+0 620 650 jump
+0 625 660 shoot
+0 720 724 shoot

@@ -5,7 +5,8 @@
 //   0 0 60 z=-1                    walk forward for a second
 //   0 70 74 melee
 //
-// Tokens: x=N, z=N, jump, melee, shoot, target, guard. Spans on one slot merge.
+// Tokens: x=N, z=N, jump, melee, shoot, target, guard, tactics. Spans on one slot merge. `melee shoot`
+// together is the hypermode chord.
 #include "battle/battle.h"
 
 #include <istream>
@@ -42,6 +43,7 @@ inline std::vector<ScriptSpan> parse_script(std::istream& in) {
             else if (token == "shoot") span.input.buttons |= Shoot;
             else if (token == "target") span.input.buttons |= Target;
             else if (token == "guard") span.input.buttons |= Guard;
+            else if (token == "tactics") span.input.buttons |= Tactics;
             else fail("unknown token '" + token + "'");
         }
         spans.push_back(span);

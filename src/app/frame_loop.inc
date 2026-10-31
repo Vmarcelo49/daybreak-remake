@@ -327,6 +327,7 @@ static SDL_AppResult appIterate(App* app) {
                 enterBattlePause(*app, "--pause-overlay");
                 continue;
             }
+            if (debugFreezeHolds(*app)) continue;
             if (!capturing) advanceAnimation(*app, gameplay::FixedStep::seconds);
             tickMatch(*app, capturing ? app->opts.dt : gameplay::FixedStep::seconds);
             traceMatch(*app);

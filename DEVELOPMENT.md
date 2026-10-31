@@ -202,6 +202,9 @@ values and the camera all come from `src/battle/core/`.
   `tests/compare_match_traces.py` can diff a run against
   `research/evidence/parity-baseline/logs/`.
 - `--headless` needs no display and still renders on the real GPU.
+- `--plan=<file>`, `--debug-keys=`, `--special-mode=`, `--view-fighter=` and `--hash-log=` run what
+  `simctl` ran and show it from any fighter. F1 to F8 are live in a battle: see `docs/DEBUG-KEYS.md`,
+  and the `combo-test` skill for testing a combo.
 
 ## The research half
 

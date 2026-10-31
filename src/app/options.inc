@@ -130,6 +130,12 @@ void usage() {
         "                     --sim-roster\n"
         "  --script=<file>    P1 input script for --match (\"<frame> TOKEN...\" lines,\n"
         "                     the DX9 visual-suite format); absent -> live device\n"
+        "  --plan=<file>      with --match: every slot's input, simctl's format, instead of the devices\n"
+        "  --debug-keys=<k>   with --match: test keys by tick, e.g. f2@0,f4@300 (docs/DEBUG-KEYS.md)\n"
+        "  --no-debug-keys    the physical F1-F8 test keys do nothing\n"
+        "  --special-mode=<m> with --match: every fighter's hypermode, 0 Oyashiro, 1 Friendship, 2 Kakera\n"
+        "  --view-fighter=<n> with --match: show fighter n's camera and HUD (0-3)\n"
+        "  --hash-log=<file>  with --match: stateHash per tick, as simctl --hash-log writes it\n"
         "  --script2=<file>   P2 input script; absent -> P2 takes no input (dummy,\n"
         "  --sim-roster=<a>,<b>,<c>,<d>  with --match: four <dir>/<name>[:costume][@weaponSlot]\n"
         "                     exactly what the DX9 scene does)\n"
@@ -413,6 +419,12 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--match") o.match = true;
         else if (!(v = val("--script=")).empty()) o.script = v;
         else if (!(v = val("--script2=")).empty()) o.script2 = v;
+        else if (!(v = val("--plan=")).empty()) o.plan = v;
+        else if (!(v = val("--debug-keys=")).empty()) o.debugKeys = v;
+        else if (a == "--no-debug-keys") o.noDebugKeys = true;
+        else if (!(v = val("--special-mode=")).empty()) o.specialMode = std::atoi(v.c_str());
+        else if (!(v = val("--view-fighter=")).empty()) o.viewFighter = std::atoi(v.c_str());
+        else if (!(v = val("--hash-log=")).empty()) o.hashLog = v;
         else if (!(v = val("--screen=")).empty()) o.screen = v;
         else if (!(v = val("--movie=")).empty()) o.movie = v;
         else if (!(v = val("--language=")).empty()) o.language = v;
@@ -477,6 +489,18 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         if (o.anim < 0) o.anim = 0;
     } else if (!o.enemy.empty()) {
         error = "--enemy needs --versus or --match (P2 placement and rig ownership live there)";
+        return false;
+    }
+    if ((!o.plan.empty() || !o.debugKeys.empty() || !o.hashLog.empty() || o.viewFighter != 0 || o.specialMode >= 0) && !o.match) {
+        error = "--plan, --debug-keys, --hash-log, --special-mode and --view-fighter need --match";
+        return false;
+    }
+    if (o.specialMode > 2) {
+        error = "--special-mode needs 0 to 2";
+        return false;
+    }
+    if (o.viewFighter < 0 || o.viewFighter > 3) {
+        error = "--view-fighter needs 0 to 3";
         return false;
     }
     if ((!o.script.empty() || !o.script2.empty()) && !o.match && o.screen.empty()) {

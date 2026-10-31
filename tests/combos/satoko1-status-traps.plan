@@ -1,0 +1,12 @@
+# Satoko 1 walks up to an idle enemy and places three status traps in a row.
+# Each hold of Shoot with forward held at release is row 451, bullet 2. The enemy's first trigger
+# is the tarai (level 1), the next the bucket (level 2), the last the flames (level 3).
+# Run with --debug-keys f2@0 so everyone else stands still.
+# Expect in --events: trap level 0 -> 1 -> 2 -> 3, slot2 status 7 on, slot2 status 0 on.
+0 70 545 z=-1
+0 560 615 z=-1
+0 565 595 shoot
+0 760 815 z=-1
+0 765 795 shoot
+0 850 1055 z=-1
+0 1005 1035 shoot

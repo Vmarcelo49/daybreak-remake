@@ -1,5 +1,7 @@
 #include "battle/core_battle.h"
 
+#include "battle/debug_tools.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -175,8 +177,17 @@ game::BattleFrame CoreBattle::step(const fnd::input::PlayerState* inputs[game::k
     Inputs next{};
     for (unsigned i = 0; i < 4; ++i)
         if (inputs[i]) next[i] = slot_input(*inputs[i]);
+    if (!m_plan.empty()) next = script_inputs(m_plan, m_battle->tick());
     return m_driver ? m_driver->run(next) : advance(next);
 }
+
+void CoreBattle::apply_debug_keys(unsigned keys) {
+    if (m_driver || !m_battle) return;
+    m_battle->apply_debug_keys(keys);
+    for (CoreFighter& fighter : m_fighters) fighter.refresh();
+}
+
+std::string CoreBattle::debug_report(unsigned slot) const { return sim::debug_report(*m_battle, slot); }
 
 game::BattleFrame CoreBattle::advance(const Inputs& inputs) {
     return m_rollbackStress ? advance_stressed(inputs) : advance_once(inputs);

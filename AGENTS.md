@@ -81,6 +81,7 @@ screen-replay tooling. Unproven original automation is never required.
 | Regression hashes | `bash tools/fingerprints.sh $PWD/build/linux/simctl $PWD/build/linux/daybreak <outdir> tests/scripts`. Expected on 2026-10-31: SIM `746ce7a9cbe6e44a`, `5331c6e70cd13962`, `e79f1dbb68d73853`; PIX `ff54a85d`, `a88d4de4`, `8ebdbd62`. A deliberate behaviour change moves them; say so in its report |
 | Builds and release | `docs/BUILD-*.md`, `docs/RELEASE-CHECKLIST.md`. CI runs when `VERSION` changes on `main` (`.github/workflows/build.yml`) |
 | Assets and paths | `docs/ASSET-CATALOG.md`; moved paths in `docs/PATHS.md` |
+| Testing a character + weapon combo, debug keys | The `combo-test` skill (`.agents/skills/combo-test/SKILL.md`), `docs/DEBUG-KEYS.md`, saved plans in `tests/combos/` |
 | Original-binary questions | The skill routing below |
 | Research corpus | `docs/pipeline.md`, `docs/conventions.md` |
 

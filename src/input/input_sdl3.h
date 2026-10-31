@@ -43,6 +43,10 @@ inline constexpr int kScF1 = 58;      // SDL_SCANCODE_F1
 inline constexpr int kScF2 = 59;      // SDL_SCANCODE_F2
 inline constexpr int kScF3 = 60;      // SDL_SCANCODE_F3
 inline constexpr int kScF4 = 61;      // SDL_SCANCODE_F4
+inline constexpr int kScF5 = 62;      // SDL_SCANCODE_F5
+inline constexpr int kScF6 = 63;      // SDL_SCANCODE_F6
+inline constexpr int kScF7 = 64;      // SDL_SCANCODE_F7
+inline constexpr int kScF8 = 65;      // SDL_SCANCODE_F8
 
 // Index by fnd::input::Action (0..11); -1 = unbound.
 // Order: Up Down Left Right | AttackA Guard Shoot | Jump Special Tactics |

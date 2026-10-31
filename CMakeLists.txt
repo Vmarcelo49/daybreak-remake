@@ -646,6 +646,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_executable(sim_core_test tests/sim_core_test.cpp)
     target_link_libraries(sim_core_test PRIVATE battle_core)
     target_include_directories(sim_core_test PRIVATE src/battle src/battle/core)
+    target_compile_definitions(sim_core_test PRIVATE DAYBREAK_COMBO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/combos")
     add_test(NAME sim_core_test COMMAND sim_core_test)
     set_tests_properties(sim_core_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
     # The admission bodies against the original's recorded answers; skips without the bundle.

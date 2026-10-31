@@ -77,6 +77,7 @@
 #include "battle/battle_pause.h"
 #include "battle/battle_view.h"
 #include "battle/core_battle.h"
+#include "battle/debug_tools.h"
 #include "battle/fixed_step.h"
 #include "hud/hud_fill.h"
 #include "frontend/result_title.h"

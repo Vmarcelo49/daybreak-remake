@@ -58,6 +58,7 @@ static void applyWeaponVisibility(App& app) {
 // recipe can render — and a test can assert on — the interpolation the live path applies.
 static float matchAlphaFor(const App& app, bool capturing) {
     if (app.opts.matchAlpha >= 0.f) return app.opts.matchAlpha;
+    if (app.debugFrozen) return 1.f;
     return capturing ? 1.f : app.logicClock.alpha();
 }
 
@@ -989,6 +990,51 @@ static void tickResultScene(App& app, double dt) {
     updateMatchViews(app, none, dt);
 }
 
+// The test keys (docs/DEBUG-KEYS.md). FUN_00634f60 keeps them out of a story battle; online, they
+// would desynchronize the peers.
+static bool debugKeysLive(const App& app) {
+    if (app.frontend.story.active) return false;
+#ifdef DAYBREAK_ONLINE
+    if (app.frontend.online) return false;
+#endif
+    return true;
+}
+
+static void printDebugReport(const App& app) {
+    for (unsigned i = 0; i < 4; ++i) std::printf("[debug] %s\n", app.coreBattle.debug_report(i).c_str());
+}
+
+// F6, F7 and F8, read while frozen too. True when this tick must not run.
+static bool debugFreezeHolds(App& app) {
+    if (!debugKeysLive(app) || app.opts.noDebugKeys) return false;
+    const auto pressed = [&](size_t edge, int scancode) {
+        const bool down = app.matchInput.key_down(scancode);
+        const bool first = down && !app.debugEdgeHeld[edge];
+        app.debugEdgeHeld[edge] = down;
+        return first;
+    };
+    namespace keys = fnd::input::sdl3;
+    if (pressed(0, keys::kScF6)) printDebugReport(app);
+    if (pressed(1, keys::kScF7)) app.debugFrozen = !app.debugFrozen;
+    return pressed(2, keys::kScF8) ? false : app.debugFrozen;
+}
+
+static void applyDebugKeys(App& app) {
+    if (!debugKeysLive(app)) return;
+    const unsigned tick = static_cast<unsigned>(app.matchFrame - 1);
+    unsigned held = sim::debug_keys_at(app.debugSchedule, tick);
+    if (!app.opts.noDebugKeys) {
+        namespace keys = fnd::input::sdl3;
+        if (app.matchInput.key_down(keys::kScF1)) held |= sim::DebugRestoreHealth;
+        if (app.matchInput.key_down(keys::kScF2)) held |= sim::DebugStopCpu;
+        if (app.matchInput.key_down(keys::kScF3)) held |= sim::DebugResumeCpu;
+        if (app.matchInput.key_down(keys::kScF4)) held |= sim::DebugFillSpecial;
+        if (app.matchInput.key_down(keys::kScF5)) held |= sim::DebugRefillAmmo;
+    }
+    if (held) app.coreBattle.apply_debug_keys(held);
+    if (held & sim::DebugReport) printDebugReport(app);
+}
+
 static void tickMatch(App& app, double dt) {
     for (int i = 0; i < app.battle->fighter_count(); ++i)
         app.previousFighter[i] = app.battle->fighter(i).pose();
@@ -1041,6 +1087,8 @@ static void tickMatch(App& app, double dt) {
                                     ? app.matchViews[0].followed : viewerIndex;
     app.battle->set_primary_listener_fighter(listenerFighter);
     const game::BattleFrame f = app.battle->step(inputs, dt);
+    applyDebugKeys(app);
+    if (app.matchHashLog.is_open()) app.matchHashLog << (app.matchFrame - 1) << ' ' << app.coreBattle.state_hash() << '\n';
     if (app.versusAudioOn)
         app.versusBgmPushed += app.versusLoop.push_next(app.versusAudio, 1024);
     // The core's own audio requests for this tick.

@@ -31,6 +31,12 @@ struct Options {
     bool        match = false;   // playable match: the ported simulation, not a script
     std::string script;          // P1 input script (device override, DX9 format)
     std::string script2;         // P2 input script; absent -> dummy, like the DX9
+    std::string plan;            // --plan=: every slot's input, simctl's format
+    std::string debugKeys;       // --debug-keys=f2@0,f4@300
+    bool        noDebugKeys = false;  // the physical test keys do nothing
+    int         specialMode = -1; // --special-mode=: every fighter's hypermode, else the setup's
+    int         viewFighter = 0; // --view-fighter=: whose camera and HUD a --match shows
+    std::string hashLog;         // --hash-log=: stateHash per tick, to compare with simctl's
     std::string bgm;             // versus BGM track (.ogg; sibling .sfl looped)
     std::string sfx;             // versus hit cue (.cnv)
 
@@ -232,6 +238,10 @@ struct App {
     std::deque<xm::Controller>   coreShotControllers;   // this frame's shot poses
     bool                         matchMode = false;
     uint64_t                     matchFrame = 0;      // 1-based, the DX9's frame_count+1
+    std::vector<sim::ScheduledKey> debugSchedule;
+    bool                         debugFrozen = false;  // F7
+    std::array<bool, 3>          debugEdgeHeld{};      // F6, F7, F8
+    std::ofstream                matchHashLog;
     // Per-controller views of the live match (issue #12). Views exist for HUMAN
     // controllers only; a COM slot never allocates one. `matchViewCount` is how many of
     // the four are live this match, and the simulation is stepped once regardless of it.

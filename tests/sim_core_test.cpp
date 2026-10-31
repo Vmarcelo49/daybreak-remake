@@ -4,11 +4,14 @@
 #include "battle/battle.h"
 #include "battle/script.h"
 
+#include <algorithm>
+#include <array>
 #include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <set>
 #include <sstream>
 #include <string>
@@ -172,7 +175,7 @@ void test_presentation_events(const std::string& game) {
     sim::Battle activation(human);
     bool enteredRow500 = false, voiceOrSound = false;
     for (unsigned t = 0; t < 300; ++t) {
-        if (t == 190) activation.fill_special_for_test();
+        if (t == 190) activation.apply_debug_keys(sim::DebugFillSpecial);
         sim::Inputs inputs{};
         if (t >= 200 && t < 204) inputs[0].buttons = sim::Melee | sim::Shoot;
         activation.step(inputs);
@@ -218,7 +221,7 @@ void test_rena_ex_camera(const std::string& game) {
     bool inRow = false, clipDuringRow = false, clearedAfter = false;
     bool ordinaryBefore = false, animatedDuringRow = false, anchoredOnRena = true;
     for (unsigned t = 0; t < 1200; ++t) {
-        if (t == 190) battle.fill_special_for_test();
+        if (t == 190) battle.apply_debug_keys(sim::DebugFillSpecial);
         sim::Inputs inputs{};
         if ((t >= 200 && t < 204) || (t >= 540 && t < 544)) inputs[0].buttons = sim::Melee | sim::Shoot;
         battle.step(inputs);
@@ -382,6 +385,98 @@ void test_invalid_combos_are_rejected(const std::string& game) {
 
 // PATCHES.md, 2026-10-30. Ohishi+2's row 463 really does hand the trig call a pitch near 2^32,
 // and _ftol2 (FUN_0066b668) keeps the low 32 bits of a 64-bit FISTP.
+std::vector<sim::ScriptSpan> saved_plan(const std::string& name) {
+    std::ifstream in(std::string(DAYBREAK_COMBO_DIR) + "/" + name);
+    check(in.good(), "a saved combo plan opens");
+    return sim::parse_script(in);
+}
+
+sim::BattleConfig satoko1_against_idle_enemies(const std::string& game, unsigned specialMode) {
+    sim::BattleConfig config;
+    config.gameDir = game;
+    config.stage = 21;
+    config.slots[0] = {3, 1, false, 0, specialMode};
+    config.slots[1] = {0, 0, true};
+    config.slots[2] = {0, 0, true};
+    config.slots[3] = {1, 0, true};
+    return config;
+}
+
+// FUN_00634f60's keys, and the two the port adds.
+void test_debug_keys(const std::string& game) {
+    auto config = satoko1_against_idle_enemies(game, 0);
+    sim::Battle battle(config);
+    const auto ticks = [&](unsigned count) {
+        for (unsigned t = 0; t < count; ++t) battle.step({});
+    };
+    ticks(200);
+    check(battle.debug_fighter(1).cpu && !battle.debug_fighter(0).cpu, "only the COM slots run the CPU");
+    battle.apply_debug_keys(sim::DebugStopCpu);
+    check(!battle.debug_fighter(1).cpu && !battle.debug_fighter(3).cpu, "F2 stops every COM");
+    ticks(150);  // shots already in the air land first, and they move whoever they hit
+    const auto stopped = battle.actor(1).position;
+    ticks(60);
+    check(battle.actor(1).position[0] == stopped[0] && battle.actor(1).position[2] == stopped[2], "a stopped COM stays put");
+    battle.apply_debug_keys(sim::DebugResumeCpu);
+    check(battle.debug_fighter(1).cpu && !battle.debug_fighter(0).cpu, "F3 restarts the COMs and hands no human to the CPU");
+
+    check(battle.debug_fighter(0).specialCharge < battle.debug_fighter(0).specialLimit, "the gauge starts below its limit");
+    battle.apply_debug_keys(sim::DebugFillSpecial);
+    check(battle.debug_fighter(0).specialCharge == battle.debug_fighter(0).specialLimit, "F4 fills the gauge");
+
+    config.storyMode = true;
+    sim::Battle story(config);
+    for (unsigned t = 0; t < 200; ++t) story.step({});
+    story.apply_debug_keys(sim::DebugStopCpu | sim::DebugFillSpecial);
+    check(story.debug_fighter(1).cpu, "story mode ignores the keys");
+    check(story.debug_fighter(0).specialCharge < story.debug_fighter(0).specialLimit, "and keeps its gauges");
+}
+
+// The plans the combo-test skill keeps have to keep doing what their comments say.
+void test_saved_combo_plans(const std::string& game) {
+    {
+        sim::Battle battle(satoko1_against_idle_enemies(game, 0));
+        const auto plan = saved_plan("satoko1-status-traps.plan");
+        std::array<int, 2> full{};
+        int topRank = 0;
+        bool bucket = false, flames = false;
+        for (unsigned t = 0; t < 1200; ++t) {
+            battle.step(sim::script_inputs(plan, t));
+            if (t == 0) battle.apply_debug_keys(sim::DebugStopCpu);
+            if (t == 100) full = battle.debug_fighter(0).rounds;
+            topRank = std::max(topRank, battle.debug_fighter(0).trapRank);
+            bucket |= battle.debug_fighter(2).status[7] > 0;
+            flames |= battle.debug_fighter(2).status[0] > 0;
+        }
+        check(topRank == 3, "three triggers take Satoko 1's traps to level 3");
+        check(bucket, "the second status trap is the bucket");
+        check(flames, "the third status trap is the flames");
+
+        check(battle.actor(2).hp < 10000, "the traps hurt the enemy");
+        battle.apply_debug_keys(sim::DebugRestoreHealth);
+        check(battle.actor(2).hp == 10000, "F1 restores health");
+        check(battle.debug_fighter(0).rounds != full, "the traps spent rounds");
+        battle.apply_debug_keys(sim::DebugRefillAmmo);
+        check(battle.debug_fighter(0).rounds == full, "F5 refills them");
+    }
+    // Friendship swaps each of the four traps for its tagged bullet; FUN_004b4090 tests +0x845.
+    for (const unsigned mode : {0u, 1u}) {
+        sim::Battle battle(satoko1_against_idle_enemies(game, mode));
+        const auto plan = saved_plan("satoko1-hyper-traps.plan");
+        std::set<unsigned> rows;
+        for (unsigned t = 0; t < 900; ++t) {
+            battle.step(sim::script_inputs(plan, t));
+            if (t == 0) battle.apply_debug_keys(sim::DebugStopCpu);
+            if (t == 150) battle.apply_debug_keys(sim::DebugFillSpecial);
+            battle.for_each_projectile([&](const sim::ProjectileState& shot) {
+                if (shot.owner == 0) rows.insert(shot.row);
+            });
+        }
+        const std::set<unsigned> expected = mode == 1 ? std::set<unsigned>{1, 3, 5, 7} : std::set<unsigned>{0, 2, 4, 6};
+        check(rows == expected, mode == 1 ? "Friendship places the tagged traps" : "Oyashiro places the plain traps");
+    }
+}
+
 void test_trig_takes_the_ftol_path() {
     using daybreak::legacy_trig;
     const float wrapped = 4294967296.f;  // angle*10 has low 32 bits of zero
@@ -423,6 +518,8 @@ int main() {
     test_hud_values(game);
     test_positional_sounds(game);
     test_round_start(game);
+    test_debug_keys(game);
+    test_saved_combo_plans(game);
     test_hud_state(game);
     test_determinism(game);
     test_input_sensitivity(game);

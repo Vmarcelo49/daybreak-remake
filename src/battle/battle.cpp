@@ -18,12 +18,14 @@
 #include "character_names.hpp"
 #include "development_animated_combat.hpp"
 #include "local_normal_projectiles.hpp"
+#include "projectile_asset_files.hpp"
 #include "projectile_render_pose.hpp"
 #include "stage_environment.hpp"
 #include "stage_floor_collision.hpp"
 #include "stage_wall_collision.hpp"
 
 #include <cstdio>
+#include <sstream>
 #include <filesystem>
 #include <stdexcept>
 
@@ -721,7 +723,94 @@ void Battle::bone_poses(unsigned slot, std::vector<std::string>& names, std::vec
     }
 }
 
-void Battle::fill_special_for_test() { m_impl->combat.fill_keyboard_special(); }
+// FUN_00634f60's tail, in its order: F2, F3, F1, F4. Held keys, so each simply re-applies.
+void Battle::apply_debug_keys(unsigned keys) {
+    auto& combat = m_impl->combat;
+    if (combat.match.story_mode || combat.offline_pause.paused) return;
+    if (keys & DebugStopCpu) m_impl->cpu.stop_keyboard_cpu();
+    if (keys & DebugResumeCpu) m_impl->cpu.resume_keyboard_cpu(m_impl->roster.owner);
+    if (keys & DebugRestoreHealth) combat.restore_keyboard_health();
+    if (keys & DebugFillSpecial) combat.fill_keyboard_special();
+    if (keys & DebugRefillAmmo)
+        for (auto& magazines : combat.magazines)
+            for (auto& magazine : magazines) reset_battle_magazine(magazine);
+}
+
+DebugFighter Battle::debug_fighter(unsigned slot) const {
+    const auto& combat = m_impl->combat;
+    const auto& binding = combat.action_binding(slot);
+    const auto& gauges = combat.special_gauges.at(slot);
+    const unsigned mode = gauges.mode & 255u;
+    DebugFighter out;
+    out.character = static_cast<int>(binding.character);
+    out.weapon = static_cast<int>(binding.weapon);
+    const ActorState actor_state = actor(slot);
+    out.state = actor_state.state;
+    out.phase = actor_state.phase;
+    out.frame = actor_state.frame;
+    out.hp = actor_state.hp;
+    out.gauge = actor_state.gauge;
+    out.cpu = m_impl->cpu.frame.enabled.at(slot);
+    out.special = gauges.active0 || gauges.active1 || gauges.active2;
+    out.specialCharge = damage_signed(mode == 1 ? gauges.charge1 : mode == 2 ? gauges.charge2 : gauges.charge0);
+    out.specialLimit = damage_signed(mode == 1 ? gauges.limit1 : gauges.limit0);
+    for (size_t i = 0; i < out.status.size(); ++i) out.status[i] = damage_signed(combat.status.at(slot).duration[i]);
+    out.trapRank = damage_signed(combat.field_contact_rank.at(slot));
+    out.trapRankTimer = damage_signed(combat.field_contact_rank_timer.at(slot));
+    for (size_t i = 0; i < out.rounds.size(); ++i) out.rounds[i] = damage_signed(combat.magazines.at(slot)[i].rounds);
+    return out;
+}
+
+std::vector<BulletInfo> weapon_bullets(const std::string& gameDir, int character, int weapon) {
+    if (weapon < 0 || weapon >= weapon_count(character)) throw std::invalid_argument("sim: not a legal combo");
+    AssetSearchPath assets = mount_assets(gameDir);
+    char path[64];
+    std::snprintf(path, sizeof path, "data/%s/%02d.dat", character_name(character).c_str(), weapon);
+    const unsigned item = read_actor_frame_data(assets.read(path).bytes).parameters[3];
+    std::snprintf(path, sizeof path, "data/item/%03u.dat", item);
+    const WeaponItemData data = read_weapon_item_data(assets.read(path).bytes);
+
+    // "[Bullet12];the name": the only place the original's data names a bullet.
+    std::vector<std::string> names(data.bullets.size());
+    std::snprintf(path, sizeof path, "data/item/%03u.ini", item);
+    if (assets.contains(path)) {
+        const auto bytes = assets.read(path).bytes;
+        std::istringstream lines(std::string(bytes.begin(), bytes.end()));
+        for (std::string line; std::getline(lines, line);) {
+            unsigned slot = 0;
+            const auto semicolon = line.find(';');
+            if (std::sscanf(line.c_str(), "[Bullet%u]", &slot) == 1 && slot < names.size() && semicolon != std::string::npos)
+                names[slot] = line.substr(semicolon + 1);
+        }
+    }
+
+    std::vector<BulletInfo> out;
+    for (size_t slot = 0; slot < data.bullets.size(); ++slot) {
+        BulletInfo info;
+        info.slot = static_cast<int>(slot);
+        info.magazine = data.bullets[slot].magazine_index;
+        info.registration = data.bullets[slot].registration_id();
+        info.name = names[slot];
+        const auto files = load_projectile_asset_files(assets, item, data.bullets[slot]);
+        info.model = files.variants.model;
+        for (const auto& phase : files.selected().phases)
+            for (const auto& frame : phase.frames) {
+                BulletInfo::Hit hit;
+                hit.start = frame.start;
+                hit.extent = static_cast<int>(frame.extent);
+                hit.shape = static_cast<int>(frame.shape);
+                hit.flags = frame.flags2c;
+                hit.damage = damage_signed(frame.fields.at(0));
+                hit.statusPower = damage_signed(frame.fields.at(1));
+                hit.statusDuration = damage_signed(frame.fields.at(2));
+                for (unsigned bit = 0; bit < 8; ++bit)
+                    if (frame.flags2c & (0x40u << bit)) hit.status |= 1u << bit;
+                info.hits.push_back(hit);
+            }
+        out.push_back(std::move(info));
+    }
+    return out;
+}
 
 std::vector<unsigned> Battle::declared_rows(unsigned slot) const {
     std::vector<unsigned> rows;

@@ -37,6 +37,10 @@ static_assert(fnd::input::sdl3::kScF1 == SDL_SCANCODE_F1, "debug F1 drifted");
 static_assert(fnd::input::sdl3::kScF2 == SDL_SCANCODE_F2, "debug F2 drifted");
 static_assert(fnd::input::sdl3::kScF3 == SDL_SCANCODE_F3, "debug F3 drifted");
 static_assert(fnd::input::sdl3::kScF4 == SDL_SCANCODE_F4, "debug F4 drifted");
+static_assert(fnd::input::sdl3::kScF5 == SDL_SCANCODE_F5, "debug F5 drifted");
+static_assert(fnd::input::sdl3::kScF6 == SDL_SCANCODE_F6, "debug F6 drifted");
+static_assert(fnd::input::sdl3::kScF7 == SDL_SCANCODE_F7, "debug F7 drifted");
+static_assert(fnd::input::sdl3::kScF8 == SDL_SCANCODE_F8, "debug F8 drifted");
 static_assert(sizeof(fnd::input::sdl3::kP1ScancodeByAction) /
                       sizeof(fnd::input::sdl3::kP1ScancodeByAction[0]) ==
                   (size_t)fnd::input::ActionCount,

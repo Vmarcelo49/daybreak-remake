@@ -717,7 +717,8 @@ static bool startCoreBattle(App& app, const MatchSetup& config) {
         int costume = 0;
         splitSuffix(app.opts.battleCharacters[i], specPath, costume);
         core.slots[static_cast<size_t>(i)] = {character, slot, !human, costume,
-                                              static_cast<unsigned>(config.hyper[i])};
+                                              app.opts.specialMode >= 0 ? static_cast<unsigned>(app.opts.specialMode)
+                                                                        : static_cast<unsigned>(config.hyper[i])};
         moves[static_cast<size_t>(i)] = config.moves[i];
         weapons[static_cast<size_t>(i)] = weapon;
     }
@@ -932,6 +933,32 @@ static bool initMatch(App& app) {
         app.error = "cannot read input script " + app.opts.script;
         return false;
     }
+    if (!app.opts.plan.empty()) {
+        std::ifstream f(app.opts.plan);
+        if (!f) {
+            app.error = "cannot read input plan " + app.opts.plan;
+            return false;
+        }
+        try {
+            app.coreBattle.set_input_plan(sim::parse_script(f));
+        } catch (const std::exception& e) {
+            app.error = e.what();
+            return false;
+        }
+    }
+    try {
+        app.debugSchedule = sim::parse_debug_keys(app.opts.debugKeys);
+    } catch (const std::exception& e) {
+        app.error = e.what();
+        return false;
+    }
+    if (!app.opts.hashLog.empty()) {
+        app.matchHashLog.open(app.opts.hashLog);
+        if (!app.matchHashLog) {
+            app.error = "cannot write " + app.opts.hashLog;
+            return false;
+        }
+    }
     if (!app.opts.script2.empty()) {
         std::ifstream f(app.opts.script2);
         if (!f) {
@@ -962,7 +989,7 @@ static bool initMatch(App& app) {
             controllerOfFighter[i] = (controller >= 0 && controller < 4) ? controller : -1;
         }
     } else {
-        controllerOfFighter[0] = 0;
+        controllerOfFighter[app.opts.viewFighter] = 0;
     }
     game::HumanView viewList[game::kMaxHumanViews];
     app.matchViewCount = game::buildHumanViews(controllerOfFighter, fighterCount, viewList);

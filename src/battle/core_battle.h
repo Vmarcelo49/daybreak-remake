@@ -7,6 +7,7 @@
 
 #include "battle/battle_view.h"
 #include "battle/battle.h"
+#include "battle/script.h"
 
 namespace sim {
 
@@ -160,6 +161,11 @@ public:
     void set_hearing_slot(unsigned slot) { m_battle->setHearingSlot(slot); }
     std::uint64_t state_hash() const { return m_battle->stateHash(); }
     void set_paused(bool paused) override { m_paused = paused; }
+    // Plays this plan instead of the devices, so a capture runs what simctl ran.
+    void set_input_plan(std::vector<ScriptSpan> plan) { m_plan = std::move(plan); }
+    // Ignored under a tick driver: online, a key on one machine would desynchronize the others.
+    void apply_debug_keys(unsigned keys);
+    std::string debug_report(unsigned slot) const;
     void set_primary_listener_fighter(int fighter) override { m_listener = fighter; }
 
 private:
@@ -183,6 +189,7 @@ private:
     std::unique_ptr<sim::Battle> m_battle;
     std::array<CoreFighter, 4> m_fighters{};
     gameplay::MatchEconomy m_economy{};
+    std::vector<ScriptSpan> m_plan;
     bool m_paused = false;
     int m_listener = 0;
     bool m_roundReported = false;
