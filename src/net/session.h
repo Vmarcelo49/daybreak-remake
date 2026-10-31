@@ -82,6 +82,7 @@ public:
 private:
     explicit Session(sim::CoreBattle& battle);
     void read_session_events();
+    int m_sessionEventsRead = 0;
 
     // GekkoNet saves bytes, and a snapshot holds heap, so the bytes it keeps are an index into this
     // ring. Longer than any rollback, and also why a late spectator cannot join from these bytes.

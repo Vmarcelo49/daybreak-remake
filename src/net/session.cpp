@@ -232,11 +232,13 @@ std::unique_ptr<Session> Session::online(sim::CoreBattle& battle, UdpSocket& soc
 void Session::read_session_events() {
     int count = 0;
     GekkoSessionEvent** events = gekko_session_events(m_session, &count);
-    for (int i = 0; i < count; ++i) {
+    // Reading does not clear them: only the next update does, and a skipped tick reads in between.
+    for (int i = m_sessionEventsRead; i < count; ++i) {
         if (events[i]->type == GekkoPlayerDisconnected) ++m_stats.disconnects;
         if (events[i]->type != GekkoDesyncDetected) continue;
         if (m_stats.desyncs++ == 0) m_stats.firstDesyncFrame = events[i]->data.desynced.frame;
     }
+    m_sessionEventsRead = count;
 }
 
 game::BattleFrame Session::run(const sim::Inputs& inputs) {
@@ -263,6 +265,7 @@ game::BattleFrame Session::run(const sim::Inputs& inputs) {
 
     int count = 0;
     GekkoGameEvent** events = gekko_update_session(m_session, &count);
+    m_sessionEventsRead = 0;
     for (int i = 0; i < count; ++i) {
         const GekkoGameEvent& event = *events[i];
         if (event.type == GekkoAdvanceEvent) {

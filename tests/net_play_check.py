@@ -105,7 +105,10 @@ def dropped_peer(netctl, game, folder):
         proxy.kill()
     survivors = [log for index, log in enumerate(logs) if index != 2]
     frames = compare(survivors, "dropped peer")
-    assert all(r["slots"] == "HCHH" for r in results), f"dropped peer: its slot is not COM: {results}"
+    # Which slot it held depends on the order the peers joined in, and the host's cannot be it.
+    slots = {r["slots"] for r in results}
+    assert len(slots) == 1 and next(iter(slots)).count("C") == 1 and next(iter(slots))[0] == "H", \
+        f"dropped peer: its slot is not COM: {results}"
     assert all(r["disconnects"] == 1 for r in results), f"dropped peer: {results}"
     assert frames > 1400, f"dropped peer: only {frames} frames compared"
     print(f"dropped peer: {frames} frames equal, its slot is COM")
