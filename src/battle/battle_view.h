@@ -76,7 +76,11 @@ public:
     virtual Rgb aura_color() const = 0;
 
     // Weapon presentation.
+    // The long stop this fighter is held in, drawn as a negative sphere around it.
+    virtual bool long_stopped() const { return false; }
     virtual bool draws_item_model(int model) const = 0;
+    // The hand a drawn item model is bound to: 0, 1, or -1 when it is not drawn.
+    virtual int item_model_hand(int model) const = 0;
     virtual const gameplay::WeaponTrail& trail(int hand) const = 0;
     virtual int trail_item_model(int hand) const = 0;
 
@@ -146,6 +150,8 @@ public:
 
     // The result presentation draws no battle HUD.
     virtual bool hud_hidden() const { return false; }
+    // Any fighter's time stop is running, which the views draw as a negative.
+    virtual bool time_stop_active() const { return false; }
     virtual BattleNotice notice(int) const { return {}; }
     virtual LockRingView lock_ring(int) const { return {}; }
     virtual std::vector<DirectionWarningView> direction_warnings(int) const { return {}; }

@@ -490,6 +490,15 @@ ActorState Battle::actor(unsigned slot) const {
 
 unsigned Battle::tick() const { return m_impl->ticks; }
 unsigned Battle::scene_phase() const { return m_impl->combat.scene_phase(); }
+bool Battle::long_stopped(unsigned slot) const { return m_impl->combat.long_stop_ticks.at(slot) != 0; }
+// FUN_0063a130 reads each fighter's +0x828, and skips the view in scene modes 4 and 5.
+bool Battle::time_stop_active() const {
+    const auto& combat = m_impl->combat;
+    if (combat.scene_phase() >= 4) return false;
+    for (const unsigned ticks : combat.time_stop_ticks)
+        if (ticks) return true;
+    return false;
+}
 unsigned Battle::live_projectiles() const { return static_cast<unsigned>(m_impl->projectiles.live.size()); }
 bool Battle::match_finished() const { return m_impl->combat.match.ready; }
 ActorAnimation Battle::animation(unsigned slot) const {

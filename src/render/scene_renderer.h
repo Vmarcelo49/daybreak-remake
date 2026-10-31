@@ -337,10 +337,9 @@ enum class Pass : uint8_t {
     Outline = 0, Opaque = 1, Decal = 2,
     // Additive cards, depth-tested: the ordinary effect card.
     Effect = 3,
-    // Additive cards the original draws with ZENABLE = 0 while the rest keeps depth:
-    // FUN_005f60b0's cases 2 and 4 set the blend, turn Z off for the draw and turn it back on
-    // afterwards (:84-89, :100-109). Used for shot models whose record asks for it.
-    EffectNoDepth = 4
+    // The long stop's sphere: replaces what is behind it with its negative (FUN_004203f0,
+    // INVDESTCOLOR/ZERO). Depth-tested and writing no depth, like every effect.
+    EffectInvert = 4
 };
 inline constexpr size_t kPassCount = 5;
 
@@ -405,6 +404,7 @@ public:
         const xm::Controller* pose = nullptr;
         std::vector<std::pair<std::string,std::string>> textures;
         int renderMode = -1; // current projectile record +0x7c (FUN_005f60b0)
+        bool invert = false; // draw in Pass::EffectInvert
         // Pre-evaluated node matrices for an instance whose pose is not persistent — an
         // effect card is sampled from its own model at its age and dropped at the end of the
         // frame, so there is no controller to hold (render/fx_cards.h's cardAnimationSeconds

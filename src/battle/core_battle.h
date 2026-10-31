@@ -55,7 +55,9 @@ public:
     glm::vec3 aura_center_local() const override { return glm::vec3(0.f, 58.f, 0.f); }
     float aura_radius() const override { return 0.f; }
     game::Rgb aura_color() const override { return 0; }
+    bool long_stopped() const override { return m_longStopped; }
     bool draws_item_model(int model) const override { return model == m_held[0] || model == m_held[1]; }
+    int item_model_hand(int model) const override { return model == m_held[0] ? 0 : model == m_held[1] ? 1 : -1; }
     const gameplay::WeaponTrail& trail(int hand) const override { return m_trails[static_cast<size_t>(hand)]; }
     int trail_item_model(int hand) const override { return m_trailModels[static_cast<size_t>(hand)]; }
     bool core_pose(std::vector<glm::mat4>& worldOut) const override;
@@ -82,6 +84,7 @@ private:
     bool m_alive = true;
     float m_ghost = 100.f;
     std::array<int, 2> m_held{{-1, -1}};
+    bool m_longStopped = false;
     std::array<MagazineState, 2> m_magazines{};
     ActorAnimation m_animation{};
     SpecialState m_special{};
@@ -125,6 +128,7 @@ public:
     int aim_target(int fighter) const override { return locked_target(fighter); }
     int lock_pulse(int fighter) const override { return m_battle ? m_battle->actor(static_cast<unsigned>(fighter)).lockPulse : 0; }
     bool hud_hidden() const override { return m_battle && m_battle->hud_hidden(); }
+    bool time_stop_active() const override { return m_battle && m_battle->time_stop_active(); }
     game::BattleNotice notice(int fighter) const override;
     game::LockRingView lock_ring(int fighter) const override;
     std::vector<game::DirectionWarningView> direction_warnings(int fighter) const override;

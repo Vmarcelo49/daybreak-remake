@@ -320,7 +320,7 @@ static void animPlayerTick(App& app, double dt) {
     // Same composition the match uses per fighter (placeAttachedProp); the browser's one
     // rig owns every prop and its model matrix is the identity.
     for (size_t i = 1; i < app.scene.models.size(); ++i)
-        if (app.scene.models[i].attachFrame >= 0) placeAttachedProp(app, i, 0);
+        if (app.scene.models[i].attachFrame >= 0) placeAttachedProp(app, i, 0, 0);
     app.renderer.setModelMatrices(app.modelMatrices);
 
     const float ch = std::cos(app.apPitch);
@@ -339,9 +339,12 @@ bool captureHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat
         if (paused.battlePaused &&
             !drawBattlePauseOverlay(paused, enc, view, w, h, format)) return false;
     }
+    const render::Target target{enc, view, format, w, h};
+    if (ck->prims && ck->timeStop)
+        for (const render::ViewCamera& frameView : ck->views)
+            if (!ck->prims->invertView(target, frameView.rect, *ck->error)) return false;
     if (ck->hud && !hudTestHook(enc, view, format, w, h, ck->hud)) return false;
     if (!ck->prims) return true;
-    const render::Target target{enc, view, format, w, h};
     for (const render::ViewCamera& frameView : ck->views) {
         const render::ViewportRect& rect = frameView.rect;
         if (ck->solid && !ck->solid->empty()) {

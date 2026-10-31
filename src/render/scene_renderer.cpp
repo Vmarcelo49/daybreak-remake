@@ -109,8 +109,13 @@ bool isShadowDecalName(const std::string& raw) {
 // The scene role is the only honest signal: the asset layer names each model's
 // category, and a future `--effect` loader assigns these roles the way loadWeapon
 // assigns "weapon" today. Bare `--model` loads keep role "model" and stay opaque.
-Pass classifyPass(const std::string& role, const std::string& texture) {
+//
+// One signal does exist on a weapon: X-material power selects the glow pass in the
+// original (FUN_00652880 tests material.Power == 0), and data/item/52.X's aura quad is
+// the only item material that sets it. Its texture is opaque black around the glow.
+Pass classifyPass(const std::string& role, const std::string& texture, float power) {
     if (role == "effect" || role == "aura" || role == "projectile") return Pass::Effect;
+    if (role == "weapon" && power != 0.f) return Pass::Effect;
     if (!texture.empty() && isShadowDecalName(texture)) return Pass::Decal;
     return Pass::Opaque;
 }
@@ -797,7 +802,7 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                     (sub.material >= 0 && (size_t)sub.material < mesh.materials.size())
                         ? mesh.materials[(size_t)sub.material]
                         : (mesh.materials.empty() ? xm::Material{} : mesh.materials[0]);
-                const Pass pass = classifyPass(sm.role, mat.texture);
+                const Pass pass = classifyPass(sm.role, mat.texture, mat.power);
                 if (options.textures && !mat.texture.empty()) {
                     // The decal white-out is a pass decision, so it stays here rather
                     // than moving into uploadTexture(): white keys out so the card
@@ -855,7 +860,7 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                 // spherical: the world's up axis is load-bearing — ground cards lie in
                 // XZ, shockwaves read as verticals — and the arena camera stays near
                 // level). The verdict is geometry-only; dormant until setEye().
-                if (pass == Pass::Effect) {
+                if (pass == Pass::Effect && sm.role != "weapon") {
                     if (const std::optional<Billboard> bb = classifyBillboard(mesh, sub)) {
                         d.bbCenter = bb->center;
                         d.bbYaw0 = bb->yaw0;
@@ -918,12 +923,10 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
     // surface; depth testing makes the global order equivalent, and it keeps the pipeline
     // switches to one per pass.) The instance-only templates are ordered with the base
     // draws so an instance lands in the same pass group its model would have.
-    // Pass order is Outline, Opaque, Decal, Effect, EffectNoDepth — the depthless cards go
-    // last so they cannot be occluded by anything the frame drew before them, which is what
-    // the original's Z-off window achieves. Built up back-to-front so each partition keeps
-    // the group it just placed at the end.
+    // Pass order is Outline, Opaque, Decal, Effect, EffectInvert. Built up back-to-front so
+    // each partition keeps the group it just placed at the end.
     std::stable_partition(draws_.begin(), draws_.end(),
-                          [](const DrawItem& d) { return d.pass != Pass::EffectNoDepth; });
+                          [](const DrawItem& d) { return d.pass != Pass::EffectInvert; });
     std::stable_partition(draws_.begin(), draws_.end(),
                           [](const DrawItem& d) {
                               return d.pass == Pass::Outline || d.pass == Pass::Opaque ||
@@ -935,8 +938,7 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
                           });
     std::stable_partition(draws_.begin(), draws_.end(),
                           [](const DrawItem& d) { return d.pass == Pass::Outline; });
-    // Only instances can carry EffectNoDepth (the depthless pass is chosen per shot record at
-    // instance time), so the template list needs just its two groups.
+    // Only instances can carry EffectInvert (chosen at instance time), so the template list needs just its two groups.
     std::stable_partition(drawTemplates_.begin(), drawTemplates_.end(),
                           [](const DrawItem& d) { return d.pass != Pass::Effect; });
     // The instance source of truth: the base draws in their final pass order, then the
@@ -950,7 +952,7 @@ bool SceneRenderer::setScene(const xm::Scene& scene,
         for (const DrawItem& d : drawTemplates_) {
             if (d.texture >= 0) ++tTextured; else ++tUntextured;
             if (d.pass == Pass::Decal) ++tDecals;
-            else if (d.pass == Pass::Effect || d.pass == Pass::EffectNoDepth) ++tEffects;
+            else if (d.pass == Pass::Effect || d.pass == Pass::EffectInvert) ++tEffects;
         }
         stats_.textured -= tTextured;
         stats_.untextured -= tUntextured;
@@ -1190,13 +1192,14 @@ void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instan
                 // uses for the billboard verdict. Swept against all 351 shipped shot models
                 // (V3-38): every quad there is a black-backed card, and the corpus has no
                 // counter-example.
-                const bool depthless = e.renderMode == 2 || e.renderMode == 4;
-                const bool glowQuad = t.cardQuad || depthless;
-                d.pass = depthless ? Pass::EffectNoDepth
-                                   : glowQuad ? Pass::Effect : Pass::Opaque;
+                // Cases 2/4 set ZWRITEENABLE (0x0e) to 0 and leave ZENABLE (0x07) alone, so
+                // they are still hidden by what stands in front of them.
+                const bool additive = e.renderMode == 2 || e.renderMode == 4;
+                d.pass = additive || t.cardQuad ? Pass::Effect : Pass::Opaque;
                 d.flags &= ~xm::kDrawUnlit;
                 if (e.renderMode == 3 || e.renderMode == 4) d.flags |= xm::kDrawUnlit;
             }
+            if (e.invert) d.pass = Pass::EffectInvert;
             for (const auto& offset : offsets)
                 if (offset.first == t.paletteOffset) d.paletteOffset = offset.second;
             if (t.modelIndex < textureVariants_.size())
@@ -1213,13 +1216,11 @@ void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instan
             draws_.push_back(d);
         }
     }
-    // The per-instance copies were appended in instance order, and an instance's pass can be
-    // EffectNoDepth while a later one is Opaque — so the pass grouping has to be re-established
-    // over the whole list, not just the base draws. Without this a solid shot copy drawn after a
-    // depthless card would still paint over it (the depthless pass tests ALWAYS and writes no
-    // depth, so the card cannot defend itself).
+    // The per-instance copies were appended in instance order, and a later one can be Opaque,
+    // so the pass grouping has to be re-established over the whole list, not just the base
+    // draws: a solid shot copy drawn after a card would otherwise paint over it.
     std::stable_partition(draws_.begin(), draws_.end(),
-                          [](const DrawItem& d) { return d.pass != Pass::EffectNoDepth; });
+                          [](const DrawItem& d) { return d.pass != Pass::EffectInvert; });
     std::stable_partition(draws_.begin(), draws_.end(),
                           [](const DrawItem& d) {
                               return d.pass == Pass::Outline || d.pass == Pass::Opaque ||
@@ -1234,7 +1235,7 @@ void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instan
     int instEffects = 0, instDecals = 0;
     for (const DrawItem& d : draws_)
         if (d.instance) {
-            if (d.pass == Pass::Effect || d.pass == Pass::EffectNoDepth) ++instEffects;
+            if (d.pass == Pass::Effect || d.pass == Pass::EffectInvert) ++instEffects;
             else if (d.pass == Pass::Decal) ++instDecals;
         }
     stats_.effects = baseEffects_ + instEffects;
@@ -1354,7 +1355,12 @@ WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, Pass pas
             blend.color.dstFactor = WGPUBlendFactor_Zero;
             blend.alpha.srcFactor = WGPUBlendFactor_Zero;
             blend.alpha.dstFactor = WGPUBlendFactor_One;
-        } else if (kind == Pass::Effect || kind == Pass::EffectNoDepth) {
+        } else if (kind == Pass::EffectInvert) {
+            blend.color.srcFactor = WGPUBlendFactor_OneMinusDst;
+            blend.color.dstFactor = WGPUBlendFactor_Zero;
+            blend.alpha.srcFactor = WGPUBlendFactor_Zero;
+            blend.alpha.dstFactor = WGPUBlendFactor_One;
+        } else if (kind == Pass::Effect) {
             blend.color.srcFactor = WGPUBlendFactor_SrcAlpha;
             blend.color.dstFactor = WGPUBlendFactor_One;
             blend.alpha.srcFactor = WGPUBlendFactor_One;
@@ -1377,11 +1383,7 @@ WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, Pass pas
         depth.depthWriteEnabled = (kind == Pass::Opaque || kind == Pass::Outline)
                                       ? WGPUOptionalBool_True
                                       : WGPUOptionalBool_False;
-        // FUN_005f60b0's cases 2/4 disable Z for the draw; the depthless effect pass
-        // keeps that as ALWAYS instead of turning the attachment off, which the renderer
-        // cannot do per draw.
-        depth.depthCompare = kind == Pass::EffectNoDepth ? WGPUCompareFunction_Always
-                                                        : WGPUCompareFunction_LessEqual;
+        depth.depthCompare = WGPUCompareFunction_LessEqual;
         setStencilOps(depth.stencilFront);
         setStencilOps(depth.stencilBack);
         // Full masks on every pass, not just the decal one: the masks are meaningless
@@ -1419,7 +1421,9 @@ WGPURenderPipeline SceneRenderer::pipelineFor(WGPUTextureFormat format, Pass pas
         // culling for its 2D/effect passes, which is where the decals belong. The outline
         // pass is the one place it culls the other way (CULLMODE = 2, the hull's front
         // faces), so that is the one pipeline here with cullMode = Front.
-        rpd.primitive.cullMode = kind == Pass::Opaque  ? WGPUCullMode_Back
+        // The negative needs its one-sided draw: both faces of the sphere would invert twice.
+        rpd.primitive.cullMode = kind == Pass::Opaque || kind == Pass::EffectInvert
+                                     ? WGPUCullMode_Back
                                  : kind == Pass::Outline ? WGPUCullMode_Front
                                                          : WGPUCullMode_None;
         rpd.depthStencil = &depth;

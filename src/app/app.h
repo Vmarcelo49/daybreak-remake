@@ -445,6 +445,7 @@ struct CaptureHook {
     const render::DebugLineBatch* lines = nullptr;
     const render::CubeBatch*      solid = nullptr;   // shots + sparks (opaque)
     const render::CubeBatch*      additive = nullptr;   // hypermode auras
+    bool                          timeStop = false;     // the whole-view negative, under the HUD
     // One entry per view for the overlay passes: the same matrix and cell the scene pass
     // drew with, so a view's cubes and lines land in that view (issue #12). An entry with
     // an empty rect is the single-view frame, whose passes keep the full-target viewport.

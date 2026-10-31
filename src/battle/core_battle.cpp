@@ -82,6 +82,7 @@ void CoreFighter::refresh() {
     m_gauge = actor.gauge;
     m_actionCamera = actor.actionCamera;
     m_held = m_battle->held_models(m_slot);
+    m_longStopped = m_battle->long_stopped(m_slot);
     m_magazines = m_battle->magazines(m_slot);
     m_animation = m_battle->animation(m_slot);
     m_special = m_battle->special(m_slot);

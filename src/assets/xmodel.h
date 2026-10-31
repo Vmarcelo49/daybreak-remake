@@ -95,12 +95,13 @@ struct NprVertex {
 
 struct Material {
     glm::vec4   diffuse{1.f};
-    // Parsed and kept, read by nothing: the renderer shades with diffuse (baseColor) and
-    // emissive (the toon effect's MaterialColor), and the recovered fixed-function term
-    // carries no specular at all — D3DRS_SPECULARENABLE is never set, see renderImpl's
-    // camera comment. Kept because a material record that silently drops part of itself
-    // cannot be told from one that was never in the file.
+    // Selects a weapon's glow pass (classifyPass), not a specular term: the recovered
+    // fixed-function term carries no specular at all — D3DRS_SPECULARENABLE is never
+    // set, see renderImpl's camera comment.
     float       power = 0.f;
+    // Parsed and kept, read by nothing: the renderer shades with diffuse (baseColor) and
+    // emissive (the toon effect's MaterialColor). Kept because a material record that
+    // silently drops part of itself cannot be told from one that was never in the file.
     glm::vec3   specular{0.f};
     glm::vec3   emissive{0.f};
     std::string texture;   // raw bytes as stored (Shift-JIS in the shipped assets)

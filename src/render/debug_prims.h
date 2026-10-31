@@ -371,6 +371,8 @@ public:
         // false: SrcAlpha/OneMinusSrcAlpha, the scene's opaque-pass pair.
         // true:  SrcAlpha/One, the DX9 UnlitCubePass(alphaBlend = true) pair.
         bool additive = false;
+        // Wins over `additive`: replaces what is already drawn with its negative.
+        bool invert = false;
         // The split-screen cell this pass draws into (issue #12). Empty — the default —
         // leaves the full-attachment viewport alone, so a single-view frame is
         // byte-identical to one drawn before the multi-view path existed.
@@ -423,6 +425,10 @@ public:
                       const std::vector<DebugVertex>&, WGPUTextureView depthView,
                       const Options&, std::string& error);
 
+    // The time stop's whole-view negative (FUN_0063a130: INVDESTCOLOR/ZERO over a white
+    // quad). Draws over `viewport`.
+    bool invertView(const Target&, const ViewportRect& viewport, std::string& error);
+
     const Stats& stats() const { return stats_; }
 
 private:
@@ -432,7 +438,7 @@ private:
     enum DepthMode : uint8_t { kNoDepth = 0, kDepthTested = 1, kDepthAlways = 2 };
     // Straight alpha is the scene's opaque-pass pair; additive is the DX9
     // UnlitCubePass(alphaBlend = true) pair.
-    enum BlendMode : uint8_t { kStraightAlpha = 0, kAdditive = 1 };
+    enum BlendMode : uint8_t { kStraightAlpha = 0, kAdditive = 1, kInvert = 2 };
     enum Topology : uint8_t { kLineList = 0, kTriangleList = 1 };
 
     struct PipelineEntry {

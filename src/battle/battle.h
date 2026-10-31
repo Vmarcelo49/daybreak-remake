@@ -204,6 +204,8 @@ public:
     bool match_finished() const;
     // The result phases (3 and up) draw no battle HUD (RuntimeBattle's draw, phase < 3).
     bool hud_hidden() const { return scene_phase() >= 3; }
+    bool time_stop_active() const;
+    bool long_stopped(unsigned slot) const;
     ActorAnimation animation(unsigned slot) const;
     SpecialState special(unsigned slot) const;
     NoticeState notice(unsigned slot) const;

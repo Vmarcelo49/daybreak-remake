@@ -163,7 +163,12 @@ WGPURenderPipeline DebugPrims::pipelineFor(WGPUTextureFormat format, DepthMode d
     target.format = format;
     target.writeMask = WGPUColorWriteMask_All;
     WGPUBlendState blendState = {};
-    if (blend == kAdditive) {
+    if (blend == kInvert) {
+        blendState.color.srcFactor = WGPUBlendFactor_OneMinusDst;
+        blendState.color.dstFactor = WGPUBlendFactor_Zero;
+        blendState.alpha.srcFactor = WGPUBlendFactor_Zero;
+        blendState.alpha.dstFactor = WGPUBlendFactor_One;
+    } else if (blend == kAdditive) {
         // The DX9 UnlitCubePass(alphaBlend = true) pair: fire-and-forget additive,
         // which is how a bright debug line stays legible over a dark stage.
         blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
@@ -271,6 +276,20 @@ bool DebugPrims::drawVertices(const Target& target, const glm::mat4& viewProj,
 
 // Solid cubes, the same pass the DX9 file is: same shader, same states, only the
 // primitive topology differs from the line list above.
+bool DebugPrims::invertView(const Target& target, const ViewportRect& viewport,
+                            std::string& error) {
+    const std::vector<DebugVertex> quad = {
+        {{-1.f, -1.f, 0.f}}, {{1.f, -1.f, 0.f}}, {{1.f, 1.f, 0.f}},
+        {{-1.f, -1.f, 0.f}}, {{1.f, 1.f, 0.f}},  {{-1.f, 1.f, 0.f}},
+    };
+    Options options;
+    options.depthTest = false;
+    options.invert = true;
+    options.viewport = viewport;
+    return drawBatch(target, glm::mat4(1.f), quad, quad.size(), nullptr, options, kTriangleList,
+                     error);
+}
+
 bool DebugPrims::drawCubes(const Target& target, const glm::mat4& viewProj,
                            const CubeBatch& batch, WGPUTextureView depthView,
                            const Options& options, std::string& error) {
@@ -309,7 +328,7 @@ bool DebugPrims::drawBatch(const Target& target, const glm::mat4& viewProj,
     // The depth view decides the pipeline variant, not a runtime switch.
     const DepthMode depthMode = depthView ? (options.depthTest ? kDepthTested : kDepthAlways)
                                           : kNoDepth;
-    const BlendMode blend = options.additive ? kAdditive : kStraightAlpha;
+    const BlendMode blend = options.invert ? kInvert : options.additive ? kAdditive : kStraightAlpha;
     WGPURenderPipeline pipeline = pipelineFor(target.format, depthMode, blend, topology, error);
     if (!pipeline) return false;
 

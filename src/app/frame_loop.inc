@@ -601,6 +601,7 @@ static SDL_AppResult appIterate(App* app) {
                     if (app->matchMode) {
                         cap.solid = &app->matchCubes;
                         cap.additive = &app->auraCubes;
+                        cap.timeStop = timeStopNegative(*app);
                     }
                 }
                 const bool useHook = useHud || cap.prims;
@@ -736,6 +737,11 @@ static SDL_AppResult appIterate(App* app) {
                 primOptions.viewport = camera.rect;
                 if (!app->debugPrims.draw(target, camera.viewProj, app->debugLines,
                                           app->renderer.depthView(), primOptions, app->error)) {
+                    gpu::endFrame(app->ctx, app->sc, frame);
+                    return SDL_APP_FAILURE;
+                }
+                if (timeStopNegative(*app) &&
+                    !app->debugPrims.invertView(target, camera.rect, app->error)) {
                     gpu::endFrame(app->ctx, app->sc, frame);
                     return SDL_APP_FAILURE;
                 }

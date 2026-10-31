@@ -78,7 +78,7 @@ screen-replay tooling. Unproven original automation is never required.
 | What was done, newest entries last in the work log | `docs/DIRECTION-STATUS.md` |
 | Binding product decisions | `docs/decisions.md` (D1–D14) |
 | The core and its changes | `src/battle/core/README.md`, `PATCHES.md`, `MANIFEST.sha256` |
-| Regression hashes | `bash tools/fingerprints.sh $PWD/build/linux/simctl $PWD/build/linux/daybreak <outdir> tests/scripts`. Expected on 2026-10-30: SIM `746ce7a9cbe6e44a`, `5331c6e70cd13962`, `e79f1dbb68d73853`; PIX `8e0bbc43`, `a88d4de4`, `ae6aa987`. A deliberate behaviour change moves them; say so in its report |
+| Regression hashes | `bash tools/fingerprints.sh $PWD/build/linux/simctl $PWD/build/linux/daybreak <outdir> tests/scripts`. Expected on 2026-10-31: SIM `746ce7a9cbe6e44a`, `5331c6e70cd13962`, `e79f1dbb68d73853`; PIX `ff54a85d`, `a88d4de4`, `8ebdbd62`. A deliberate behaviour change moves them; say so in its report |
 | Builds and release | `docs/BUILD-*.md`, `docs/RELEASE-CHECKLIST.md`. CI runs when `VERSION` changes on `main` (`.github/workflows/build.yml`) |
 | Assets and paths | `docs/ASSET-CATALOG.md`; moved paths in `docs/PATHS.md` |
 | Original-binary questions | The skill routing below |

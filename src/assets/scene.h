@@ -103,6 +103,9 @@ struct SceneModel {
     // "drawn" = that id is bound and not cleared, which is what the executor's
     // per-frame re-bind and Hide rules decide.
     int          attachFrame = -1;
+    // The second hand's frame: a weapon model bound to hand 1 rides this one instead
+    // (FUN_0041e180 passes Prop1 or Prop2 by hand to FUN_00433eb0).
+    int          offHandFrame = -1;
     int          propId = -1;
     size_t       ownerRig = static_cast<size_t>(-1);
 };
@@ -419,6 +422,7 @@ Scene loadWeapon(const std::string& bulletDir, int slot, const Model* attachTo,
             int frame = attachTo->findFrame("Bip01_Prop1");
             if (frame < 0) frame = attachTo->findFrame("Bip01_Prop2");
             sm.attachFrame = frame;
+            sm.offHandFrame = attachTo->findFrame("Bip01_Prop2");
             sm.propId = propId;
             if (frame < 0)
                 std::fprintf(stderr, "[scene] %s: no Bip01_Prop1/Prop2 in the character rig\n",
@@ -467,6 +471,7 @@ Scene loadWeapon(const std::string& bulletDir, int slot, const Model* attachTo,
         int frame = attachTo->findFrame("Bip01_Prop1");
         if (frame < 0) frame = attachTo->findFrame("Bip01_Prop2");
         sm.attachFrame = frame;
+        sm.offHandFrame = attachTo->findFrame("Bip01_Prop2");
         sm.propId = propId;
         if (frame < 0)
             std::fprintf(stderr, "[scene] %s: no Bip01_Prop1/Prop2 in the character rig\n",

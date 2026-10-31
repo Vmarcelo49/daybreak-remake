@@ -250,14 +250,21 @@ static void buildFrameViews(App& app, uint32_t width, uint32_t height,
 // the bone matrix alone, placing a weapon at the origin instead of in the hand).
 // The match path and the animation browser (animPlayerTick, main.cpp:6092) share it so a
 // weapon drawn in the browser follows the animated hand exactly as it does in a match.
-static void placeAttachedProp(App& app, size_t index, size_t rig) {
+static void placeAttachedProp(App& app, size_t index, size_t rig, int hand) {
     const xm::SceneModel& sm = app.scene.models[index];
-    if (rig >= app.worlds.size() || (size_t)sm.attachFrame >= app.worlds[rig].size()) {
+    const int frame = hand == 1 && sm.offHandFrame >= 0 ? sm.offHandFrame : sm.attachFrame;
+    if (rig >= app.worlds.size() || (size_t)frame >= app.worlds[rig].size()) {
         std::fprintf(stderr, "[scene] %s: attachment frame %d unusable, drawing at the origin\n",
-                     sm.source.c_str(), sm.attachFrame);
+                     sm.source.c_str(), frame);
         return;
     }
-    app.modelMatrices[index] = app.modelMatrices[rig] * app.worlds[rig][(size_t)sm.attachFrame];
+    app.modelMatrices[index] = app.modelMatrices[rig] * app.worlds[rig][(size_t)frame];
+}
+
+// Not under --debug-prims: those passes share one vertex buffer, written before the frame
+// is submitted, so the negative's quad would replace the cubes.
+static bool timeStopNegative(const App& app) {
+    return app.matchMode && !app.opts.debugPrims && app.battle && app.battle->time_stop_active();
 }
 
 // Places each fighter's model from the live simulation. modelMatrix() is the
@@ -275,9 +282,13 @@ static void placeMatchFighters(App& app) {
         const xm::SceneModel& sm = app.scene.models[i];
         if (sm.attachFrame < 0) continue;
         size_t rig = app.matchRig[0];
+        int owner = 0;
         for (int fighter = 1; fighter < app.battle->fighter_count(); ++fighter)
-            if (app.matchRig[fighter] < i && app.matchRig[fighter] > rig) rig = app.matchRig[fighter];
-        placeAttachedProp(app, i, rig);
+            if (app.matchRig[fighter] < i && app.matchRig[fighter] > rig) {
+                rig = app.matchRig[fighter];
+                owner = fighter;
+            }
+        placeAttachedProp(app, i, rig, app.battle->fighter(owner).item_model_hand(sm.propId));
     }
     app.renderer.setModelMatrices(app.modelMatrices);
     applyWeaponVisibility(app);
@@ -574,6 +585,7 @@ static void placeFxCards(App& app) {
     // any pointer into it is taken and never grows again, so the `poseWorld` pointers stored
     // in `instances` stay valid until setEffectInstances reads them.
     std::vector<std::vector<glm::mat4>> cardWorld;
+    std::vector<glm::mat4> longStopPose;
     instances.reserve(app.liveFx.size() + 2 * game::kAuraAttachPoints +
                       game::kMaxLiveShots);
     if (!app.opts.debugPrims) {
@@ -645,6 +657,31 @@ static void placeFxCards(App& app) {
                 instances.push_back({card, base * app.worlds[rig][frame]});
             }
         }
+        // FUN_004203f0: while +0x82c runs, data/aura/06.x draws on Bip01_Spine at 128 times
+        // its size, in the negative of what is behind it. It never advances the model's own
+        // animation, so the instance holds the bind pose.
+        const int longStopCard = app.fxAttach[6];
+        if (longStopCard >= 0)
+            for (int i = 0; i < app.battle->fighter_count(); ++i) {
+                if (!app.battle->fighter(i).long_stopped()) continue;
+                const size_t rig = app.matchRig[i];
+                if (rig >= app.worlds.size()) continue;
+                const int spine = app.scene.models[rig].model.findFrame("Bip01_Spine");
+                if (spine < 0 || (size_t)spine >= app.worlds[rig].size()) continue;
+                if (longStopPose.empty()) {
+                    xm::Controller pose;
+                    pose.bind(&app.scene.models[(size_t)longStopCard].model);
+                    pose.evalWorld(longStopPose);
+                }
+                render::SceneRenderer::EffectInstance sphere;
+                sphere.modelIndex = longStopCard;
+                sphere.poseWorld = &longStopPose;
+                sphere.model = matchRenderMatrix(app, i) * app.worlds[rig][(size_t)spine] *
+                               glm::scale(glm::mat4(1.f), glm::vec3(128.f));
+                sphere.billboard = false;
+                sphere.invert = true;
+                instances.push_back(sphere);
+            }
         // The in-flight shot draws the bullet's OWN model (issue #32), at the shot's own
         // transform — the original's shot render FUN_005f60b0 composes scale, rotation and
         // translation into the model's matrix and draws it, so the instance keeps its

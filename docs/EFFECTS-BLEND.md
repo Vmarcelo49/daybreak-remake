@@ -59,10 +59,10 @@ foundation parser; texture names below SJIS-decoded where ASCII):
   rather than guessed: `FUN_005f60b0` branches on that field (`:77`) and sets D3D
   state per case — case 1 sets `ALPHABLENDENABLE` (`:79`), case 3 sets it with the
   technique-8 state and an optional colour (`:91-99`), cases 2 and 4 set it with
-  `DESTBLEND = ZERO` and `ZENABLE = 0` for the draw, restoring both afterwards
-  (`:84-89`, `:100-109`), and `default` changes no state at all and only picks a
-  technique (`:136-143`). `scene_renderer.cpp` maps that to: 2/4 → `Pass::EffectNoDepth`
-  (additive, no depth test), 3/4 → unlit shading, a quad mesh inside a shot model →
+  `DESTBLEND = ONE` and `ZWRITEENABLE = 0` for the draw, restoring both afterwards
+  (`:84-89`, `:100-109`; state `0x0e` is ZWRITEENABLE, `0x07` would be ZENABLE), and `default` changes no state at all and only picks a
+  technique (`:136-143`). `scene_renderer.cpp` maps that to: 2/4 → `Pass::Effect`
+  (additive, depth-tested), 3/4 → unlit shading, a quad mesh inside a shot model →
   `Pass::Effect`, and a non-quad mesh in a mode 0/1/3 model stays on `Pass::Opaque`.
   No case turns blending off for the *card* surfaces, which is why the pass is additive
   for every quad (V3-35, V3-38, V3-39).
