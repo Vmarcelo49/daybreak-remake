@@ -224,6 +224,8 @@ struct App {
     sim::CoreBattle              coreBattle;
 #ifdef DAYBREAK_ONLINE
     std::unique_ptr<net::Session> netSession;
+    std::unique_ptr<net::MenuLockstep> netMenu;   // the online selection, and its linger through VS
+    net::MenuLockstep::Held netMenuHeld{};
     int netWaitTicks = 0;   // how long the match has waited for its first frame
 #endif
     game::Battle*                battle = &coreBattle;

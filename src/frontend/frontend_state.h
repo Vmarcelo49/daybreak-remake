@@ -18,8 +18,10 @@ struct OnlineContext;
 struct FrontendState {
     // Online play's room, while there is one. Native builds only (frontend/screen_online.h).
     std::shared_ptr<OnlineContext> online;
-    // Why the last room ended, for the online menu to say.
+    // Why the last room or selection ended, for the online screens to say.
     std::string onlineMessage;
+    // Online, how many machines' players the selection screen must wait for. 0 offline.
+    int onlineHumans = 0;
     // Entering (or re-entering) the select scene. The original destroys the current scene and
     // constructs the next one through the factory on every switch (FUN_00657c80:51-58), and
     // scene 3's own constructor initialises every per-slot field the scene owns: cursor

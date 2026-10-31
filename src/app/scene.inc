@@ -730,6 +730,7 @@ static bool startCoreBattle(App& app, const MatchSetup& config) {
             app.coreBattle.set_driver(app.netSession.get());
         }
         if (online) {
+            app.netMenu.reset();
             ui::OnlineContext& context = *app.frontend.online;
             const std::uint8_t local = context.lobby->local_peer();
             app.netSession = net::Session::online(app.coreBattle, context.socket, *context.lobby, context.matchPlan, local,

@@ -24,6 +24,10 @@ WireInput to_wire(const sim::SlotInput& input) {
     return {static_cast<std::int8_t>(input.x), static_cast<std::int8_t>(input.z), static_cast<std::uint8_t>(input.buttons), 1};
 }
 
+struct MenuWire {
+    std::uint8_t held, present;
+};
+
 // GekkoNet's adapter has no context pointer, and a process plays one match.
 UdpSocket* g_socket = nullptr;
 Lobby* g_lobby = nullptr;
@@ -116,6 +120,72 @@ std::unique_ptr<Session> Session::stress(sim::CoreBattle& battle, unsigned dista
     gekko_start(session->m_session, &config);
     for (int i = 0; i < 4; ++i) gekko_add_actor(session->m_session, GekkoLocalPlayer, nullptr);
     return session;
+}
+
+MenuLockstep::MenuLockstep(UdpSocket& socket, Lobby& lobby, const MatchPlan& plan, std::uint8_t localPeer)
+    : m_localPeer(localPeer), m_peers(plan.peerCount) {
+    if (!gekko_create(&m_session, GekkoGameSession)) throw std::runtime_error("net: no session");
+    g_socket = &socket;
+    g_lobby = &lobby;
+    g_peers = plan.peers;
+    g_peerCount = plan.peerCount;
+    // Its own token: a late packet of this session must not reach the battle's.
+    g_token = plan.token ^ 0x4d454e55u;
+
+    GekkoConfig config{};
+    config.num_players = plan.peerCount;
+    config.max_input_prediction_window = 0;
+    config.input_size = sizeof(MenuWire);
+    config.state_size = sizeof(std::uint32_t);
+    config.desync_detection = true;
+    gekko_start(m_session, &config);
+    gekko_net_adapter_set(m_session, &g_adapter);
+    for (std::uint8_t peer = 0; peer < plan.peerCount; ++peer) {
+        if (peer == localPeer) {
+            gekko_add_actor(m_session, GekkoLocalPlayer, nullptr);
+            gekko_set_local_delay(m_session, peer, kInputDelay);
+        } else {
+            Address address = plan.peers[peer];
+            GekkoNetAddress remote{&address, sizeof address};
+            gekko_add_actor(m_session, GekkoRemotePlayer, &remote);
+        }
+    }
+}
+
+MenuLockstep::~MenuLockstep() {
+    if (m_session) gekko_destroy(&m_session);
+}
+
+void MenuLockstep::linger() { gekko_network_poll(m_session); }
+
+void MenuLockstep::run(std::uint8_t localHeld, const std::function<void(const Held&)>& onFrame,
+                       const std::function<std::uint32_t()>& hash) {
+    MenuWire wire{localHeld, 1};
+    gekko_add_local_input(m_session, m_localPeer, &wire);
+    int count = 0;
+    GekkoGameEvent** events = gekko_update_session(m_session, &count);
+    for (int i = 0; i < count; ++i) {
+        const GekkoGameEvent& event = *events[i];
+        if (event.type == GekkoAdvanceEvent) {
+            Held held{};
+            for (int peer = 0; peer < m_peers; ++peer) {
+                MenuWire remote;
+                std::memcpy(&remote, event.data.adv.inputs + static_cast<size_t>(peer) * sizeof remote, sizeof remote);
+                held[static_cast<size_t>(peer)] = remote.held;
+            }
+            onFrame(held);
+        } else if (event.type == GekkoSaveEvent) {
+            *event.data.save.checksum = hash();
+            *event.data.save.state_len = sizeof(std::uint32_t);
+            std::memset(event.data.save.state, 0, sizeof(std::uint32_t));
+        }
+    }
+    int sessionCount = 0;
+    GekkoSessionEvent** sessionEvents = gekko_session_events(m_session, &sessionCount);
+    for (int i = 0; i < sessionCount; ++i) {
+        if (sessionEvents[i]->type == GekkoPlayerDisconnected) m_peerLeft = true;
+        if (sessionEvents[i]->type == GekkoDesyncDetected) m_desynced = true;
+    }
 }
 
 std::unique_ptr<Session> Session::online(sim::CoreBattle& battle, UdpSocket& socket, Lobby& lobby, const MatchPlan& plan,

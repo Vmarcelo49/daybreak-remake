@@ -2,11 +2,97 @@
 // callbacks. main.cpp keeps the entry points themselves.
 // Included by main.cpp inside its anonymous namespace.
 
+#ifdef DAYBREAK_ONLINE
+// The selection on every machine at once: one screen update per agreed frame, from everyone's held
+// buttons. Each peer's buttons are that controller's, so the screen plays as with four local pads.
+static SDL_AppResult tickOnlineSelection(App& state) {
+    App* app = &state;
+    ui::OnlineContext& online = *app->frontend.online;
+    if (!app->netMenu)
+        app->netMenu = std::make_unique<net::MenuLockstep>(online.socket, *online.lobby, online.matchPlan, online.lobby->local_peer());
+
+    enum Bit : std::uint8_t { BitUp = 1, BitDown = 2, BitLeft = 4, BitRight = 8, BitConfirm = 16, BitCancel = 32 };
+    std::uint8_t local = 0;
+    for (const auto& player : app->tickInput) {
+        if (player.down[fnd::input::Up]) local |= BitUp;
+        if (player.down[fnd::input::Down]) local |= BitDown;
+        if (player.down[fnd::input::Left]) local |= BitLeft;
+        if (player.down[fnd::input::Right]) local |= BitRight;
+        if (player.down[fnd::input::Jump]) local |= BitConfirm;
+        if (player.down[fnd::input::AttackA]) local |= BitCancel;
+    }
+
+    SDL_AppResult result = SDL_APP_CONTINUE;
+    app->netMenu->run(local,
+        [&](const net::MenuLockstep::Held& held) {
+            ui::ScreenInput in;
+            in.separatePlayers = true;
+            for (size_t p = 0; p < held.size(); ++p) {
+                const std::uint8_t now = held[p], pressed = static_cast<std::uint8_t>(now & ~app->netMenuHeld[p]);
+                auto& buttons = in.players[p];
+                buttons.up = pressed & BitUp;
+                buttons.down = pressed & BitDown;
+                buttons.left = pressed & BitLeft;
+                buttons.right = pressed & BitRight;
+                buttons.confirm = pressed & BitConfirm;
+                buttons.cancel = pressed & BitCancel;
+                buttons.upHeld = now & BitUp;
+                buttons.downHeld = now & BitDown;
+                buttons.leftHeld = now & BitLeft;
+                buttons.rightHeld = now & BitRight;
+                in.up = in.up || buttons.up;
+                in.down = in.down || buttons.down;
+                in.left = in.left || buttons.left;
+                in.right = in.right || buttons.right;
+                in.confirm = in.confirm || buttons.confirm;
+                in.cancel = in.cancel || buttons.cancel;
+                in.upHeld = in.upHeld || buttons.upHeld;
+                in.downHeld = in.downHeld || buttons.downHeld;
+                in.leftHeld = in.leftHeld || buttons.leftHeld;
+                in.rightHeld = in.rightHeld || buttons.rightHeld;
+                app->netMenuHeld[p] = now;
+            }
+            // Moved on: the frames GekkoNet still hands out belong to a screen that is gone.
+            if (app->screens.current() != ui::ScreenId::Select) return;
+            const SDL_AppResult applied = applyFrontendInput(*app, in);
+            if (applied != SDL_APP_CONTINUE) result = applied;
+        },
+        [&] { return onlineSelectionHash(app->frontend); });
+    if (result != SDL_APP_CONTINUE) return result;
+
+    const ui::ScreenId now = app->screens.current();
+    if (now == ui::ScreenId::VsIntro) {
+        // What the selection decided is the same everywhere, and from here each machine sees it
+        // as its own: its player on the first controller, and the others as no controller at all.
+        net::MatchPlan& plan = online.matchPlan;
+        const int localPeer = online.lobby->local_peer();
+        for (size_t panel = 0; panel < plan.slots.size(); ++panel) {
+            ui::FrontendSlot& slot = app->frontend.slots[panel];
+            plan.slots[panel] = {slot.character, slot.weapon, slot.costume, static_cast<unsigned>(slot.hypermode),
+                                 slot.controller < 4 ? slot.controller : -1};
+            slot.controller = slot.controller == localPeer ? 0 : 4;
+        }
+        app->netMenuHeld = {};
+    } else if (now != ui::ScreenId::Select) {
+        // Someone backed out, and everyone did on the same frame.
+        leaveOnlineSelection(*app, nullptr);
+    } else if (app->netMenu->peer_left() || app->netMenu->desynced()) {
+        leaveOnlineSelection(*app, app->netMenu->desynced() ? "The players' selections differ. Back in the lobby."
+                                                            : "A player left the selection.");
+        app->screens.request(ui::ScreenId::NetplayLobby);
+    }
+    return SDL_APP_CONTINUE;
+}
+#endif
+
 static SDL_AppResult tickFrontend(App& state) {
     App* app = &state;
 #ifdef DAYBREAK_ONLINE
     // Through the result and VS screens too: peers tell each other they are still there.
-    if (app->frontend.online && !app->netSession) app->frontend.online->lobby->poll(16);
+    if (app->frontend.online && !app->netSession) {
+        if (app->netMenu) app->netMenu->linger();
+        else app->frontend.online->lobby->poll(16);
+    }
 #endif
     auto anyPressed = [&](fnd::input::Action action) {
         for (const auto& player : app->tickInput) if (player.just_pressed[action]) return true;
@@ -16,6 +102,10 @@ static SDL_AppResult tickFrontend(App& state) {
         for (const auto& player : app->tickInput) if (player.down[action]) return true;
         return false;
     };
+#ifdef DAYBREAK_ONLINE
+    if (app->frontend.online && app->screens.current() == ui::ScreenId::Select && app->frontend.online->inMatch)
+        return tickOnlineSelection(*app);
+#endif
     ui::ScreenInput in;
     in.up      = anyPressed(fnd::input::Up);
     in.down    = anyPressed(fnd::input::Down);
@@ -46,6 +136,11 @@ static SDL_AppResult tickFrontend(App& state) {
         buttons.leftHeld = input.down[fnd::input::Left];
         buttons.rightHeld = input.down[fnd::input::Right];
     }
+    return applyFrontendInput(*app, in);
+}
+
+static SDL_AppResult applyFrontendInput(App& state, const ui::ScreenInput& in) {
+    App* app = &state;
     const ui::ScreenId previousScreen = app->screens.current();
     app->screens.update(in);
     if (previousScreen != app->screens.current()) {

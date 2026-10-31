@@ -130,6 +130,12 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
         if (in.confirm && pos % kSelectPanelRows == kSelectDecideCell) {
             if (pos == kSelectBackCell) return SelectAction::Back;
             for (auto p : phase_) if (p != SelectPhase::Team) return SelectAction::None;
+            // Online, a player who has not chosen would silently become a COM.
+            if (state_.onlineHumans > 0) {
+                int claimed = 0;
+                for (const FrontendSlot& slot : state_.slots) claimed += slot.controller >= 0 && slot.controller < 4;
+                if (claimed < state_.onlineHumans) return SelectAction::None;
+            }
             // FUN_0040d130: unset panels become COM with random character, weapon, mode and costume.
             for (int i=0;i<4;++i) if (state_.slots[i].character < 0) {
                 auto& slot = state_.slots[i];
@@ -271,7 +277,8 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
         if (in.confirm) { phase = SelectPhase::Controller; slot.controller = c; }
         else if (in.cancel) phase = SelectPhase::Weapon;
     } else if (phase == SelectPhase::Controller) {
-        if (in.up || in.down) slot.controller = slot.controller == 4 ? c : 4;
+        // Online, each machine plays its own fighter.
+        if ((in.up || in.down) && state_.onlineHumans == 0) slot.controller = slot.controller == 4 ? c : 4;
         if (in.confirm) {
             // A controller may drive one panel, FUN_00409340 +0x3ca0.
             if (slot.controller != 4)
@@ -386,7 +393,7 @@ ScreenId SelectScreen::update(const ScreenInput& in) {
     // controller/COM choice and enters Ready. Preserve every local player's event
     // when multiple panels confirm on one simulation tick.
     voiceQueue_.append(selectEntryVoices(state_, menu_, in, transitions));
-    if(action==SelectAction::Back) return ScreenId::Title;
+    if(action==SelectAction::Back) return state_.onlineHumans > 0 ? ScreenId::NetplayLobby : ScreenId::Title;
     if(action==SelectAction::Stage) {
         std::string error;
         stage_=makeStageSelectScreen(batch_,state_,error);

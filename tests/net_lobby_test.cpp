@@ -20,15 +20,7 @@ net::MatchPlan sample_plan() {
     net::MatchPlan plan;
     plan.token = 0x12345678;
     plan.seed = 77;
-    plan.stage = 2;
-    plan.variation = 1;
-    plan.timeLimitSeconds = 300;
-    plan.rules = {100, 150, 80, 120};
     plan.peerCount = 2;
-    plan.slots[0] = {3, 1, 2, 0, 0};
-    plan.slots[1] = {4, 2, 0, 2, -1};
-    plan.slots[2] = {5, 0, 0, 1, 1};
-    plan.slots[3] = {6, 0, 0, 1, -1};
     net::parse_address("10.1.2.3:4000", plan.peers[1]);
     plan.names = {"first", "second", "", ""};
     plan.ready = {true, true, false, false};
@@ -43,21 +35,19 @@ void test_round_trips() {
     std::uint8_t peer = 0;
     std::uint16_t echo = 0;
     check(net::decode_plan(net::encode_plan(plan, 1, 500), decoded, peer, echo), "a good plan is refused");
-    check(peer == 1 && echo == 500 && decoded.token == plan.token && decoded.seed == 77 && decoded.stage == 2 && decoded.variation == 1, "plan header");
-    check(decoded.timeLimitSeconds == 300 && decoded.rules == plan.rules && decoded.started, "plan rules");
-    check(decoded.slots[2].character == 5 && decoded.slots[2].peer == 1 && decoded.slots[1].peer == -1, "plan slots");
+    check(peer == 1 && echo == 500 && decoded.token == plan.token && decoded.seed == 77 && decoded.started, "plan header");
     check(decoded.peers[1] == plan.peers[1] && decoded.names[1] == "second" && decoded.ready[1] && decoded.pingMs[1] == 80, "plan peers");
 
     net::Hello hello;
     hello.gameData = 99;
     hello.started = true;
-    hello.choice = {"me", 7, 2, 1, 2, true};
+    hello.choice = {"me", true};
     hello.sequence = 9;
     hello.pingMs = 33;
     net::Hello read;
     check(net::decode_hello(net::encode_hello(hello), read), "a good hello is refused");
     check(read.version == net::kProtocolVersion && read.gameData == 99 && read.started && read.sequence == 9 && read.pingMs == 33, "hello fields");
-    check(read.choice.name == "me" && read.choice.character == 7 && read.choice.weapon == 2 && read.choice.costume == 1 && read.choice.specialMode == 2 && read.choice.ready, "hello choice");
+    check(read.choice.name == "me" && read.choice.ready, "hello choice");
     net::Refusal refusal;
     check(net::decode_refusal(net::encode_refusal(net::Refusal::HostLeft), refusal) && refusal == net::Refusal::HostLeft, "refusal");
     check(net::decode_bye(net::encode_bye()), "bye");
@@ -76,21 +66,14 @@ void test_malformed() {
     longer.push_back(0);
     check(!net::decode_plan(longer, decoded, peer, echo), "a plan with trailing bytes");
 
-    const auto changed = [&](int slot, int peerValue, int count, int you) {
+    const auto changed = [&](int count, int you) {
         net::MatchPlan bad = sample_plan();
-        if (slot >= 0) bad.slots[static_cast<size_t>(slot)].peer = peerValue;
         bad.peerCount = static_cast<std::uint8_t>(count);
         return net::encode_plan(bad, static_cast<std::uint8_t>(you), 0);
     };
-    check(!net::decode_plan(changed(-1, 0, 2, 2), decoded, peer, echo), "your peer past the count");
-    check(!net::decode_plan(changed(-1, 0, 5, 0), decoded, peer, echo), "too many peers");
-    check(!net::decode_plan(changed(-1, 0, 1, 0), decoded, peer, echo), "too few peers");
-    check(!net::decode_plan(changed(2, 0, 2, 0), decoded, peer, echo), "one peer in two slots");
-    check(!net::decode_plan(changed(2, -1, 2, 0), decoded, peer, echo), "a peer with no slot");
-    check(!net::decode_plan(changed(2, 9, 2, 0), decoded, peer, echo), "a slot for an unknown peer");
-    net::MatchPlan badFighter = sample_plan();
-    badFighter.slots[0].character = 16;
-    check(!net::decode_plan(net::encode_plan(badFighter, 1, 0), decoded, peer, echo), "a character past the roster");
+    check(!net::decode_plan(changed(2, 2), decoded, peer, echo), "your peer past the count");
+    check(!net::decode_plan(changed(5, 0), decoded, peer, echo), "too many peers");
+    check(!net::decode_plan(changed(1, 0), decoded, peer, echo), "too few peers");
     net::MatchPlan badName = sample_plan();
     badName.names[1] = "bad\nname";
     check(!net::decode_plan(net::encode_plan(badName, 1, 0), decoded, peer, echo), "a control character in a name");
@@ -102,9 +85,6 @@ void test_malformed() {
     for (size_t size = 0; size < hello.size(); ++size)
         check(!net::decode_hello({hello.begin(), hello.begin() + static_cast<long>(size)}, read), "a cut hello");
     check(!net::decode_hello(plan, read), "a plan read as a hello");
-    net::Hello badChoice = good;
-    badChoice.choice.weapon = 3;
-    check(!net::decode_hello(net::encode_hello(badChoice), read), "a weapon past the menu");
     net::Refusal refusal;
     check(!net::decode_refusal({net::kLobbyPacket, 3, 0}, refusal), "a refusal of nothing");
     check(!net::decode_refusal({net::kLobbyPacket, 3, 200}, refusal), "an unknown refusal");
@@ -129,25 +109,22 @@ void test_over_sockets() {
 
     net::MatchPlan plan = sample_plan();
     auto host = net::Lobby::host(hostSocket, plan, 42);
-    net::LocalChoice hostChoice{"host", 1, 0, 0, 1, true};
+    net::LocalChoice hostChoice{"host", true};
     host.set_choice(hostChoice);
 
     auto a = net::Lobby::join(aSocket, hostAddress, 42);
-    net::LocalChoice aChoice{"a", 2, 1, 0, 2, false};
+    net::LocalChoice aChoice{"a", false};
     a.set_choice(aChoice);
     settle({&host, &a}, [&] { return a.plan().peerCount == 2 && a.plan().names[1] == "a"; });
     check(a.local_peer() == 1 && a.plan().seed == plan.seed, "the joiner got the plan");
-    check(host.plan().slots[2].character == 2 && host.plan().slots[2].peer == 1, "peers fill the teams in turn");
     check(!host.can_start(), "a player who is not ready held the start");
 
     // A third player arrives, then leaves, and a fourth takes the place.
     auto b = net::Lobby::join(bSocket, hostAddress, 42);
-    b.set_choice({"b", 3, 0, 0, 1, true});
+    b.set_choice({"b", true});
     settle({&host, &a, &b}, [&] { return host.plan().peerCount == 3; });
-    check(host.plan().slots[1].peer == 2, "the third player's slot");
     b.leave();
     settle({&host, &a}, [&] { return host.plan().peerCount == 2 && a.plan().peerCount == 2; });
-    check(host.plan().slots[1].peer == -1, "the slot of who left is a COM again");
 
     aChoice.ready = true;
     a.set_choice(aChoice);

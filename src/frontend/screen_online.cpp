@@ -3,12 +3,8 @@
 #include <algorithm>
 #include <cstdio>
 #include <random>
-#include <vector>
 
 #include "assets/asset_source.h"
-#include "assets/stage_catalog.h"
-#include "battle/weapon_definition.h"
-#include "frontend/frontend_launch.h"
 #include "frontend/frontend_settings.h"
 #include "frontend/menu_panel.h"
 
@@ -63,19 +59,6 @@ std::string trimmedRight(std::string text) {
     return text;
 }
 
-std::string upperWords(const char* text) {
-    std::string out(text);
-    for (char& c : out) c = c == '_' ? ' ' : c >= 'a' && c <= 'z' ? static_cast<char>(c - 'a' + 'A') : c;
-    return out;
-}
-
-std::string characterLabel(int character) {
-    const char* directory = frontendCharacterDirectory(character);
-    return upperWords(directory ? directory : "?");
-}
-
-constexpr Words kHypermodes[3] = {{"オヤシロ", "OYASHIRO"}, {"友情", "FRIENDSHIP"}, {"カケラ", "KAKERA"}};
-
 }  // namespace
 
 void onlineMatchNumbers(std::uint32_t& token, std::uint32_t& seed) {
@@ -89,8 +72,6 @@ bool beginOnlineHost(FrontendState& state, int port, std::string& error) {
     if (!context->socket.open(static_cast<std::uint16_t>(port), error)) return false;
     net::MatchPlan plan;
     onlineMatchNumbers(plan.token, plan.seed);
-    plan.stage = 1;
-    plan.variation = 0;
     context->lobby = std::make_unique<net::Lobby>(net::Lobby::host(context->socket, plan, installHash()));
     state.online = std::move(context);
     return true;
@@ -213,6 +194,8 @@ private:
     int row_ = 0, sound_ = -1;
 };
 
+// Who is here and whether they are ready. Everything about the match is chosen on the selection
+// screen, which starts by itself once everyone is ready.
 class OnlineLobbyScreen : public PanelScreen {
 public:
     OnlineLobbyScreen(SpriteRenderer& batch, FrontendState& state, std::string& error) : state_(state) {
@@ -222,11 +205,9 @@ public:
             return;
         }
         choice_.name = frontendSettings().playerName;
-        choice_.character = 0;
-        choice_.ready = isHost();
         state_.online->lobby->set_choice(choice_);
         state_.online->inMatch = false;
-        row_ = actionRow();
+        state_.onlineHumans = 0;
     }
     bool loaded() const { return face_.atlasTexture() >= 0; }
     const char* name() const override { return "netplaylobby"; }
@@ -236,163 +217,72 @@ public:
         net::Lobby& lobby = *state_.online->lobby;
         if (lobby.refused() != net::Refusal::None) return close(net::refusal_text(lobby.refused()));
         if (lobby.host_lost()) return close(say({"部屋から応答がありません。", "The room stopped answering."}));
-        if (lobby.ready()) return begin_match();
+        if (lobby.can_start()) lobby.start();
+        if (lobby.ready()) return begin_selection();
 
         if (in.cancel) sound_ = 1;
         else if (in.confirm) sound_ = 0;
-        else if (in.up || in.down || in.left || in.right) sound_ = 2;
+        else if (in.up || in.down) sound_ = 2;
 
         if (in.cancel) return leave();
-        const int rows = rowCount();
-        if (in.up) row_ = (row_ + rows - 1) % rows;
-        else if (in.down) row_ = (row_ + 1) % rows;
-
-        const int dx = in.left ? -1 : in.right ? 1 : 0;
-        // A player who said ready has chosen. The host's start stands for its own ready.
-        const bool frozen = !isHost() && choice_.ready;
-        if (dx && !frozen) {
-            if (row_ == 0) {
-                choice_.character = (choice_.character + dx + 16) % 16;
-                choice_.weapon = std::min(choice_.weapon, gameplay::weaponCountForCharacter(choice_.character) - 1);
-            } else if (row_ == 1) {
-                const int count = gameplay::weaponCountForCharacter(choice_.character);
-                choice_.weapon = (choice_.weapon + dx + count) % count;
-            } else if (row_ == 2) {
-                choice_.specialMode = (choice_.specialMode + (unsigned)dx + 3u) % 3u;
-            }
-            lobby.set_choice(choice_);
-        }
-        if (dx && isHost()) edit_rules(dx);
+        if (in.up || in.down) row_ = 1 - row_;
         if (in.confirm) {
-            if (row_ == rows - 1) return leave();
-            if (row_ == actionRow()) {
-                if (isHost()) start();
-                else {
-                    choice_.ready = !choice_.ready;
-                    lobby.set_choice(choice_);
-                }
-            }
+            if (row_ == 1) return leave();
+            choice_.ready = !choice_.ready;
+            lobby.set_choice(choice_);
+            state_.onlineMessage.clear();
         }
         return ScreenId::NetplayLobby;
     }
 
     void draw(SpriteRenderer& batch) const override {
         batch.pushSprite(background_, {0, 0, 800, 600}, 0, 0, 0, 0);
-        frame(batch, {"通信対戦 ロビー", "ONLINE LOBBY"}, 20, 560);
-        const net::MatchPlan& plan = state_.online->lobby->plan();
-        const char* com = "COM";
-        for (int i = 0; i < 4; ++i) {
-            const float y = 88.f + 30.f * (float)i;
-            const net::PlanSlot& slot = plan.slots[(size_t)i];
-            batch.pushSolid({116, y - 4.f, 8, 26}, i < 2 ? UiColor{0.3f, 0.5f, 1.f, 1.f} : UiColor{1.f, 0.3f, 0.3f, 1.f});
-            const bool mine = slot.peer == state_.online->lobby->local_peer();
-            const UiColor color = mine ? kWhite : kPale;
-            const char* who = slot.peer < 0 ? com : plan.names[(size_t)slot.peer].c_str();
-            label(batch, who, 134, y, 18.f, color);
-            if (slot.peer >= 0) {
-                char fighter[64];
-                std::snprintf(fighter, sizeof fighter, "%s  %d", characterLabel(slot.character).c_str(), slot.weapon + 1);
-                label(batch, fighter, 300, y, 18.f, color);
-                if (plan.ready[(size_t)slot.peer]) label(batch, say({"準備完了", "READY"}), 490, y, 18.f, kGold);
-                if (slot.peer > 0) {
-                    char ping[24];
-                    std::snprintf(ping, sizeof ping, "%d ms", (int)plan.pingMs[(size_t)slot.peer]);
-                    label(batch, ping, 600, y, 18.f, kPale);
-                }
+        frame(batch, {"通信対戦 ロビー", "ONLINE LOBBY"}, 40, 540);
+        const net::Lobby& lobby = *state_.online->lobby;
+        const net::MatchPlan& plan = lobby.plan();
+        for (int peer = 0; peer < 4; ++peer) {
+            const float y = 124.f + 46.f * (float)peer;
+            if (peer >= plan.peerCount) {
+                label(batch, say({"空き", "EMPTY"}), 134, y, 20.f, kTrack);
+                continue;
+            }
+            const UiColor color = peer == lobby.local_peer() ? kWhite : kPale;
+            label(batch, plan.names[(size_t)peer].c_str(), 134, y, 20.f, color);
+            if (plan.ready[(size_t)peer]) label(batch, say({"準備完了", "READY"}), 400, y, 20.f, kGold);
+            if (peer > 0) {
+                char ping[24];
+                std::snprintf(ping, sizeof ping, "%d ms", (int)plan.pingMs[(size_t)peer]);
+                label(batch, ping, 560, y, 20.f, kPale);
             }
         }
-        batch.pushSolid({130, 212, 540, 2}, kGold);
-
-        char weapon[24];
-        std::snprintf(weapon, sizeof weapon, "%d", choice_.weapon + 1);
-        drawRow(batch, 0, say({"キャラクター", "CHARACTER"}), characterLabel(choice_.character).c_str());
-        drawRow(batch, 1, say({"武器", "WEAPON"}), weapon);
-        drawRow(batch, 2, say({"ハイパーモード", "HYPERMODE"}), say(kHypermodes[choice_.specialMode]));
-        if (isHost()) {
-            char limit[32], health[32];
-            const std::string stage = stageChoice_ == 0 ? say({"ランダム", "RANDOM"}) : upperWords(assets::kStages[stageChoice_ - 1].name);
-            if (plan.timeLimitSeconds == 0) std::snprintf(limit, sizeof limit, "%s", say({"無制限", "NO LIMIT"}));
-            else std::snprintf(limit, sizeof limit, "%u", plan.timeLimitSeconds);
-            std::snprintf(health, sizeof health, "%d%%", plan.rules[0]);
-            drawRow(batch, 3, say({"ステージ", "STAGE"}), stage.c_str());
-            drawRow(batch, 4, say({"制限時間", "TIME LIMIT"}), limit);
-            drawRow(batch, 5, say({"体力値", "HEALTH"}), health);
-        }
-        const bool ready = !isHost() && choice_.ready;
-        drawCentred(batch, actionRow(), isHost() ? say({"戦闘開始", "START"}) : ready ? say({"準備完了を取消", "NOT READY"}) : say({"準備完了", "READY"}));
-        drawCentred(batch, rowCount() - 1, say({"部屋を出る", "LEAVE"}));
-
-        const net::Lobby& lobby = *state_.online->lobby;
-        const char* status;
-        if (isHost()) status = plan.peerCount < 2 ? say({"相手を待っています", "Waiting for another player."})
-                             : lobby.can_start() ? say({"全員の準備が完了しました", "Everyone is ready."})
-                                                 : say({"全員の準備を待っています", "Waiting for everyone to be ready."});
-        else status = plan.peerCount < 2 ? say({"接続しています", "Connecting."}) : say({"ホストの開始を待っています", "Other players can see your IP address."});
-        help(batch, status);
+        batch.pushSolid({130, 322, 540, 2}, kGold);
+        drawRow(batch, 0, choice_.ready ? say({"準備完了を取消", "NOT READY"}) : say({"準備完了", "READY"}));
+        drawRow(batch, 1, say({"部屋を出る", "LEAVE"}));
+        if (!state_.onlineMessage.empty()) help(batch, state_.onlineMessage.c_str());
+        else if (plan.peerCount < 2) help(batch, say({"相手を待っています", "Waiting for another player."}));
+        else help(batch, say({"全員の準備が完了すると始まります。IPアドレスは他の人に見えます", "It starts when everyone is ready. Other players can see your IP address."}));
     }
 
 private:
-    bool isHost() const { return state_.online->lobby->is_host(); }
-    int actionRow() const { return isHost() ? 6 : 3; }
-    int rowCount() const { return actionRow() + 2; }
-
-    void drawRow(SpriteRenderer& batch, int row, const char* name, const char* value) const {
-        const float y = 226.f + 36.f * (float)row;
+    void drawRow(SpriteRenderer& batch, int row, const char* value) const {
+        const float y = 350.f + 46.f * (float)row;
         const bool selected = row == row_;
-        if (selected) batch.pushSolid({116, y - 6.f, 568, 32}, kHighlight);
-        label(batch, name, 134, y, 18.f, selected ? kWhite : kPale);
-        choice(batch, value, y, selected);
-    }
-    void drawCentred(SpriteRenderer& batch, int row, const char* value) const {
-        const float y = 226.f + 36.f * (float)row;
-        const bool selected = row == row_;
-        if (selected) batch.pushSolid({116, y - 6.f, 568, 32}, kHighlight);
-        centred(batch, value, 400, y, 18.f, selected ? kWhite : kPale);
+        if (selected) batch.pushSolid({116, y - 6.f, 568, 34}, kHighlight);
+        centred(batch, value, 400, y, 20.f, selected ? kWhite : kPale);
     }
 
-    void edit_rules(int dx) {
-        net::MatchPlan& plan = state_.online->lobby->edit_plan();
-        const int stages = (int)(sizeof(assets::kStages) / sizeof(assets::kStages[0])) + 1;
-        if (row_ == 3) stageChoice_ = (stageChoice_ + dx + stages) % stages;
-        else if (row_ == 4) plan.timeLimitSeconds = (plan.timeLimitSeconds + (unsigned)(dx * 60) + 360u) % 360u;
-        else if (row_ == 5) plan.rules[0] = std::clamp(plan.rules[0] + dx * 25, 50, 200);
-    }
-
-    void start() {
-        net::Lobby& lobby = *state_.online->lobby;
-        if (!lobby.can_start()) return;
-        net::MatchPlan& plan = lobby.edit_plan();
-        std::random_device random;
-        const int stages = (int)(sizeof(assets::kStages) / sizeof(assets::kStages[0]));
-        const assets::StageId& stage = assets::kStages[stageChoice_ == 0 ? random() % (unsigned)stages : (unsigned)(stageChoice_ - 1)];
-        plan.stage = (unsigned)stage.scene;
-        plan.variation = (unsigned)stage.timeOfDay;
-        for (net::PlanSlot& slot : plan.slots) {
-            if (slot.peer >= 0) continue;
-            slot.character = (int)(random() % 16u);
-            slot.weapon = (int)(random() % (unsigned)gameplay::weaponCountForCharacter(slot.character));
-        }
-        lobby.start();
-    }
-
-    ScreenId begin_match() {
+    // The selection is the same on every machine from here: same starting state, same inputs.
+    ScreenId begin_selection() {
         OnlineContext& online = *state_.online;
         online.matchPlan = online.lobby->plan();
         online.inMatch = true;
-        const net::MatchPlan& plan = online.matchPlan;
-        for (size_t panel = 0; panel < plan.slots.size(); ++panel) {
-            const net::PlanSlot& slot = plan.slots[panel];
-            state_.slots[panel] = {slot.character, slot.weapon, (int)slot.specialMode, slot.costume,
-                                   slot.peer == online.lobby->local_peer() ? 0 : 4, true};
-        }
-        state_.stage = (int)plan.stage;
-        state_.variation = (int)plan.variation;
-        state_.timeLimit = (int)plan.timeLimitSeconds;
-        state_.health = plan.rules[0];
-        state_.gauge = plan.rules[1];
-        state_.blueBalloon = plan.rules[2];
-        state_.redBalloon = plan.rules[3];
-        return ScreenId::VsIntro;
+        state_.onlineHumans = online.matchPlan.peerCount;
+        state_.randomState = online.matchPlan.seed;
+        state_.timeLimit = 0;
+        state_.health = state_.gauge = state_.blueBalloon = state_.redBalloon = 100;
+        state_.penaltyDecided = {};
+        state_.onlineMessage.clear();
+        return ScreenId::Select;
     }
     ScreenId leave() {
         state_.online->lobby->leave();
@@ -406,7 +296,7 @@ private:
 
     FrontendState& state_;
     net::LocalChoice choice_;
-    int row_ = 0, sound_ = -1, stageChoice_ = 1;
+    int row_ = 0, sound_ = -1;
 };
 
 template <class ScreenType>

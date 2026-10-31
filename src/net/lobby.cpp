@@ -49,11 +49,6 @@ struct Reader {
     }
 };
 
-// The menus' ranges. Whether a weapon exists for a character is checked when the match loads.
-bool sane_choice(int character, int weapon, int costume, unsigned specialMode) {
-    return character >= 0 && character < 16 && weapon >= 0 && weapon < 3 && costume >= 0 && costume < 8 && specialMode < 3;
-}
-
 }  // namespace
 
 const char* refusal_text(Refusal refusal) {
@@ -73,10 +68,6 @@ std::vector<std::uint8_t> encode_hello(const Hello& hello) {
     put<std::uint64_t>(out, hello.gameData);
     put<std::uint8_t>(out, hello.started);
     put<std::uint8_t>(out, hello.choice.ready);
-    put<std::uint8_t>(out, static_cast<std::uint8_t>(hello.choice.character));
-    put<std::uint8_t>(out, static_cast<std::uint8_t>(hello.choice.weapon));
-    put<std::uint8_t>(out, static_cast<std::uint8_t>(hello.choice.costume));
-    put<std::uint8_t>(out, static_cast<std::uint8_t>(hello.choice.specialMode));
     put_name(out, hello.choice.name);
     put<std::uint16_t>(out, hello.sequence);
     put<std::uint16_t>(out, hello.pingMs);
@@ -91,15 +82,10 @@ bool decode_hello(const std::vector<std::uint8_t>& packet, Hello& hello) {
     out.gameData = in.get<std::uint64_t>();
     out.started = in.get<std::uint8_t>() != 0;
     out.choice.ready = in.get<std::uint8_t>() != 0;
-    out.choice.character = in.get<std::uint8_t>();
-    out.choice.weapon = in.get<std::uint8_t>();
-    out.choice.costume = in.get<std::uint8_t>();
-    out.choice.specialMode = in.get<std::uint8_t>();
     out.choice.name = in.name();
     out.sequence = in.get<std::uint16_t>();
     out.pingMs = in.get<std::uint16_t>();
     if (!in.ok || in.at != packet.size()) return false;
-    if (!sane_choice(out.choice.character, out.choice.weapon, out.choice.costume, out.choice.specialMode)) return false;
     hello = out;
     return true;
 }
@@ -110,17 +96,6 @@ std::vector<std::uint8_t> encode_plan(const MatchPlan& plan, std::uint8_t yourPe
     put<std::uint16_t>(out, echo);
     put<std::uint32_t>(out, plan.token);
     put<std::uint32_t>(out, plan.seed);
-    put<std::uint8_t>(out, static_cast<std::uint8_t>(plan.stage));
-    put<std::uint8_t>(out, static_cast<std::uint8_t>(plan.variation));
-    put<std::uint16_t>(out, static_cast<std::uint16_t>(plan.timeLimitSeconds));
-    for (int rule : plan.rules) put<std::uint16_t>(out, static_cast<std::uint16_t>(rule));
-    for (const PlanSlot& slot : plan.slots) {
-        put<std::uint8_t>(out, static_cast<std::uint8_t>(slot.character));
-        put<std::uint8_t>(out, static_cast<std::uint8_t>(slot.weapon));
-        put<std::uint8_t>(out, static_cast<std::uint8_t>(slot.costume));
-        put<std::uint8_t>(out, static_cast<std::uint8_t>(slot.specialMode));
-        put<std::int8_t>(out, static_cast<std::int8_t>(slot.peer));
-    }
     put<std::uint8_t>(out, plan.peerCount);
     for (size_t i = 0; i < plan.peers.size(); ++i) {
         put<std::uint32_t>(out, plan.peers[i].ip);
@@ -141,17 +116,6 @@ bool decode_plan(const std::vector<std::uint8_t>& packet, MatchPlan& plan, std::
     echo = in.get<std::uint16_t>();
     out.token = in.get<std::uint32_t>();
     out.seed = in.get<std::uint32_t>();
-    out.stage = in.get<std::uint8_t>();
-    out.variation = in.get<std::uint8_t>();
-    out.timeLimitSeconds = in.get<std::uint16_t>();
-    for (int& rule : out.rules) rule = in.get<std::uint16_t>();
-    for (PlanSlot& slot : out.slots) {
-        slot.character = in.get<std::uint8_t>();
-        slot.weapon = in.get<std::uint8_t>();
-        slot.costume = in.get<std::uint8_t>();
-        slot.specialMode = in.get<std::uint8_t>();
-        slot.peer = in.get<std::int8_t>();
-    }
     out.peerCount = in.get<std::uint8_t>();
     for (size_t i = 0; i < out.peers.size(); ++i) {
         out.peers[i].ip = in.get<std::uint32_t>();
@@ -163,17 +127,6 @@ bool decode_plan(const std::vector<std::uint8_t>& packet, MatchPlan& plan, std::
     out.started = in.get<std::uint8_t>() != 0;
     if (!in.ok || in.at != packet.size()) return false;
     if (out.peerCount < 2 || out.peerCount > 4 || yourPeer >= out.peerCount) return false;
-    std::array<bool, 4> played{};
-    for (const PlanSlot& slot : out.slots) {
-        if (slot.peer < -1 || slot.peer >= out.peerCount) return false;
-        if (!sane_choice(slot.character, slot.weapon, slot.costume, slot.specialMode)) return false;
-        if (slot.peer >= 0) {
-            if (played[static_cast<size_t>(slot.peer)]) return false;
-            played[static_cast<size_t>(slot.peer)] = true;
-        }
-    }
-    for (std::uint8_t i = 0; i < out.peerCount; ++i)
-        if (!played[i]) return false;
     plan = out;
     return true;
 }
@@ -227,8 +180,6 @@ Lobby Lobby::host(UdpSocket& socket, MatchPlan plan, std::uint64_t gameData) {
     lobby.m_plan = plan;
     lobby.m_plan.started = false;
     lobby.m_plan.peerCount = 1;
-    for (PlanSlot& slot : lobby.m_plan.slots) slot.peer = -1;
-    lobby.m_plan.slots[static_cast<size_t>(kPeerSlot[0])].peer = 0;
     return lobby;
 }
 
@@ -239,12 +190,6 @@ Lobby Lobby::join(UdpSocket& socket, Address host, std::uint64_t gameData) {
 }
 
 void Lobby::apply_choice(std::uint8_t peer, const LocalChoice& choice) {
-    PlanSlot& slot = m_plan.slots[static_cast<size_t>(kPeerSlot[peer])];
-    slot.character = choice.character;
-    slot.weapon = choice.weapon;
-    slot.costume = choice.costume;
-    slot.specialMode = choice.specialMode;
-    slot.peer = peer;
     m_plan.names[peer] = choice.name;
     m_plan.ready[peer] = choice.ready;
 }
@@ -255,12 +200,7 @@ void Lobby::set_choice(const LocalChoice& choice) {
 }
 
 void Lobby::remove_peer(std::uint8_t peer) {
-    // The last player's slot becomes a COM, and later players move down into the gap.
     for (std::uint8_t i = peer; i + 1 < m_plan.peerCount; ++i) {
-        const PlanSlot& next = m_plan.slots[static_cast<size_t>(kPeerSlot[i + 1])];
-        PlanSlot& slot = m_plan.slots[static_cast<size_t>(kPeerSlot[i])];
-        slot = next;
-        slot.peer = i;
         m_plan.peers[i] = m_plan.peers[i + 1];
         m_plan.names[i] = m_plan.names[i + 1];
         m_plan.ready[i] = m_plan.ready[i + 1];
@@ -270,7 +210,6 @@ void Lobby::remove_peer(std::uint8_t peer) {
         m_echo[i] = m_echo[i + 1];
     }
     const std::uint8_t last = --m_plan.peerCount;
-    m_plan.slots[static_cast<size_t>(kPeerSlot[last])].peer = -1;
     m_plan.peers[last] = {};
     m_plan.names[last].clear();
     m_plan.ready[last] = false;

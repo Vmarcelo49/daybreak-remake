@@ -39,7 +39,7 @@ def start_peers(netctl, game, folder, count, ticks, time_limit=None):
         log = folder / f"{count}-{ticks}-{peer}.log"
         logs.append(log)
         role = ["--host", str(port), "--peers", str(count), "--seed", str(count * 11 + 3)] if peer == 0 else ["--join", f"127.0.0.1:{port}"]
-        if time_limit and peer == 0:
+        if time_limit:
             role += ["--time-limit", str(time_limit)]
         peers.append(subprocess.Popen([netctl, *role, *common, "--log", str(log)], stdout=subprocess.PIPE, text=True))
         time.sleep(0.1)

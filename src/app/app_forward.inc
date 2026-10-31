@@ -27,6 +27,8 @@ static void resumeBattle(App& app);
 static void leaveBattleTo(App& app, ui::ScreenId next);
 #ifdef DAYBREAK_ONLINE
 static void endOnlineMatch(App& app);
+static void leaveOnlineSelection(App& app, const char* why);
+static std::uint32_t onlineSelectionHash(const ui::FrontendState& state);
 #endif
 static void pinFrontendStage(App& app);
 static SDL_AppResult applyPauseChoice(App& app, gameplay::PauseChoice choice);
@@ -78,6 +80,7 @@ static void reportCombatAudio(App& app);
 static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4], double dt);
 static void tickResultScene(App& app, double dt);
 static void tickMatch(App& app, double dt);
+static SDL_AppResult applyFrontendInput(App& state, const ui::ScreenInput& in);
 static void traceMatch(App& app);
 static void fillMatchCubes(App& app);
 static game::GameHudValues timelineHud(uint64_t frame, uint64_t frames);

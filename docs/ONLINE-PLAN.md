@@ -11,7 +11,7 @@ where marked.
 | Netcode | Rollback, through [GekkoNet](https://github.com/HeatXD/GekkoNet) as a pinned dependency |
 | Connection | Direct IP and port, plus NAT punching through a rendezvous server. No game traffic passes through a server |
 | Platforms | Linux and Windows play together. Web and macOS are out |
-| Matches | Versus, 2 to 4 humans, one per machine, with COM in the free slots |
+| Matches | Versus, 2 to 4 humans, one per machine, with COM in the free slots, chosen together on the game's selection screen |
 | Disconnect | COM takes over the slot and the match goes on |
 
 Chosen here, and easy to change:
@@ -65,7 +65,7 @@ are ignored, since an input delay and the first prediction also read as zeros.
 
 **Lobby.** Host authority, over the same UDP socket, because that is the socket NAT punching opens.
 There are no acknowledgements: each side keeps resending its whole state until the other's state shows
-it arrived. The host picks stage, rules and seed.
+it arrived. The host picks the seed, and the selection screen decides everything else.
 
 ## Steps
 
@@ -183,13 +183,18 @@ Limits:
 
 ### 6. Screens
 
-Done on 2026-10-30, except for the owner's judgment of the layout.
+Done on 2026-10-31, except for the owner's judgment of the layout.
 
 - `NETWORK` on the title opens `src/frontend/screen_online.cpp`: host, join by address, and the name, port
   and input delay. Text turns on a wheel, so a pad can enter it. Join by code waits for step 7.
-- A lobby: four slots with names and ping to the host, each player's character, weapon and hypermode,
-  ready, and stage, time limit and health for the host. The host's start picks random COMs.
-- Clear messages for wrong version, wrong game data, a full room, a closed room and silence.
+- **The lobby holds only the players, their ping and ready signs, a ready button and a leave button**, by the
+  owner's decision. Chat is for a later version. It starts by itself once at least two are ready.
+- **The match is chosen on the game's own selection screen**, played together with no rollback. `MenuLockstep`
+  is a GekkoNet session with no prediction window: each machine runs the screen on the same frame with everyone's
+  held buttons, and each peer plays as that controller. So characters, stage, rules and random picks need no
+  packets, and the room's seed starts the same random numbers everywhere. Peers compare a hash of what it decided.
+- Online, the selection cannot start the match until every player has a panel, and no player can make theirs COM.
+- Backing out of the selection takes everyone back to the lobby, and so does a player leaving it or a differing hash.
 - A `[network]` settings section, schema v7. The server list waits for step 7.
 - The match leaves on `Session::round_over_confirmed`, and everyone returns to the lobby after results.
 - Pause is off. The pause key leaves the match at once, and the others get a COM after the timeout.
@@ -199,10 +204,13 @@ Done on 2026-10-30, except for the owner's judgment of the layout.
 **Done when:** a scripted run walks title, lobby, battle, results and lobby on two instances. **The
 owner judges the layout.**
 
-Result: `online_flow_check` starts two headless games at the lobby rather than the title, and they walk
-lobby, VS, battle, results and lobby with 0 desyncs. The title and menu rows were not driven by that run.
+Result: `online_flow_check` starts four headless games at the lobby rather than the title, and they walk lobby,
+selection, VS, battle, results and lobby with 0 desyncs. The title and menu rows were not driven by that run.
 
-Limits: the Japanese labels of these screens are this project's own wording and need a reader's check.
+Limits: the Japanese labels of these screens are this project's own wording and need a reader's check. Any
+player can edit the stage page and any player can back everyone out. One run, the first after a rebuild, went
+back to the lobby by itself at tick 327 on both games, and the next 11 runs of the same script did not; the
+reason now goes to the log as `[net] selection ended`.
 
 ### 7. Rendezvous server and NAT punching
 

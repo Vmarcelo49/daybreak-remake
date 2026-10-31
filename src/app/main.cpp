@@ -356,6 +356,39 @@ static void reportNetSession(const net::Session& session) {
                 stats.desyncs, stats.worstUpdate.count() / 1000.0);
 }
 
+// Whatever the selection screen has decided so far, which every peer must agree on.
+static std::uint32_t onlineSelectionHash(const ui::FrontendState& state) {
+    std::uint32_t digest = 2166136261u ^ state.randomState;
+    const auto mix = [&digest](int value) { digest = (digest ^ static_cast<std::uint32_t>(value)) * 16777619u; };
+    for (const ui::FrontendSlot& slot : state.slots) {
+        mix(slot.character);
+        mix(slot.weapon);
+        mix(slot.hypermode);
+        mix(slot.costume);
+        mix(slot.controller);
+    }
+    mix(state.stage);
+    mix(state.variation);
+    mix(state.timeLimit);
+    mix(state.health);
+    mix(state.gauge);
+    mix(state.blueBalloon);
+    mix(state.redBalloon);
+    return digest;
+}
+
+// Back to the room's lobby from the selection, with a new match to prepare.
+static void leaveOnlineSelection(App& app, const char* why) {
+    app.netMenu.reset();
+    app.netMenuHeld = {};
+    if (why) app.frontend.onlineMessage = why;
+    std::printf("[net] selection ended: %s\n", why ? why : "a player backed out");
+    std::uint32_t token, seed;
+    ui::onlineMatchNumbers(token, seed);
+    app.frontend.online->lobby->next_match(token, seed);
+    app.frontend.online->inMatch = false;
+}
+
 // The room outlives the match: everyone goes back to its lobby from here.
 static void endOnlineMatch(App& app) {
     if (!app.frontend.online || !app.netSession) return;
@@ -1019,7 +1052,12 @@ static bool enterFrontendBattle(App& app) {
         slot.controller = 4;
     }
     ui::FrontendLaunch launch;
-    if (!ui::frontendLaunch(app.frontend, launch, app.error, (uint32_t)app.logicTicks)) return false;
+    // A random stage must land on the same one for every peer.
+    uint32_t launchSeed = (uint32_t)app.logicTicks;
+#ifdef DAYBREAK_ONLINE
+    if (app.frontend.online) launchSeed = app.frontend.online->matchPlan.seed;
+#endif
+    if (!ui::frontendLaunch(app.frontend, launch, app.error, launchSeed)) return false;
     app.battleLaunch = launch;
     // Issue #4: the match readiness barrier. This is the first moment the exact dependency
     // set is known — a random stage is rolled inside frontendLaunch — so the request goes

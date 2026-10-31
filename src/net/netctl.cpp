@@ -19,7 +19,7 @@ const char kUsage[] =
     "  --game DIR       install holding daybreak00.dat (default: $GAME_DIR or a parent directory)\n"
     "  --ticks N        frames to play (default 3600)\n"
     "  --seed N         host: battle seed (default 1)\n"
-    "  --time-limit S   host: round limit in seconds (default: the match's own)\n"
+    "  --time-limit S   round limit in seconds, the same for every peer (default: the match's own)\n"
     "  --delay N        input delay in frames (default 2)\n"
     "  --proxy IP:PORT  send everything through tools/net_proxy.py\n"
     "  --log FILE       write `frame hash` per frame, for comparing peers\n"
@@ -52,7 +52,6 @@ net::MatchPlan default_plan(std::uint32_t seed, unsigned timeLimit) {
     plan.token = seed * 2654435761u + static_cast<std::uint32_t>(std::chrono::steady_clock::now().time_since_epoch().count());
     plan.seed = seed;
     plan.timeLimitSeconds = timeLimit;
-    for (unsigned i = 0; i < 4; ++i) plan.slots[i].character = static_cast<int>(i);
     return plan;
 }
 
@@ -121,10 +120,8 @@ int main(int argc, char** argv) try {
     if (!join.empty() && !net::parse_address(join, hostAddress)) throw std::runtime_error("bad --join");
     net::Lobby lobby = join.empty() ? net::Lobby::host(socket, default_plan(seed, timeLimit), gameHash)
                                     : net::Lobby::join(socket, hostAddress, gameHash);
-    // Any legal fighter: the first weapon exists for everyone.
     net::LocalChoice choice;
     choice.name = "netctl";
-    choice.character = socket.port() % 14;
     choice.ready = true;
     lobby.set_choice(choice);
     for (unsigned waited = 0; !lobby.ready(); waited += 5) {
@@ -138,7 +135,13 @@ int main(int argc, char** argv) try {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
-    const net::MatchPlan plan = lobby.plan();
+    // What the selection screen would have decided, the same on every peer: the first weapon exists
+    // for everyone, and the peers fill the teams in turn.
+    net::MatchPlan plan = lobby.plan();
+    plan.timeLimitSeconds = timeLimit;
+    constexpr std::array<int, 4> kPeerSlot{{0, 2, 1, 3}};
+    for (unsigned i = 0; i < 4; ++i) plan.slots[i].character = static_cast<int>(i);
+    for (unsigned peer = 0; peer < plan.peerCount; ++peer) plan.slots[static_cast<size_t>(kPeerSlot[peer])].peer = static_cast<int>(peer);
     sim::CoreBattle battle;
     const std::array<const gameplay::CharacterMoves*, 4> moves{};
     const std::array<const gameplay::WeaponDefinition*, 4> weapons{};

@@ -3,6 +3,7 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -25,6 +26,32 @@ struct SessionStats {
     unsigned skippedTicks = 0;
     std::chrono::microseconds worstUpdate{0};
     std::chrono::microseconds totalUpdate{0};
+};
+
+// The selection screen's netcode: every peer runs the screen with the same held buttons on the same
+// frame, waiting for everyone's. No rollback, since a menu forgives the wait and has nothing to predict.
+class MenuLockstep {
+public:
+    static constexpr unsigned kInputDelay = 3;
+    using Held = std::array<std::uint8_t, 4>;  // per peer, as bits from the caller
+
+    MenuLockstep(UdpSocket& socket, Lobby& lobby, const MatchPlan& plan, std::uint8_t localPeer);
+    ~MenuLockstep();
+    MenuLockstep(const MenuLockstep&) = delete;
+    MenuLockstep& operator=(const MenuLockstep&) = delete;
+
+    // `onFrame` runs once per agreed frame, and `hash` tells the state after it, for peers to compare.
+    void run(std::uint8_t localHeld, const std::function<void(const Held&)>& onFrame,
+             const std::function<std::uint32_t()>& hash);
+    // Keeps resending what a slower peer has not received, after this one has moved on.
+    void linger();
+    bool peer_left() const { return m_peerLeft; }
+    bool desynced() const { return m_desynced; }
+
+private:
+    GekkoSession* m_session = nullptr;
+    int m_localPeer = 0, m_peers = 0;
+    bool m_peerLeft = false, m_desynced = false;
 };
 
 class Session final : public sim::TickDriver {

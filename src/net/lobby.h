@@ -10,7 +10,7 @@
 
 namespace net {
 
-constexpr std::uint16_t kProtocolVersion = 2;
+constexpr std::uint16_t kProtocolVersion = 3;
 constexpr std::uint8_t kLobbyPacket = 'L';
 constexpr std::uint8_t kGamePacket = 'G';
 constexpr size_t kMaxNameLength = 12;
@@ -25,9 +25,9 @@ struct PlanSlot {
     int peer = -1;  // the human who plays it, or -1 for COM
 };
 
-// What every peer must start from. Peers fill the teams in turn, so two players face each other.
-constexpr std::array<int, 4> kPeerSlot{{0, 2, 1, 3}};
-
+// What the room agrees on, and what every peer then fills in for itself. The lobby sends only who
+// is here. The stage, rules and slots come from the selection screen, which every peer runs with the
+// same inputs, so they need no packet.
 struct MatchPlan {
     std::uint32_t token = 0;  // proves a packet belongs to this match
     std::uint32_t seed = 1;
@@ -43,11 +43,9 @@ struct MatchPlan {
     bool started = false;
 };
 
-// What one player chooses for themselves.
+// What one player says in the lobby.
 struct LocalChoice {
     std::string name;
-    int character = 0, weapon = 0, costume = 0;
-    unsigned specialMode = 1;
     bool ready = false;
 };
 
@@ -87,8 +85,6 @@ public:
 
     void set_choice(const LocalChoice& choice);
     bool is_host() const { return m_isHost; }
-    // Host only: the stage, rules and COM slots of the next match.
-    MatchPlan& edit_plan() { return m_plan; }
     bool can_start() const;
     void start();
 
