@@ -179,6 +179,36 @@ struct Battle::Impl {
         }
     }
 
+    // Every field stateHash covers that the core exposes for writing. Each is a scalar or an array
+    // of scalars, so its bytes hold no padding.
+    template <class Self, class Visit>
+    static void visit_state_fields(Self& self, Visit&& visit) {
+        auto& c = self.combat;
+        visit(c.health); visit(c.delayed_health); visit(c.gauge); visit(c.elapsed);
+        visit(c.attack_state); visit(c.attack_phase);
+        visit(c.air_state); visit(c.air_phase); visit(c.air_tick);
+        visit(c.ground_hit_state); visit(c.ground_hit_phase); visit(c.ground_hit_tick);
+        visit(c.reaction_phase); visit(c.reaction_tick);
+        visit(c.recovery_state); visit(c.recovery_phase); visit(c.recovery_tick);
+        visit(c.stop_ticks); visit(c.time_stop_ticks); visit(c.long_stop_ticks);
+        visit(c.shoot_held); visit(c.shoot_released); visit(c.death_bonus_used);
+        visit(c.native_contact_mode); visit(c.native_extra_yaw); visit(c.native_orientation34);
+        visit(c.match.ready); visit(c.match.presentation_phase);
+        visit(self.ticks); visit(self.victoryResolved); visit(self.tacticsHeld);
+        for (unsigned i = 0; i < 4; ++i) {
+            auto& a = self.world.actors[i];
+            visit(a.position); visit(a.heading); visit(a.grounded); visit(a.collided);
+            visit(a.collision_distance); visit(a.floor_distance); visit(a.relationships.target);
+            visit(c.magazines[i]);
+            auto& s = c.statistics[i];
+            visit(s.dealt); visit(s.received); visit(s.kills); visit(s.deaths);
+            auto& g = c.special_gauges[i];
+            visit(g.mode); visit(g.charge0); visit(g.charge1); visit(g.charge2);
+            visit(g.duration0); visit(g.duration1); visit(g.active0); visit(g.active1); visit(g.active2);
+            visit(c.targeting[i].cooldown);
+        }
+    }
+
     void mix(const void* data, size_t size) {
         const auto* bytes = static_cast<const unsigned char*>(data);
         for (size_t i = 0; i < size; ++i) {
@@ -287,6 +317,116 @@ struct Battle::Impl {
         mix(&random.index, sizeof random.index);
     }
 };
+
+// What a rollback restores. The cameras are here because they ease over ticks, so replaying without
+// them would ease twice. Assets, collision, the roster and the voice inventory never change.
+struct BattleSnapshot::State {
+    DevelopmentAnimatedCombat combat;
+    BattleWorld world;
+    LocalNormalProjectiles projectiles;
+    BattleVisualEffects effects;
+    BattleCpuDriver cpu;
+    unsigned ticks;
+    bool victoryResolved;
+    std::array<bool, 4> tacticsHeld;
+    std::uint64_t digest;
+    std::array<BattleCameraTracking, 4> cameras;
+    std::array<BattleAnimatedCameraState, 4> animatedCameras;
+    std::array<BattleCameraView, 4> manualCameras;
+
+    template <class To, class From>
+    static void copy(To& to, const From& from) {
+        to.combat = from.combat;
+        to.world = from.world;
+        to.projectiles = from.projectiles;
+        to.effects = from.effects;
+        to.cpu = from.cpu;
+        to.ticks = from.ticks;
+        to.victoryResolved = from.victoryResolved;
+        to.tacticsHeld = from.tacticsHeld;
+        to.digest = from.digest;
+        to.cameras = from.cameras;
+        to.animatedCameras = from.animatedCameras;
+        to.manualCameras = from.manualCameras;
+    }
+    template <class From>
+    explicit State(const From& from) : combat(from.combat), projectiles(from.projectiles), effects(from.effects) {
+        copy(*this, from);
+    }
+};
+
+BattleSnapshot::BattleSnapshot() = default;
+BattleSnapshot::~BattleSnapshot() = default;
+
+void Battle::saveState(BattleSnapshot& snapshot) const {
+    if (snapshot.m_state) BattleSnapshot::State::copy(*snapshot.m_state, *m_impl);
+    else snapshot.m_state = std::make_unique<BattleSnapshot::State>(*m_impl);
+}
+
+void Battle::loadState(const BattleSnapshot& snapshot) {
+    if (!snapshot.m_state) throw std::logic_error("sim: loading an empty snapshot");
+    BattleSnapshot::State::copy(*m_impl, *snapshot.m_state);
+    m_impl->events = {};
+}
+
+std::uint64_t Battle::stateHash() const {
+    std::uint64_t digest = 1469598103934665603ull;
+    const auto mix = [&digest](const void* data, size_t size) {
+        const auto* bytes = static_cast<const unsigned char*>(data);
+        for (size_t i = 0; i < size; ++i) digest = (digest ^ bytes[i]) * 1099511628211ull;
+    };
+    const auto mixValue = [&mix](const auto& value) { mix(&value, sizeof value); };
+    Impl::visit_state_fields(*m_impl, mixValue);
+
+    const auto& combat = m_impl->combat;
+    const auto random = combat.simulation_random_state();
+    mixValue(random.words);
+    mixValue(random.index);
+    for (unsigned i = 0; i < 4; ++i) {
+        mixValue(combat.current_action_state(i));
+        mixValue(combat.projectile_owner_phase(i));
+        mixValue(combat.projectile_owner_animation_frame(i));
+        const auto& service = combat.animation_service(i);
+        for (const auto& channel : service.channels) {
+            mixValue(channel.selected);
+            mixValue(channel.position[channel.selected]);
+        }
+    }
+    for (unsigned team = 0; team < 2; ++team) mixValue(combat.team_used(team));
+    mixValue(static_cast<unsigned>(m_impl->projectiles.live.size()));
+    for (const auto& p : m_impl->projectiles.live) {
+        const auto& s = p.state;
+        mixValue(s.item);
+        mixValue(s.position);
+        mixValue(s.velocity);
+        mixValue(s.rotation);
+        mixValue(s.speed);
+        mixValue(s.heading);
+        mixValue(s.offset);
+        mixValue(s.pitch);
+        mixValue(s.frame);
+        mixValue(s.owner);
+        mixValue(s.target);
+        mixValue(s.released);
+        mixValue(p.pool_owner);
+        mixValue(p.registration);
+        mixValue(p.visual_only);
+    }
+    return digest;
+}
+
+unsigned Battle::stateFieldCount() {
+    unsigned count = 0;
+    Impl::visit_state_fields(*m_impl, [&count](auto&) { ++count; });
+    return count;
+}
+
+void Battle::flipStateFieldForTest(unsigned field) {
+    unsigned index = 0;
+    Impl::visit_state_fields(*m_impl, [&](auto& value) {
+        if (index++ == field) *reinterpret_cast<unsigned char*>(&value) ^= 1;
+    });
+}
 
 Battle::Battle(const BattleConfig& config) : m_impl(std::make_unique<Impl>(config)) {}
 Battle::~Battle() = default;

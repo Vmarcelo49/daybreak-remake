@@ -542,6 +542,11 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
 
 
     # The vendored simulation: all 46 combos run, and the digest repeats and reacts (M1).
+    add_executable(rollback_stress_test tests/rollback_stress_test.cpp)
+    target_link_libraries(rollback_stress_test PRIVATE battle_core)
+    add_test(NAME rollback_stress_test COMMAND rollback_stress_test)
+    set_tests_properties(rollback_stress_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 400 LABELS asset)
+
     add_executable(sim_core_test tests/sim_core_test.cpp)
     target_link_libraries(sim_core_test PRIVATE battle_core)
     target_include_directories(sim_core_test PRIVATE src/battle src/battle/core)

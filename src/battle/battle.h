@@ -172,6 +172,21 @@ int character_count();
 int weapon_count(int character);
 std::string character_name(int character);
 
+// A copy of a battle's simulation, for rollback. A slot keeps its allocation, so reusing one is
+// cheap. It may only go back into the Battle that saved it.
+class BattleSnapshot {
+public:
+    BattleSnapshot();
+    ~BattleSnapshot();
+    BattleSnapshot(const BattleSnapshot&) = delete;
+    BattleSnapshot& operator=(const BattleSnapshot&) = delete;
+
+private:
+    friend class Battle;
+    struct State;
+    std::unique_ptr<State> m_state;
+};
+
 class Battle {
 public:
     // Throws std::exception on an invalid combo or missing game data.
@@ -217,6 +232,16 @@ public:
     void fill_special_for_test();
     // FNV-1a over every completed tick's actor states, projectile count and RNG cursor.
     std::uint64_t hash() const;
+    void saveState(BattleSnapshot& snapshot) const;
+    // events() is empty until the next step.
+    void loadState(const BattleSnapshot& snapshot);
+    // The current state, not its history, so peers can compare it for desyncs. Covers named
+    // scalars and never whole structs, whose padding differs between machines. Leaves out the
+    // process-wide projectile serial, which nothing reads without host events.
+    std::uint64_t stateHash() const;
+    // Test seam: stateHash's writable fields, and flipping a bit in one. Flipping again restores it.
+    unsigned stateFieldCount();
+    void flipStateFieldForTest(unsigned field);
 
 private:
     struct Impl;

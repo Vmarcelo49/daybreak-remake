@@ -70,17 +70,23 @@ because that is the socket NAT punching opens. The host picks stage, rules and s
 
 ### 1. A battle that can rewind
 
+Done on 2026-10-30.
+
 - `Battle::saveState` and `loadState` in `battle.cpp`: combat, world, projectiles, effects, CPU, ticks,
-  `tacticsHeld`, `victoryResolved`, and the owners.
-- Move the projectile serial out of the process-wide counter. `legacy_host_battle_events.hpp` says a
-  session can supply its own sequence, so prefer that to editing the core. Any core edit goes in
-  `PATCHES.md`.
+  `tacticsHeld`, `victoryResolved`, the cumulative hash and the cameras. The owners join at step 4,
+  when something first changes them.
+- The projectile serial stays in the process-wide counter, and out of the hash. Without host events
+  nothing reads it, and supplying a session's own sequence would turn host events on. If step 4 starts
+  using host events, this changes.
 - `Battle::stateHash`: named fields, including the 624 RNG words, magazines, score and hit state. The
   existing `hash()` stays, so the fingerprints do not move.
 - Promote the harness to `tests/rollback_stress_test.cpp`, on the real `Battle`, through match end.
 
 **Done when:** rollbacks every tick for a full match on 4 rosters match an uninterrupted run on
 `stateHash`; changing each hashed field changes the hash; the fingerprints are unchanged.
+
+`stateHash` covers what the core exposes. Its private fields are not hashed, so a divergence there
+shows only once it reaches a hashed field, such as a position or the RNG.
 
 ### 2. Presentation that survives a rewind
 
