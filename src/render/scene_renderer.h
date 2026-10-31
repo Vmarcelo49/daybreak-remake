@@ -405,6 +405,7 @@ public:
         std::vector<std::pair<std::string,std::string>> textures;
         int renderMode = -1; // current projectile record +0x7c (FUN_005f60b0)
         bool invert = false; // draw in Pass::EffectInvert
+        bool toon = false;   // a solid prop drawn with the character technique
         // Pre-evaluated node matrices for an instance whose pose is not persistent — an
         // effect card is sampled from its own model at its age and dropped at the end of the
         // frame, so there is no controller to hold (render/fx_cards.h's cardAnimationSeconds

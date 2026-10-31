@@ -585,7 +585,7 @@ static void placeFxCards(App& app) {
     // any pointer into it is taken and never grows again, so the `poseWorld` pointers stored
     // in `instances` stay valid until setEffectInstances reads them.
     std::vector<std::vector<glm::mat4>> cardWorld;
-    std::vector<glm::mat4> longStopPose;
+    std::vector<glm::mat4> longStopPose, bucketPose;
     instances.reserve(app.liveFx.size() + 2 * game::kAuraAttachPoints +
                       game::kMaxLiveShots);
     if (!app.opts.debugPrims) {
@@ -660,28 +660,43 @@ static void placeFxCards(App& app) {
         // FUN_004203f0: while +0x82c runs, data/aura/06.x draws on Bip01_Spine at 128 times
         // its size, in the negative of what is behind it. It never advances the model's own
         // animation, so the instance holds the bind pose.
-        const int longStopCard = app.fxAttach[6];
-        if (longStopCard >= 0)
-            for (int i = 0; i < app.battle->fighter_count(); ++i) {
-                if (!app.battle->fighter(i).long_stopped()) continue;
-                const size_t rig = app.matchRig[i];
-                if (rig >= app.worlds.size()) continue;
-                const int spine = app.scene.models[rig].model.findFrame("Bip01_Spine");
-                if (spine < 0 || (size_t)spine >= app.worlds[rig].size()) continue;
-                if (longStopPose.empty()) {
-                    xm::Controller pose;
-                    pose.bind(&app.scene.models[(size_t)longStopCard].model);
-                    pose.evalWorld(longStopPose);
-                }
-                render::SceneRenderer::EffectInstance sphere;
-                sphere.modelIndex = longStopCard;
-                sphere.poseWorld = &longStopPose;
-                sphere.model = matchRenderMatrix(app, i) * app.worlds[rig][(size_t)spine] *
-                               glm::scale(glm::mat4(1.f), glm::vec3(128.f));
-                sphere.billboard = false;
-                sphere.invert = true;
-                instances.push_back(sphere);
+        // FUN_004203f0's two status models, on the fighter's bone. It never advances their own
+        // animations, so an instance holds the model's bind pose.
+        const auto addOnBone = [&](int fighter, const char* bone, int card,
+                                   std::vector<glm::mat4>& pose, float scale)
+            -> render::SceneRenderer::EffectInstance* {
+            const size_t rig = app.matchRig[fighter];
+            if (card < 0 || rig >= app.worlds.size()) return nullptr;
+            const int frame = app.scene.models[rig].model.findFrame(bone);
+            if (frame < 0 || (size_t)frame >= app.worlds[rig].size()) return nullptr;
+            if (pose.empty()) {
+                xm::Controller controller;
+                controller.bind(&app.scene.models[(size_t)card].model);
+                controller.evalWorld(pose);
             }
+            render::SceneRenderer::EffectInstance instance;
+            instance.modelIndex = card;
+            instance.poseWorld = &pose;
+            instance.model = matchRenderMatrix(app, fighter) * app.worlds[rig][(size_t)frame] *
+                             glm::scale(glm::mat4(1.f), glm::vec3(scale));
+            instance.billboard = false;
+            instances.push_back(instance);
+            return &instances.back();
+        };
+        for (int i = 0; i < app.battle->fighter_count(); ++i) {
+            const game::FighterView& f = app.battle->fighter(i);
+            // +0x7f8: data/aura/04.x, the bucket. A solid model with the character technique,
+            // not an additive card.
+            if (f.bucketed())
+                if (auto* bucket = addOnBone(i, "Bip01_Head", app.fxAttach[4], bucketPose, 1.f)) {
+                    bucket->renderMode = 0;
+                    bucket->toon = true;
+                }
+            // +0x82c: data/aura/06.x at 128 times its size, in the negative of what is behind it.
+            if (f.long_stopped())
+                if (auto* sphere = addOnBone(i, "Bip01_Spine", app.fxAttach[6], longStopPose, 128.f))
+                    sphere->invert = true;
+        }
         // The in-flight shot draws the bullet's OWN model (issue #32), at the shot's own
         // transform — the original's shot render FUN_005f60b0 composes scale, rotation and
         // translation into the model's matrix and draws it, so the instance keeps its

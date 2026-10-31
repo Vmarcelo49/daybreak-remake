@@ -1200,6 +1200,7 @@ void SceneRenderer::setEffectInstances(const std::vector<EffectInstance>& instan
                 if (e.renderMode == 3 || e.renderMode == 4) d.flags |= xm::kDrawUnlit;
             }
             if (e.invert) d.pass = Pass::EffectInvert;
+            if (e.toon) d.toon = true;
             for (const auto& offset : offsets)
                 if (offset.first == t.paletteOffset) d.paletteOffset = offset.second;
             if (t.modelIndex < textureVariants_.size())

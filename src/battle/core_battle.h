@@ -56,6 +56,7 @@ public:
     float aura_radius() const override { return 0.f; }
     game::Rgb aura_color() const override { return 0; }
     bool long_stopped() const override { return m_longStopped; }
+    bool bucketed() const override { return m_bucketed; }
     bool draws_item_model(int model) const override { return model == m_held[0] || model == m_held[1]; }
     int item_model_hand(int model) const override { return model == m_held[0] ? 0 : model == m_held[1] ? 1 : -1; }
     const gameplay::WeaponTrail& trail(int hand) const override { return m_trails[static_cast<size_t>(hand)]; }
@@ -85,6 +86,7 @@ private:
     float m_ghost = 100.f;
     std::array<int, 2> m_held{{-1, -1}};
     bool m_longStopped = false;
+    bool m_bucketed = false;
     std::array<MagazineState, 2> m_magazines{};
     ActorAnimation m_animation{};
     SpecialState m_special{};

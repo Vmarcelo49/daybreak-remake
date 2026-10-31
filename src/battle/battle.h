@@ -206,6 +206,7 @@ public:
     bool hud_hidden() const { return scene_phase() >= 3; }
     bool time_stop_active() const;
     bool long_stopped(unsigned slot) const;
+    bool bucketed(unsigned slot) const;
     ActorAnimation animation(unsigned slot) const;
     SpecialState special(unsigned slot) const;
     NoticeState notice(unsigned slot) const;

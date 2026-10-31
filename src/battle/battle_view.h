@@ -78,6 +78,8 @@ public:
     // Weapon presentation.
     // The long stop this fighter is held in, drawn as a negative sphere around it.
     virtual bool long_stopped() const { return false; }
+    // The status at +0x7f8 runs: the bucket sits on this fighter's head.
+    virtual bool bucketed() const { return false; }
     virtual bool draws_item_model(int model) const = 0;
     // The hand a drawn item model is bound to: 0, 1, or -1 when it is not drawn.
     virtual int item_model_hand(int model) const = 0;
