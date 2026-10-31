@@ -25,6 +25,9 @@ static void playPauseCue(App& app);
 static void enterBattlePause(App& app, const char* reason);
 static void resumeBattle(App& app);
 static void leaveBattleTo(App& app, ui::ScreenId next);
+#ifdef DAYBREAK_ONLINE
+static void endOnlineMatch(App& app);
+#endif
 static void pinFrontendStage(App& app);
 static SDL_AppResult applyPauseChoice(App& app, gameplay::PauseChoice choice);
 static SDL_AppResult tickBattlePause(App& app);

@@ -183,16 +183,26 @@ Limits:
 
 ### 6. Screens
 
-- `ONLINE` on the title: the original's sheet already has a row for it. Host, join by IP, join by code.
-- A lobby: slots, names (`soft_keyboard.cpp`), character and weapon choice, ready, stage and rules for
-  the host, ping per peer.
-- Clear messages for wrong version, wrong game data, a full room and a lost peer.
-- Pause off, and a return to the lobby after results.
-- A `[network]` settings section: name, port, delay, server list. Bump the schema in
-  `docs/USER-SETTINGS.md`. Labels go in `assets/locale/en.txt`.
+Done on 2026-10-30, except for the owner's judgment of the layout.
+
+- `NETWORK` on the title opens `src/frontend/screen_online.cpp`: host, join by address, and the name, port
+  and input delay. Text turns on a wheel, so a pad can enter it. Join by code waits for step 7.
+- A lobby: four slots with names and ping to the host, each player's character, weapon and hypermode,
+  ready, and stage, time limit and health for the host. The host's start picks random COMs.
+- Clear messages for wrong version, wrong game data, a full room, a closed room and silence.
+- A `[network]` settings section, schema v7. The server list waits for step 7.
+- The match leaves on `Session::round_over_confirmed`, and everyone returns to the lobby after results.
+- Pause is off. The pause key leaves the match at once, and the others get a COM after the timeout.
+- `--net-host=PORT` and `--net-join=IP:PORT` open the lobby directly. A capture in a room runs at 60 Hz, since
+  peers live in real time.
 
 **Done when:** a scripted run walks title, lobby, battle, results and lobby on two instances. **The
 owner judges the layout.**
+
+Result: `online_flow_check` starts two headless games at the lobby rather than the title, and they walk
+lobby, VS, battle, results and lobby with 0 desyncs. The title and menu rows were not driven by that run.
+
+Limits: the Japanese labels of these screens are this project's own wording and need a reader's check.
 
 ### 7. Rendezvous server and NAT punching
 

@@ -20,14 +20,20 @@ forbids for the port.
 
 Delete the file to reset everything to its defaults; there is no separate reset file.
 
-## What is stored (schema version 6)
+## What is stored (schema version 7)
 
 ```ini
-version = 6
+version = 7
 
 [game]
 install_dir = /home/u/Games/Higurashi-Daybreak   # absolute; empty = none remembered
 language = en                 # menus and HUD; empty = the game's own Japanese
+
+[network]
+name = PLAYER                 # what other players see, up to 12 plain characters
+port = 37564                  # the UDP port a hosted room listens on
+input_delay = 2               # frames, 0 to 8
+last_host =                   # the address last joined
 
 [display]
 fullscreen = false
@@ -107,7 +113,8 @@ pad2_guid =
 | 3 | issue #21 added `[render] toon` | migrated: every value kept, `[game] install_dir` takes its default (empty), `shadows` takes its default (off), **no warning** (a context line) |
 | 4 | issue #36 added `[game] install_dir` | migrated: every value kept, `shadows` takes its default (off), **no warning** (a context line) |
 | 5 | issue #21 row 1 added `[render] shadows` | migrated: every value kept, the language defaults to Japanese |
-| 6 | added `[game] language` | current |
+| 6 | added `[game] language` | migrated: every value kept, `[network]` takes its defaults |
+| 7 | added `[network]`, for online play | current |
 
 Migration is per document, never partial: the version line decides how the binding rows are
 read, and the next save writes the current version. The `[render]` and `[game]` sections

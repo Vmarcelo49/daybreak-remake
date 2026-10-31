@@ -678,6 +678,10 @@ static bool startCoreBattle(App& app, const MatchSetup& config) {
     sim::BattleConfig core;
     core.gameDir = fnd::assets::assetSource().installDir();
     if (app.frontendMatch) core.seed = static_cast<uint32_t>(app.logicTicks) * 2654435761u + 1u;
+#ifdef DAYBREAK_ONLINE
+    const ui::OnlineContext* online = app.frontendMatch && app.frontend.online ? app.frontend.online.get() : nullptr;
+    if (online) core.seed = online->matchPlan.seed;
+#endif
     core.timeLimitSeconds = static_cast<unsigned>(std::max(0, config.timeLimit));
     core.rules = {config.healthPercent, config.gaugePercent, config.balloonSize[0], config.balloonSize[1]};
     if (app.frontend.story.active) {
@@ -704,6 +708,10 @@ static bool startCoreBattle(App& app, const MatchSetup& config) {
         if (app.frontendMatch) {
             const int controller = app.frontend.slots[app.battleLaunch.fighters[i].panel].controller;
             human = controller >= 0 && controller < 4;
+#ifdef DAYBREAK_ONLINE
+            // Another machine's player has no controller here, and is no COM.
+            if (online) human = online->matchPlan.slots[static_cast<size_t>(app.battleLaunch.fighters[i].panel)].peer >= 0;
+#endif
         }
         std::string specPath;
         int costume = 0;
@@ -720,6 +728,16 @@ static bool startCoreBattle(App& app, const MatchSetup& config) {
         if (app.opts.netStress > 0) {
             app.netSession = net::Session::stress(app.coreBattle, app.opts.netStress);
             app.coreBattle.set_driver(app.netSession.get());
+        }
+        if (online) {
+            ui::OnlineContext& context = *app.frontend.online;
+            const std::uint8_t local = context.lobby->local_peer();
+            app.netSession = net::Session::online(app.coreBattle, context.socket, *context.lobby, context.matchPlan, local,
+                                                  static_cast<unsigned>(ui::frontendSettings().netInputDelay));
+            app.coreBattle.set_driver(app.netSession.get());
+            for (size_t slot = 0; slot < context.matchPlan.slots.size(); ++slot)
+                if (context.matchPlan.slots[slot].peer == local) app.coreBattle.set_hearing_slot(static_cast<unsigned>(slot));
+            app.netWaitTicks = 0;
         }
 #endif
     } catch (const std::exception& error) {

@@ -68,7 +68,11 @@ namespace settings {
 //
 // v6 added [game] language, the translated labels the Options screen chooses. A v5 file is
 // MIGRATED additively: empty is the game's own Japanese, which is what v5 showed.
-inline constexpr int kSchemaVersion = 6;
+//
+// v7 added [network], for online play: name, port, input_delay and last_host. A v6 file is MIGRATED
+// additively, and every new key takes its default.
+inline constexpr int kSchemaVersion = 7;
+inline constexpr int kSchemaVersionV6 = 6;
 inline constexpr int kSchemaVersionV5 = 5;
 inline constexpr int kSchemaVersionLegacy = 1;
 inline constexpr int kSchemaVersionV2 = 2;
@@ -109,6 +113,10 @@ struct UserSettings {
     std::string installDir;
     // Which assets/locale/<language>.txt labels the sheets; empty is the game's own Japanese.
     std::string language;
+    std::string playerName = "PLAYER";   // plain ASCII, what other players see
+    int         netPort = 37564;         // the original's (docs/game-spec.md)
+    int         netInputDelay = 2;       // frames, 0..8
+    std::string netLastHost;             // the address last joined
     bool        fullscreen = false;
     DisplaySize resolution{0, 0};
     // Toon rendering (issue #21), the Options screen's first row. Off is the shipped

@@ -235,6 +235,8 @@ public:
     // Hands a human's slot to the CPU from this tick on. Repeating it changes nothing.
     void handSlotToCpu(unsigned slot);
     bool slotIsCpu(unsigned slot) const;
+    // Online, every human is in the roster, and this machine hears only its own player's notices.
+    void setHearingSlot(unsigned slot);
     void saveState(BattleSnapshot& snapshot) const;
     // events() is empty until the next step.
     void loadState(const BattleSnapshot& snapshot);

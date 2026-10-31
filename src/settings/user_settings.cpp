@@ -163,7 +163,8 @@ UserSettings::UserSettings() {
 }
 
 bool UserSettings::operator==(const UserSettings& other) const {
-    return installDir == other.installDir && language == other.language && fullscreen == other.fullscreen &&
+    return playerName == other.playerName && netPort == other.netPort && netInputDelay == other.netInputDelay &&
+           netLastHost == other.netLastHost && installDir == other.installDir && language == other.language && fullscreen == other.fullscreen &&
            resolution == other.resolution &&
            toonRendering == other.toonRendering &&
            shadowRendering == other.shadowRendering &&
@@ -257,7 +258,7 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
         if (line.front() == '[') {
             if (line.back() != ']') return fail(": unterminated section header");
             section = trimmed(line.substr(1, line.size() - 2));
-            if (section != "game" && section != "display" && section != "render" &&
+            if (section != "game" && section != "network" && section != "display" && section != "render" &&
                 section != "audio" && section != "bindings" && section != "controllers") {
                 return fail(": unknown section [" + section + "]");
             }
@@ -279,7 +280,7 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                 if (!parseInt(value, version)) return fail(": version is not a number");
                 if (version != kSchemaVersion && version != kSchemaVersionLegacy &&
                     version != kSchemaVersionV2 && version != kSchemaVersionV3 &&
-                    version != kSchemaVersionV4 && version != kSchemaVersionV5) {
+                    version != kSchemaVersionV4 && version != kSchemaVersionV5 && version != kSchemaVersionV6) {
                     error = "unsupported config version " + std::to_string(version) +
                             " (this build writes " + std::to_string(kSchemaVersion) + ")";
                     return false;
@@ -313,6 +314,25 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                 const bool plain = std::all_of(value.begin(), value.end(), [](char c) { return (c >= 'a' && c <= 'z') || c == '-'; });
                 if (plain && value.size() <= 16) candidate.language = value;
                 else warn("language: '" + value + "' is not a language tag, ignoring it");
+            } else {
+                warn("ignoring unknown key '" + key + "'");
+            }
+        } else if (section == "network") {
+            int number = 0;
+            if (key == "name") {
+                const bool plain = std::all_of(value.begin(), value.end(), [](char c) { return c >= 0x20 && c <= 0x7e; });
+                if (plain && value.size() <= 12) candidate.playerName = value;
+                else warn("name: '" + value + "' is not up to 12 plain characters, ignoring it");
+            } else if (key == "port") {
+                if (parseInt(value, number) && number >= 1 && number <= 65535) candidate.netPort = number;
+                else warn("port: '" + value + "' is not a port, ignoring it");
+            } else if (key == "input_delay") {
+                if (parseInt(value, number) && number >= 0 && number <= 8) candidate.netInputDelay = number;
+                else warn("input_delay: '" + value + "' is not 0 to 8, ignoring it");
+            } else if (key == "last_host") {
+                const bool plain = std::all_of(value.begin(), value.end(), [](char c) { return (c >= '0' && c <= '9') || c == '.' || c == ':'; });
+                if (plain && value.size() <= 21) candidate.netLastHost = value;
+                else warn("last_host: '" + value + "' is not an address, ignoring it");
             } else {
                 warn("ignoring unknown key '" + key + "'");
             }
@@ -439,6 +459,11 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
             "config version 5: migrated to " + std::to_string(kSchemaVersion) +
             " (the language defaults to Japanese; every stored value kept)");
         break;
+    case kSchemaVersionV6:
+        report.messages.push_back(
+            "config version 6: migrated to " + std::to_string(kSchemaVersion) +
+            " (online play takes its defaults; every stored value kept)");
+        break;
     case kSchemaVersion:
         // A CURRENT document always carries the folder key — serialize() writes it even when
         // no folder is remembered — so its absence is a hand-edit or a lossy writer, and the
@@ -479,6 +504,16 @@ std::string serialize(const UserSettings& settings) {
         << "\n"
         << "# The language of the menus and the HUD: en, or empty for the game's own Japanese.\n"
         << "language = " << settings.language << "\n\n";
+
+    out << "[network]\n"
+        << "# What other players see: up to 12 plain ASCII characters.\n"
+        << "name = " << settings.playerName << "\n"
+        << "# The UDP port a hosted room listens on.\n"
+        << "port = " << settings.netPort << "\n"
+        << "# Frames of input delay, 0 to 8. More feels slower, and rolls back less.\n"
+        << "input_delay = " << settings.netInputDelay << "\n"
+        << "# The address last joined.\n"
+        << "last_host = " << settings.netLastHost << "\n\n";
 
     out << "[display]\n"
         << "fullscreen = " << (settings.fullscreen ? "true" : "false") << "\n"

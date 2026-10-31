@@ -15,6 +15,9 @@
 #include "frontend/screen_select.h"
 #include "frontend/screen_vs.h"
 #include "frontend/screen_options.h"
+#ifdef DAYBREAK_ONLINE
+#include "frontend/screen_online.h"
+#endif
 #include "frontend/frontend_state.h"
 #include "frontend/screen_story.h"
 #include "frontend/screen_result.h"
@@ -114,6 +117,10 @@ const ScreenEntry kScreens[] = {
                                    : makeResultScreen(batch, state, error);
      }},
     {ScreenId::StoryAdv, &makeStoryScreen},
+#ifdef DAYBREAK_ONLINE
+    {ScreenId::NetplayMenu, &makeOnlineMenuScreen},
+    {ScreenId::NetplayLobby, &makeOnlineLobbyScreen},
+#endif
     {ScreenId::GameOver, &makeGameOverScreen},
 };
 

@@ -4,6 +4,10 @@
 
 static SDL_AppResult tickFrontend(App& state) {
     App* app = &state;
+#ifdef DAYBREAK_ONLINE
+    // Through the result and VS screens too: peers tell each other they are still there.
+    if (app->frontend.online && !app->netSession) app->frontend.online->lobby->poll(16);
+#endif
     auto anyPressed = [&](fnd::input::Action action) {
         for (const auto& player : app->tickInput) if (player.just_pressed[action]) return true;
         return false;
@@ -186,6 +190,14 @@ static SDL_AppResult appIterate(App* app) {
     // While paused the clock is not advanced at all, so paused wall time cannot become
     // catch-up ticks when the pause ends; the paused ticks still run so the device queues
     // are drained and the menu can be driven (issue #15).
+#ifdef DAYBREAK_ONLINE
+    // A capture runs as fast as it can, but peers and their timeouts live in real time.
+    if (capturing && app->frontend.online) {
+        static auto next = std::chrono::steady_clock::now();
+        next += std::chrono::nanoseconds(1000000000 / 60);
+        std::this_thread::sleep_until(next);
+    }
+#endif
     const int ticks = capturing ? 1
                     : (app->battlePaused ? 1
                                          : app->logicClock.advance(app->frames > 1 ? delta : 0.0));
@@ -228,7 +240,29 @@ static SDL_AppResult appIterate(App* app) {
             if (app->opts.localPlayers > 0 && app->matchFrame % 128 == 0)
                 reportMatchViews(*app, capturing ? (uint32_t)app->opts.sizeW : app->sc.width,
                                  capturing ? (uint32_t)app->opts.sizeH : app->sc.height);
-            if (app->frontendMatch && app->battle->economy().roundOver()) {
+#ifdef DAYBREAK_ONLINE
+            // Online there is no pause to leave from, so this key leaves. The others get a COM.
+            if (app->frontend.online && app->netSession && !capturing && battlePausePressed(*app)) {
+                app->frontend.onlineMessage.clear();
+                endOnlineMatch(*app);
+                stopCombatAudio(*app);
+                leaveBattleTo(*app, ui::ScreenId::NetplayMenu);
+                continue;
+            }
+            // Stuck on the first frame: someone's address does not answer.
+            if (app->frontend.online && app->netSession && app->netSession->frame() == 0 && ++app->netWaitTicks > 20 * 60) {
+                app->frontend.onlineMessage = "Could not reach every player.";
+                endOnlineMatch(*app);
+                stopCombatAudio(*app);
+                leaveBattleTo(*app, ui::ScreenId::NetplayMenu);
+                continue;
+            }
+            const bool roundOver = app->frontend.online && app->netSession ? app->netSession->round_over_confirmed()
+                                                                           : app->battle->economy().roundOver();
+#else
+            const bool roundOver = app->battle->economy().roundOver();
+#endif
+            if (app->frontendMatch && roundOver) {
                 // The economy reports the WINNING side (issue #11); the DX9 port
                 // reported the burst side here and this line inverted it.
                 const gameplay::MatchEconomy& eco = app->battle->economy();
@@ -278,6 +312,9 @@ static SDL_AppResult appIterate(App* app) {
                         app->frontend.penaltyDecided[panel] = true;
                     std::printf("[title] panel %d fighter %d -> %d '%s'\n", panel, i, title, titleTable.text(title));
                 }
+#ifdef DAYBREAK_ONLINE
+                endOnlineMatch(*app);
+#endif
                 app->matchMode = false;
                 app->frontendBattleReady = false;
                 app->versusAudio.clear_music();

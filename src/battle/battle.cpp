@@ -118,6 +118,8 @@ struct Battle::Impl {
     std::array<BattleCameraTracking, 4> cameras{};
     std::array<BattleAnimatedCameraState, 4> animatedCameras{};
     std::array<BattleCameraView, 4> manualCameras{};
+    decltype(LocalBattleRoster::controlled_slots) hearingSlots{};
+    decltype(LocalBattleRoster::controlled_count) hearingCount = 0;
 
     explicit Impl(const BattleConfig& config)
         : assets(mount_assets(config.gameDir)),
@@ -127,6 +129,8 @@ struct Battle::Impl {
           files(load_basic_battle_roster_assets(assets, roster)),
           combat(files.assets, files.actions),
           collision(BattleStageCollisionAssets::load(assets, stage_path(config.stage))) {
+        hearingSlots = roster.controlled_slots;
+        hearingCount = roster.controlled_count;
         cpu.configure(roster);
         // RuntimeBattle's constructor, in its order. The voice inventory is not optional: its
         // selection draws from the battle RNG (queue_voice), so leaving it out changes the match.
@@ -236,7 +240,7 @@ struct Battle::Impl {
             events.effects.push_back({static_cast<int>(request.actor), static_cast<int>(request.id), request.position, direction});
         }
         for (const auto& request : combat.sound_requests) {
-            if (request.system && !battle_contact_sound_audible(request, roster.controlled_slots, roster.controlled_count)) continue;
+            if (request.system && !battle_contact_sound_audible(request, hearingSlots, hearingCount)) continue;
             events.sounds.push_back({static_cast<int>(request.actor), static_cast<int>(request.id),
                                      !request.system && request.mode == BattleSoundMode::Spatial, request.position,
                                      request.system});
@@ -244,12 +248,12 @@ struct Battle::Impl {
         // RuntimeBattle::update: an activation notice is a nonpositional system SE for the
         // slots local controllers own (FUN_004220e0 -> FUN_0064af20).
         for (const auto& request : combat.special_activation_events) {
-            for (unsigned n = 0; n < roster.controlled_count; ++n)
-                if (roster.controlled_slots[n] == request.slot)
+            for (unsigned n = 0; n < hearingCount; ++n)
+                if (hearingSlots[n] == request.slot)
                     events.sounds.push_back({static_cast<int>(request.slot), static_cast<int>(request.notification), false, {}, true});
         }
         for (const auto& request : combat.voice_requests) {
-            if (!battle_event_voice_audible(request, roster.controlled_slots, roster.controlled_count)) continue;
+            if (!battle_event_voice_audible(request, hearingSlots, hearingCount)) continue;
             if (!request.selection_resolved || request.actor >= 4 || request.bank < 0 || request.selected_choice < 0) continue;
             const unsigned which = voices->bank(request.actor, request.bank != 0);
             const auto& names = voices->names(request.actor, which, request.category);
@@ -381,6 +385,11 @@ void Battle::handSlotToCpu(unsigned slot) {
     m_impl->cpu.set_actor_owners(owners, [&](unsigned actor, KeiichiCpuInput& input) { combat.handoff_native_cpu_input(actor, input); });
     m_impl->roster.owner = owners;
     combat.configure_voice_selection(m_impl->voices, owners);
+}
+
+void Battle::setHearingSlot(unsigned slot) {
+    m_impl->hearingSlots[0] = slot;
+    m_impl->hearingCount = 1;
 }
 
 bool Battle::slotIsCpu(unsigned slot) const { return m_impl->roster.owner.at(slot) >= 4; }

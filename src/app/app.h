@@ -102,6 +102,8 @@ struct Options {
     unsigned rollbackStress = 0;
     // --net-stress=N: the same through a GekkoNet stress session, which also compares state hashes.
     unsigned netStress = 0;
+    // --net-host=PORT and --net-join=IP:PORT open the online lobby at once.
+    std::string netHost, netJoin;
     // --texture-pack=<folder>: PNGs at the game's paths, replacing its textures at any size.
     std::string texturePack;
     // --story-team=N: runs team N's six fights (the team-select scene does this in play).
@@ -222,6 +224,7 @@ struct App {
     sim::CoreBattle              coreBattle;
 #ifdef DAYBREAK_ONLINE
     std::unique_ptr<net::Session> netSession;
+    int netWaitTicks = 0;   // how long the match has waited for its first frame
 #endif
     game::Battle*                battle = &coreBattle;
     std::deque<xm::Controller>   coreShotControllers;   // this frame's shot poses

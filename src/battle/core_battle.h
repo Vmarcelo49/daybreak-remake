@@ -148,6 +148,7 @@ public:
     void set_driver(TickDriver* driver) { m_driver = driver; }
     void hand_slot_to_cpu(unsigned slot) { m_battle->handSlotToCpu(slot); }
     bool slot_is_cpu(unsigned slot) const { return m_battle->slotIsCpu(slot); }
+    void set_hearing_slot(unsigned slot) { m_battle->setHearingSlot(slot); }
     std::uint64_t state_hash() const { return m_battle->stateHash(); }
     void set_paused(bool paused) override { m_paused = paused; }
     void set_primary_listener_fighter(int fighter) override { m_listener = fighter; }

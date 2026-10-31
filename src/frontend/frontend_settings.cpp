@@ -29,6 +29,10 @@ void applyUserSettings(FrontendSettings& settings, const settings::UserSettings&
     settings.toonRendering = document.toonRendering;
     settings.installDir = document.installDir;
     settings.language = document.language;
+    settings.playerName = document.playerName;
+    settings.netPort = document.netPort;
+    settings.netInputDelay = document.netInputDelay;
+    settings.netLastHost = document.netLastHost;
     settings.shadowRendering = document.shadowRendering;
 }
 
@@ -43,6 +47,10 @@ settings::UserSettings toUserSettings(const FrontendSettings& settings) {
     document.resolution = {settings.resolutionChoice.width, settings.resolutionChoice.height};
     document.installDir = settings.installDir;
     document.language = settings.language;
+    document.playerName = settings.playerName;
+    document.netPort = settings.netPort;
+    document.netInputDelay = settings.netInputDelay;
+    document.netLastHost = settings.netLastHost;
     return document;
 }
 bool bindingCaptureActive() { return capturePlayer >= 0; }

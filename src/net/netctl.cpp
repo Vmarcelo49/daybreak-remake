@@ -47,16 +47,12 @@ sim::SlotInput busy_hands(unsigned tick, unsigned peer) {
     return input;
 }
 
-net::MatchPlan default_plan(unsigned peers, std::uint32_t seed, unsigned timeLimit) {
+net::MatchPlan default_plan(std::uint32_t seed, unsigned timeLimit) {
     net::MatchPlan plan;
     plan.token = seed * 2654435761u + static_cast<std::uint32_t>(std::chrono::steady_clock::now().time_since_epoch().count());
     plan.seed = seed;
     plan.timeLimitSeconds = timeLimit;
-    plan.peerCount = static_cast<std::uint8_t>(peers);
-    for (unsigned i = 0; i < 4; ++i) {
-        plan.slots[i].character = static_cast<int>(i);
-        plan.slots[i].peer = i < peers ? static_cast<int>(i) : -1;
-    }
+    for (unsigned i = 0; i < 4; ++i) plan.slots[i].character = static_cast<int>(i);
     return plan;
 }
 
@@ -123,10 +119,17 @@ int main(int argc, char** argv) try {
 
     net::Address hostAddress;
     if (!join.empty() && !net::parse_address(join, hostAddress)) throw std::runtime_error("bad --join");
-    net::Lobby lobby = join.empty() ? net::Lobby::host(socket, default_plan(peers, seed, timeLimit), gameHash)
+    net::Lobby lobby = join.empty() ? net::Lobby::host(socket, default_plan(seed, timeLimit), gameHash)
                                     : net::Lobby::join(socket, hostAddress, gameHash);
+    // Any legal fighter: the first weapon exists for everyone.
+    net::LocalChoice choice;
+    choice.name = "netctl";
+    choice.character = socket.port() % 14;
+    choice.ready = true;
+    lobby.set_choice(choice);
     for (unsigned waited = 0; !lobby.ready(); waited += 5) {
         lobby.poll(5);
+        if (lobby.is_host() && lobby.plan().peerCount == peers) lobby.start();
         if (lobby.refused() != net::Refusal::None) {
             std::printf("{\"refused\":\"%s\"}\n", net::refusal_text(lobby.refused()));
             return 3;

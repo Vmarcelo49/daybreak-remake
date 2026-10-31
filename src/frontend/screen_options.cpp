@@ -1,5 +1,6 @@
 #include "frontend/screen_options.h"
 #include "frontend/frontend_settings.h"
+#include "frontend/menu_panel.h"
 #include "assets/asset_source.h"
 #include "assets/cnv.h"
 #include "ui/caption.h"
@@ -14,19 +15,7 @@ namespace ui {
 namespace {
 // A screen of our own over the original's backgrounds, not a port of FUN_00403470/FUN_00404a50: the
 // baked labels mixed faces with the runtime captions. Every word here is one face.
-constexpr const char* kFace = "Goldman-Bold.ttf";
-constexpr float kFaceCell = 64.f;
 constexpr int kKeyConfigBackRow = fnd::input::ActionCount;
-
-constexpr UiColor kWhite{1.f, 1.f, 1.f, 1.f};
-constexpr UiColor kPale{0.72f, 0.76f, 0.86f, 1.f};
-constexpr UiColor kGold{1.f, 0.82f, 0.3f, 1.f};
-constexpr UiColor kPanel{0.03f, 0.04f, 0.09f, 0.72f};
-constexpr UiColor kHighlight{0.16f, 0.32f, 0.72f, 0.85f};
-constexpr UiColor kTrack{1.f, 1.f, 1.f, 0.18f};
-
-struct Words { const char* ja; const char* en; };
-const char* say(const Words& words) { return sheetLanguage().empty() ? words.ja : words.en; }
 
 enum class OptionRow { Toon, Shadow, Fullscreen, Resolution, Language, Master, Music, Voice, Sfx, Back, Count };
 constexpr int kOptionRowCount = (int)OptionRow::Count;
@@ -52,38 +41,12 @@ constexpr Words kBindingNames[fnd::input::ActionCount] = {
     {"射撃", "SHOOT"}, {"ロック切り替え", "LOCK SWITCH"}, {"特殊", "SPECIAL"}, {"ガード", "GUARD"}, {"作戦", "TACTICS"}, {"ポーズ", "PAUSE"},
 };
 
-// The backgrounds carry their old title and rows in the photo: each column blends across the hole.
-bool uploadBackground(SpriteRenderer& batch, const char* stem, std::initializer_list<UiRect> holes, int& slot, std::string& error) {
-    std::vector<uint8_t> bytes;
-    if (!fnd::assets::assetSource().read(std::string(stem) + ".cnv", bytes)) {
-        error = std::string(stem) + ".cnv is in no open bundle and on no filesystem path";
-        return false;
-    }
-    xm::CnvImage image = xm::decodeCnvImage(bytes.data(), bytes.size());
-    const int w = (int)image.width, h = (int)image.height;
-    for (const UiRect& hole : holes) {
-        const int x0 = std::max(0, (int)hole.x), x1 = std::min(w, (int)(hole.x + hole.w));
-        const int y0 = std::max(1, (int)hole.y), y1 = std::min(h - 1, (int)(hole.y + hole.h));
-        for (int x = x0; x < x1; ++x) {
-            const uint8_t* above = image.rgba.data() + ((size_t)(y0 - 1) * w + x) * 4;
-            const uint8_t* below = image.rgba.data() + ((size_t)y1 * w + x) * 4;
-            for (int y = y0; y < y1; ++y) {
-                const float t = (y - y0 + 1.f) / (y1 - y0 + 1.f);
-                uint8_t* p = image.rgba.data() + ((size_t)y * w + x) * 4;
-                for (int c = 0; c < 4; ++c) p[c] = (uint8_t)std::lround(above[c] * (1.f - t) + below[c] * t);
-            }
-        }
-    }
-    slot = batch.addTexture(image.width, image.height, image.rgba.data(), error);
-    return slot >= 0;
-}
-
-class ConfigScreen : public Screen {
+class ConfigScreen : public PanelScreen {
 public:
     ConfigScreen(SpriteRenderer& batch, bool keys, std::string& error) : keys_(keys) {
         const bool ok = keys ? uploadBackground(batch, "data/keyconfig/0000", {{240, 8, 320, 56}, {120, 92, 560, 420}}, background_, error)
                              : uploadBackground(batch, "data/config/0001", {{240, 8, 320, 56}, {340, 250, 270, 140}}, background_, error);
-        if (ok) face_.load(batch, kFaceCell, error, kFace, kCaptionFallbackFile);
+        if (ok) loadFace(batch, error);
     }
     ~ConfigScreen() override { if (keys_) cancelBindingCapture(); }
     bool loaded() const { return face_.atlasTexture() >= 0; }
@@ -153,22 +116,6 @@ public:
         else drawOptions(batch);
     }
 private:
-    void label(SpriteRenderer& batch, const char* value, float x, float y, float size, UiColor color = kWhite) const {
-        face_.draw(batch, value, x, y, size / kFaceCell, color, 1.2f);
-    }
-    float widthOf(const char* value, float size) const { return face_.width(value) * size / kFaceCell; }
-    void centred(SpriteRenderer& batch, const char* value, float x, float y, float size, UiColor color = kWhite) const {
-        label(batch, value, x - widthOf(value, size) / 2.f, y, size, color);
-    }
-    // One value between arrows, so every row reads the same way.
-    void choice(SpriteRenderer& batch, const char* value, float y, bool selected) const {
-        constexpr float kCentre = 540.f, kReach = 130.f;
-        centred(batch, value, kCentre, y, 20.f, selected ? kWhite : kPale);
-        if (selected) {
-            label(batch, "<", kCentre - kReach, y, 20.f, kGold);
-            label(batch, ">", kCentre + kReach - 8.f, y, 20.f, kGold);
-        }
-    }
     void slider(SpriteRenderer& batch, int value, float y, bool selected) const {
         constexpr float kLeft = 410.f, kWidth = 200.f;
         batch.pushSolid({kLeft, y + 8.f, kWidth, 8.f}, kTrack);
@@ -176,15 +123,6 @@ private:
         char percent[16];
         std::snprintf(percent, sizeof percent, "%d%%", value);
         label(batch, percent, kLeft + kWidth + 16.f, y, 20.f, selected ? kWhite : kPale);
-    }
-    void frame(SpriteRenderer& batch, const Words& title, float top, float bottom) const {
-        batch.pushSolid({100, top, 600, bottom - top}, kPanel);
-        centred(batch, say(title), 400, top + 12.f, 34.f, kGold);
-        batch.pushSolid({130, top + 58.f, 540, 2}, kGold);
-    }
-    void help(SpriteRenderer& batch, const char* value) const {
-        batch.pushSolid({0, 548, 800, 36}, kPanel);
-        centred(batch, value, 400, 555, 16.f, kPale);
     }
     void drawOptions(SpriteRenderer& batch) const {
         const auto& settings = frontendSettings();
@@ -282,8 +220,7 @@ private:
         default: return code < 0 ? "--" : "#" + std::to_string(code);
         }
     }
-    mutable CaptionText face_;
-    bool keys_; int sound_=-1; int row_=0,player_=0; int background_=-1;
+    bool keys_; int sound_=-1; int row_=0,player_=0; 
 };
 std::unique_ptr<Screen> create(SpriteRenderer& b,bool keys,std::string& error) {
     auto result=std::make_unique<ConfigScreen>(b,keys,error); if(!result->loaded()) return {}; return result;

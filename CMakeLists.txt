@@ -102,6 +102,14 @@ target_link_libraries(render PUBLIC runtime assets)
 # The 2D presentation layer: sprite batch, bitmap font and text (src/ui/), the HUD
 # composition (src/hud/), the front-end screens (src/frontend/) and the fallback
 # diagnostics. Same shape as render; verified headless before wiring (docs/UI-VERIFY.md).
+if(NOT EMSCRIPTEN)
+    add_library(net_core STATIC src/net/udp_socket.cpp src/net/lobby.cpp)
+    target_include_directories(net_core PUBLIC src)
+    target_compile_definitions(net_core PUBLIC DAYBREAK_ONLINE)
+    if(WIN32)
+        target_link_libraries(net_core PUBLIC ws2_32)
+    endif()
+endif()
 add_library(ui STATIC
     src/ui/sprite.cpp
     src/ui/font.cpp
@@ -128,11 +136,16 @@ add_library(ui STATIC
     src/frontend/frontend_settings.cpp
     src/settings/user_settings.cpp
     src/frontend/screen_options.cpp
+    src/frontend/menu_panel.cpp
     src/frontend/soft_keyboard.cpp)
 target_include_directories(ui PUBLIC src)
 # hud_atlas.cpp decodes HUD sheets through xm::decodeCnvImage, which assets/ owns: state it
 # here so a target linking ui alone still links.
 target_link_libraries(ui PUBLIC assets)
+if(NOT EMSCRIPTEN)
+    target_sources(ui PRIVATE src/frontend/screen_online.cpp)
+    target_link_libraries(ui PUBLIC net_core)
+endif()
 # stb_truetype for the CJK rasterizer, alongside the vendored stb_vorbis the media
 # layer uses (media adds the same directory).
 target_include_directories(ui PRIVATE third_party/stb)
@@ -256,12 +269,8 @@ if(NOT EMSCRIPTEN)
         PRIVATE third_party/GekkoNet/GekkoLib/include/private third_party/GekkoNet/GekkoLib/thirdparty)
     target_compile_options(gekkonet PRIVATE -w)
 
-    add_library(net_session STATIC src/net/session.cpp src/net/udp_socket.cpp src/net/lobby.cpp)
-    target_link_libraries(net_session PUBLIC battle_backend PRIVATE gekkonet)
-    if(WIN32)
-        target_link_libraries(net_session PRIVATE ws2_32)
-    endif()
-    target_compile_definitions(net_session PUBLIC DAYBREAK_ONLINE)
+    add_library(net_session STATIC src/net/session.cpp)
+    target_link_libraries(net_session PUBLIC battle_backend net_core PRIVATE gekkonet)
 
     # Runs on Linux in CTest, and by hand under Wine for the MinGW build.
     add_executable(net_stress_test tests/net_stress_test.cpp)
@@ -603,6 +612,9 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME cross_build_check COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/cross_build_check.py
         $<TARGET_FILE:simctl> ${CMAKE_CURRENT_SOURCE_DIR}/build/windows/simctl.exe ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak)
     set_tests_properties(cross_build_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 500 LABELS asset)
+    add_test(NAME online_flow_check COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/online_flow_check.py
+        $<TARGET_FILE:daybreak> ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak)
+    set_tests_properties(online_flow_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 500 LABELS asset)
     add_test(NAME math_accuracy_test COMMAND math_fingerprint --check)
     add_test(NAME net_lobby_test COMMAND net_lobby_test)
     add_executable(net_lobby_test tests/net_lobby_test.cpp)
@@ -713,6 +725,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(controller_scene_lifetime_test PRIVATE render
         ui media game_interfaces physics
         battle_backend gameplay)
+    target_link_libraries(controller_scene_lifetime_test PRIVATE net_session)
     add_test(NAME controller_scene_lifetime_test COMMAND controller_scene_lifetime_test
              "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak")
     set_tests_properties(controller_scene_lifetime_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)

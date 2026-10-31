@@ -2,6 +2,7 @@
 #include "frontend/story_ladder.h"
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <string>
 
 namespace ui {
@@ -13,7 +14,12 @@ struct FrontendSlot {
     bool ready = false;
 };
 struct ResultSlotStats { int kos = 0, deaths = 0, damageDealt = 0, damageTaken = 0; };
+struct OnlineContext;
 struct FrontendState {
+    // Online play's room, while there is one. Native builds only (frontend/screen_online.h).
+    std::shared_ptr<OnlineContext> online;
+    // Why the last room ended, for the online menu to say.
+    std::string onlineMessage;
     // Entering (or re-entering) the select scene. The original destroys the current scene and
     // constructs the next one through the factory on every switch (FUN_00657c80:51-58), and
     // scene 3's own constructor initialises every per-slot field the scene owns: cursor

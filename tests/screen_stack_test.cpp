@@ -165,10 +165,10 @@ void testQuit() {
     // A failed begin keeps the factory's message and reports itself finished, which is
     // what --screen with an unimplemented id hits.
     ScreenStack other;
-    std::string why = "scene 0x0b has no screen yet";
+    std::string why = "scene 0x0d has no screen yet";
     auto none = [](ScreenId) -> std::unique_ptr<Screen> { return nullptr; };
-    checkTrue("begin(NetplayMenu) fails", !other.begin(ScreenId::NetplayMenu, none, why));
-    checkTrue("the factory's error survives", why == "scene 0x0b has no screen yet");
+    checkTrue("begin(NetplayEntry) fails", !other.begin(ScreenId::NetplayEntry, none, why));
+    checkTrue("the factory's error survives", why == "scene 0x0d has no screen yet");
     checkTrue("a failed begin is finished", other.finished());
 }
 
@@ -185,9 +185,9 @@ void testFactoryTable() {
               !ui::makeScreen(ScreenId::Quit, batch, state, error));
     checkTrue("quitting leaves no error behind", error.empty());
     error.clear();
-    checkTrue("makeScreen(NetplayMenu) returns no screen",
-              !ui::makeScreen(ScreenId::NetplayMenu, batch, state, error));
-    checkTrue("an unbuilt id names itself", error == "scene 0x0b has no screen yet");
+    checkTrue("makeScreen(NetplayEntry) returns no screen",
+              !ui::makeScreen(ScreenId::NetplayEntry, batch, state, error));
+    checkTrue("an unbuilt id names itself", error == "scene 0x0d has no screen yet");
 }
 
 // Issue #40's skip input: the recovered key set, and the host seam that keeps the opening

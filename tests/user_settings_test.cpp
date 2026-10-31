@@ -109,6 +109,10 @@ int main() {
         original.toonRendering = true;
         original.installDir = "/home/u/Games/Higurashi-Daybreak";
         original.language = "en";
+        original.playerName = "RIKA 7";
+        original.netPort = 40000;
+        original.netInputDelay = 3;
+        original.netLastHost = "10.0.0.2:37564";
         original.shadowRendering = true;
         original.keyboard[fnd::input::Jump] = 42;
         original.keyboard[fnd::input::Guard] = -1;   // an explicitly unbound action
@@ -146,9 +150,9 @@ int main() {
         std::string error;
         check(!parses("[display]\nfullscreen = true\n", out, error), "missing version is rejected");
         check(error.find("version") != std::string::npos, "the reason names the version line");
-        check(!parses("version = 7\n[display]\nfullscreen = true\n", out, error),
+        check(!parses("version = 8\n[display]\nfullscreen = true\n", out, error),
               "an unsupported version is rejected");
-        check(error.find("unsupported config version 7") != std::string::npos,
+        check(error.find("unsupported config version 8") != std::string::npos,
               "the reason names the version it found");
         // v1-v5 are previous schemas and are MIGRATED, not rejected: issue #10 removed the
         // port-invented heavy binding, issue #21 added the toon toggle, issue #36 added the
@@ -319,7 +323,7 @@ int main() {
             checkInt("and the rest of the file still applied", 70, out2.volumes.master);
             // Saving after a migration writes the current schema.
             const std::string saved = settings::serialize(out2);
-            check(saved.find("version = 6") != std::string::npos,
+            check(saved.find("version = 7") != std::string::npos,
                   "a migrated document saves as the current version");
         }
         // Inline comments are not a feature: the value must parse whole.
@@ -390,7 +394,7 @@ int main() {
         check(!migrated.shadowRendering, "and so does the v5 shadow toggle");
         // The next save writes the current schema, and every toggle round-trips from there.
         const std::string saved = settings::serialize(migrated);
-        check(saved.find("version = 6") != std::string::npos, "the next save writes v6");
+        check(saved.find("version = 7") != std::string::npos, "the next save writes v7");
         check(saved.find("[render]") != std::string::npos && saved.find("toon = false") != std::string::npos,
               "with the toon toggle written at its value");
         check(saved.find("shadows = false") != std::string::npos,
@@ -454,9 +458,9 @@ int main() {
         // cannot silently accept a future document.
         settings::UserSettings future;
         settings::LoadReport futureReport;
-        check(!settings::parse("version = 7\n[render]\ntoon = true\n", future, error,
+        check(!settings::parse("version = 8\n[render]\ntoon = true\n", future, error,
                                futureReport),
-              "a v7 document is refused");
+              "a v8 document is refused");
     }
 
     std::printf("\n-- issue #36: a v3 file keeps every value and gains the game folder key\n");
@@ -556,7 +560,7 @@ int main() {
         checkInt("it is one warning too", 1, report.warnings);
         // A CURRENT document without the key at all is a hand-edit or a lossy writer: the
         // one thing it costs (the remembered folder) is worth a warning.
-        check(settings::parse("version = 6\n[display]\nfullscreen = true\n", out, error, report),
+        check(settings::parse("version = 7\n[display]\nfullscreen = true\n", out, error, report),
               "a current document without the key still loads: " + error);
         check(out.installDir.empty(), "nothing is remembered");
         checkInt("and that is reported", 1, report.warnings);

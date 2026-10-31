@@ -183,7 +183,7 @@ saved_choice() {
     [ -f "$conf/settings.conf" ] || return 0
     case "$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*//p' "$conf/settings.conf" |
              head -n 1)" in
-        4|5|6) ;;
+        4|5|6|7) ;;
         *) return 0 ;;
     esac
     awk -F= '

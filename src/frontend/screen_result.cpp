@@ -160,7 +160,7 @@ public:
         sound_ = previous != timeline_.phase() && input.confirm ? 0 : -1;
         // Leaving for the selection is a fresh select entry: its own construction clears the
         // selection, the stage page and the ready flags (issue #45, FUN_00408330:143-158).
-        return done ? ScreenId::Select : ScreenId::Result;
+        return done ? (state_.online ? ScreenId::NetplayLobby : ScreenId::Select) : ScreenId::Result;
     }
     std::string takeVoice() override {
         if (timeline_.phase() != ResultPhase::Quote || voiceTaken_ || quote_.voice.empty()) return {};

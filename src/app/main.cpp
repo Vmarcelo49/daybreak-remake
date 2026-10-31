@@ -60,6 +60,10 @@
 #include "hud/hud_bridge.h"
 #include "camera/fighter_pose.h"
 #ifdef DAYBREAK_ONLINE
+#include <chrono>
+#include <thread>
+
+#include "frontend/screen_online.h"
 #include "net/session.h"
 #endif
 #include "battle/match_view.h"
@@ -240,6 +244,10 @@ static void pollUserSettings(App& app, double now) {
 // the pause state — so their frames and traces are identical whether or not a pause key is
 // bound. Same shape as #19's usesUserConfig, for the same reason.
 static bool battlePauseAvailable(const App& app) {
+    // Everyone else's game cannot wait online.
+#ifdef DAYBREAK_ONLINE
+    if (app.netSession) return false;
+#endif
     return app.matchMode && app.opts.out.empty() && !app.opts.headless && app.opts.frames == 0;
 }
 
@@ -341,6 +349,26 @@ static void resumeBattle(App& app) {
 // return to selection or a rematch cannot inherit the finished match. enterFrontendBattle
 // is written to be re-entered (it clears weaponDefs/bulletParams, resets the counters and
 // rebuilds the scene), which is what makes repeated cycles safe.
+#ifdef DAYBREAK_ONLINE
+static void reportNetSession(const net::Session& session) {
+    const net::SessionStats& stats = session.stats();
+    std::printf("[net] %u updates, %u rollbacks, %u desyncs, worst %.2f ms\n", stats.updates, stats.rollbacks,
+                stats.desyncs, stats.worstUpdate.count() / 1000.0);
+}
+
+// The room outlives the match: everyone goes back to its lobby from here.
+static void endOnlineMatch(App& app) {
+    if (!app.frontend.online || !app.netSession) return;
+    reportNetSession(*app.netSession);
+    app.coreBattle.set_driver(nullptr);
+    app.netSession.reset();
+    std::uint32_t token, seed;
+    ui::onlineMatchNumbers(token, seed);
+    app.frontend.online->lobby->next_match(token, seed);
+    app.frontend.online->inMatch = false;
+}
+#endif
+
 static void leaveBattleTo(App& app, ui::ScreenId next) {
     app.matchMode = false;
     app.frontendBattleReady = false;
@@ -1110,6 +1138,13 @@ bool initScreens(App& app) {
     if (!app.opts.story.empty()) app.frontend.storyScript = "data/scenario/" + app.opts.story + ".txt";
     // No --screen and a plain launch means the original's boot scene, 0x00 (resolveBootOpening
     // decided that); anything else here has to name an id the parser knows.
+#ifdef DAYBREAK_ONLINE
+    if (!app.opts.netHost.empty() || !app.opts.netJoin.empty()) {
+        const bool opened = app.opts.netHost.empty() ? ui::beginOnlineJoin(app.frontend, app.opts.netJoin, app.error)
+                                                     : ui::beginOnlineHost(app.frontend, std::atoi(app.opts.netHost.c_str()), app.error);
+        if (!opened) return false;
+    }
+#endif
     if (app.opts.screen.empty()) {
         id = ui::ScreenId::Opening;
     } else if (!ui::parseScreenId(app.opts.screen.c_str(), id)) {
@@ -1632,11 +1667,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 
 void SDL_AppQuit(void* appstate, SDL_AppResult result) {
 #ifdef DAYBREAK_ONLINE
-    if (static_cast<App*>(appstate)->netSession) {
-        const net::SessionStats& stats = static_cast<App*>(appstate)->netSession->stats();
-        std::printf("[net] %u updates, %u rollbacks, %u desyncs, worst %.2f ms\n", stats.updates, stats.rollbacks,
-                    stats.desyncs, stats.worstUpdate.count() / 1000.0);
-    }
+    if (static_cast<App*>(appstate)->netSession) reportNetSession(*static_cast<App*>(appstate)->netSession);
 #endif
     appQuit(static_cast<App*>(appstate), result);
 }
