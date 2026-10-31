@@ -1,7 +1,5 @@
 #pragma once
 // game::Battle over the vendored core (docs/DIRECTION.md).
-//
-// In progress: the owner's closing playtest (M4) and the switch to default (M5) remain.
 #include <array>
 #include <memory>
 #include <string>
@@ -100,6 +98,15 @@ game::FighterState fighter_state_for_row(unsigned row);
 
 class CoreBattle final : public game::Battle {
 public:
+    // What a rollback restores: the simulation, and what this class derives from it over ticks,
+    // such as the trails' history and the round-over edge.
+    struct Snapshot {
+        BattleSnapshot battle;
+        std::array<CoreFighter, 4> fighters;
+        gameplay::MatchEconomy economy;
+        bool roundReported = false;
+    };
+
     void start(const BattleConfig& config, const std::array<const gameplay::CharacterMoves*, 4>& moves,
                const std::array<const gameplay::WeaponDefinition*, 4>& weapons);
 
@@ -123,10 +130,32 @@ public:
     void for_each_spark(const std::function<void(const game::SparkView&)>&) const override {}
 
     game::BattleFrame step(const fnd::input::PlayerState* inputs[game::kMatchFighterCount], double dt) override;
+    // One tick. A replayed tick reports only the sounds and effects it did not report before, so a
+    // correction can add a hit the prediction missed without playing the others twice.
+    game::BattleFrame advance(const Inputs& inputs);
+    void save_state(Snapshot& snapshot) const;
+    void load_state(const Snapshot& snapshot);
+    // Verification: every tick rewinds up to `depth` ticks, runs a wrong prediction nobody sees, and
+    // replays the real inputs. The result must equal a run without it.
+    void set_rollback_stress(unsigned depth) { m_rollbackStress = depth; }
     void set_paused(bool paused) override { m_paused = paused; }
     void set_primary_listener_fighter(int fighter) override { m_listener = fighter; }
 
 private:
+    struct ReportedTick {
+        unsigned tick = ~0u;
+        std::vector<std::uint64_t> events;
+    };
+    static constexpr unsigned kReportedTicks = 32;  // longer than any rollback
+    static constexpr unsigned kStressRing = 9;
+
+    game::BattleFrame advance_once(const Inputs& inputs);
+    game::BattleFrame advance_stressed(const Inputs& inputs);
+
+    std::array<ReportedTick, kReportedTicks> m_reported{};
+    unsigned m_rollbackStress = 0;
+    std::array<Snapshot, kStressRing> m_stressStates{};
+    std::array<Inputs, kStressRing> m_stressInputs{};
     std::unique_ptr<sim::Battle> m_battle;
     std::array<CoreFighter, 4> m_fighters{};
     gameplay::MatchEconomy m_economy{};

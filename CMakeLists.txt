@@ -547,6 +547,15 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME rollback_stress_test COMMAND rollback_stress_test)
     set_tests_properties(rollback_stress_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 400 LABELS asset)
 
+    add_executable(rollback_presentation_test tests/rollback_presentation_test.cpp)
+    target_link_libraries(rollback_presentation_test PRIVATE battle_backend)
+    add_test(NAME rollback_presentation_test COMMAND rollback_presentation_test)
+    set_tests_properties(rollback_presentation_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 400 LABELS asset)
+    # The same capture with rollbacks forced on every tick. Skips without an install.
+    add_test(NAME rollback_pixels_check COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/rollback_pixels_check.sh
+        $<TARGET_FILE:daybreak> ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak)
+    set_tests_properties(rollback_pixels_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 400 LABELS asset)
+
     add_executable(sim_core_test tests/sim_core_test.cpp)
     target_link_libraries(sim_core_test PRIVATE battle_core)
     target_include_directories(sim_core_test PRIVATE src/battle src/battle/core)

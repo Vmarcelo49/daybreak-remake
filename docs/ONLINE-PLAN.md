@@ -90,13 +90,21 @@ shows only once it reaches a hashed field, such as a position or the RNG.
 
 ### 2. Presentation that survives a rewind
 
-- Sounds, voices and effects come out only on the last tick of a frame, and never while rolling back.
-- Move `tacticsHeld`, `m_roundReported` and the economy edges into the snapshot or derive them again.
-- Refresh `CoreFighter` caches after a load. Check `previousFighter`, trails, cameras and the HUD.
+Done on 2026-10-30.
+
+- `CoreBattle::save_state` and `load_state` add the fighters, with their trails and result titles, the
+  economy and the round-over edge. `advance` takes inputs directly, for the session to call.
+- A replayed tick reports only sounds, voices and effects it has not reported for that tick, so a
+  correction can add a hit the prediction missed.
+- `previousFighter` and the views' cameras stay in the app and are not replayed: they run once per
+  shown tick, and a correction moves them from where they were.
 
 **Done when:** a scripted match with rollbacks forced gives a final frame with the same pixels as one
-without them, and no event fires twice. A sound that fired for a wrong prediction is accepted, and is
-judged at step 7.
+without them, and no event fires twice. A sound or an effect that a wrong prediction already showed
+stays, and is judged at step 8.
+
+**For step 4:** the app leaves the battle as soon as `economy().roundOver()` is set, which a wrong
+prediction can do. Online, leave only when the round's end is on a confirmed frame.
 
 ### 3. GekkoNet on one machine
 

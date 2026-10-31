@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <stdexcept>
 
 #include "input/input.h"
@@ -144,6 +145,21 @@ void CoreBattle::start(const BattleConfig& config, const std::array<const gamepl
     m_paused = false;
     m_roundReported = false;
     m_economy.reset();
+    m_reported = {};
+}
+
+void CoreBattle::save_state(Snapshot& snapshot) const {
+    m_battle->saveState(snapshot.battle);
+    snapshot.fighters = m_fighters;
+    snapshot.economy = m_economy;
+    snapshot.roundReported = m_roundReported;
+}
+
+void CoreBattle::load_state(const Snapshot& snapshot) {
+    m_battle->loadState(snapshot.battle);
+    m_fighters = snapshot.fighters;
+    m_economy = snapshot.economy;
+    m_roundReported = snapshot.roundReported;
 }
 
 game::BattleFrame CoreBattle::step(const fnd::input::PlayerState* inputs[game::kMatchFighterCount], double) {
@@ -152,14 +168,69 @@ game::BattleFrame CoreBattle::step(const fnd::input::PlayerState* inputs[game::k
     Inputs next{};
     for (unsigned i = 0; i < 4; ++i)
         if (inputs[i]) next[i] = slot_input(*inputs[i]);
-    m_battle->step(next);
+    return advance(next);
+}
+
+game::BattleFrame CoreBattle::advance(const Inputs& inputs) {
+    return m_rollbackStress ? advance_stressed(inputs) : advance_once(inputs);
+}
+
+game::BattleFrame CoreBattle::advance_stressed(const Inputs& inputs) {
+    const unsigned now = m_battle->tick();
+    save_state(m_stressStates[now % kStressRing]);
+    m_stressInputs[now % kStressRing] = inputs;
+    const game::BattleFrame frame = advance_once(inputs);
+
+    const unsigned depth = std::min({1 + now % m_rollbackStress, kStressRing - 1, now + 1});
+    const unsigned from = now + 1 - depth;
+    load_state(m_stressStates[from % kStressRing]);
+    for (unsigned t = from; t <= now; ++t) {
+        Inputs wrong = m_stressInputs[t % kStressRing];
+        for (SlotInput& slot : wrong) slot.buttons ^= Shoot | Melee;
+        m_battle->step(wrong);
+    }
+    load_state(m_stressStates[from % kStressRing]);
+    for (unsigned t = from; t <= now; ++t) {
+        save_state(m_stressStates[t % kStressRing]);
+        advance_once(m_stressInputs[t % kStressRing]);
+    }
+    return frame;
+}
+
+game::BattleFrame CoreBattle::advance_once(const Inputs& inputs) {
+    game::BattleFrame frame;
+    m_battle->step(inputs);
     for (CoreFighter& fighter : m_fighters) fighter.refresh();
+
+    // Position stays out of the key: a replay can move the same hit slightly. The occurrence stays
+    // in, so two equal events on one tick are both reported.
+    ReportedTick& reported = m_reported[m_battle->tick() % kReportedTicks];
+    if (reported.tick != m_battle->tick()) {
+        reported.tick = m_battle->tick();
+        reported.events.clear();
+    }
+    std::vector<std::uint64_t> seen;
+    const auto first_report = [&](std::uint64_t kind, int actor, std::uint64_t id) {
+        const std::uint64_t base = (kind << 60) ^ (static_cast<std::uint64_t>(actor + 1) << 48) ^ id;
+        const auto occurrence = static_cast<std::uint64_t>(std::count(seen.begin(), seen.end(), base));
+        seen.push_back(base);
+        const std::uint64_t key = base * 1099511628211ull + occurrence;
+        if (std::find(reported.events.begin(), reported.events.end(), key) != reported.events.end()) return false;
+        reported.events.push_back(key);
+        return true;
+    };
 
     const auto toVec = [](const std::array<float, 3>& v) { return glm::vec3(v[0], v[1], v[2]); };
     const BattleEvents& events = m_battle->events();
-    for (const auto& e : events.effects) frame.effectSpawns.push_back({e.id, toVec(e.position), toVec(e.direction)});
-    for (const auto& s : events.sounds) frame.soundCues.push_back({s.id, s.positional, toVec(s.position), s.system});
-    for (const auto& v : events.voices) frame.voiceCues.push_back({v.actor, v.path, v.positional, toVec(v.position)});
+    for (const auto& e : events.effects)
+        if (first_report(1, e.actor, static_cast<std::uint64_t>(e.id)))
+            frame.effectSpawns.push_back({e.id, toVec(e.position), toVec(e.direction)});
+    for (const auto& s : events.sounds)
+        if (first_report(2, s.actor, static_cast<std::uint64_t>(s.id)))
+            frame.soundCues.push_back({s.id, s.positional, toVec(s.position), s.system});
+    for (const auto& v : events.voices)
+        if (first_report(3, v.actor, std::hash<std::string>{}(v.path)))
+            frame.voiceCues.push_back({v.actor, v.path, v.positional, toVec(v.position)});
 
     // FUN_006358c0: one listener at the selected actor's XYZ +150Y.
     const CoreFighter& listener = m_fighters[static_cast<size_t>(m_listener)];

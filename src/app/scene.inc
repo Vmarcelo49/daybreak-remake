@@ -715,6 +715,7 @@ static bool startCoreBattle(App& app, const MatchSetup& config) {
     }
     try {
         app.coreBattle.start(core, moves, weapons);
+        app.coreBattle.set_rollback_stress(app.opts.rollbackStress);
     } catch (const std::exception& error) {
         app.error = std::string("battle: ") + error.what();
         return false;
