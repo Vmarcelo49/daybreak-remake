@@ -91,7 +91,6 @@ We added these for testing, and they aren't in the original:
 - [ ] F6 goes to stdout. Check that it reaches `daybreak.log` on a packaged build, or reword its row.
 - [ ] Press F1 to F8 by hand in a versus battle. Only a schedule has driven F1 to F6, and F7 and F8 have never run.
 - [ ] Look at the bucket and the flash in a real match. So far they've only been seen in headless captures.
-- [ ] Owner's call: whether F1 to F8 should stay on by default for players. The original has F1 to F4 on in versus; F5 to F8 are ours.
 
 ## Commits since `v0.2.0`
 
