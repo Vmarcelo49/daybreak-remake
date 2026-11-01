@@ -82,6 +82,7 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
 static void tickResultScene(App& app, double dt);
 static void tickMatch(App& app, double dt);
 static SDL_AppResult applyFrontendInput(App& state, const ui::ScreenInput& in);
+static SDL_AppResult appEvent(App* app, SDL_Event* event);
 static void traceMatch(App& app);
 static void fillMatchCubes(App& app);
 static game::GameHudValues timelineHud(uint64_t frame, uint64_t frames);

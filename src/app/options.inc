@@ -143,6 +143,8 @@ void usage() {
         "  --rollback-stress=N  with --out: every tick rewinds up to N ticks (1..8) and replays\n"
         "  --net-host=PORT    open an online room at once\n"
         "  --net-join=IP:PORT join an online room at once\n"
+        "  --text-keys=T:KEYS keyboard while a menu writes text, at frame T: AB<bs><left>\n"
+        "                     <right><enter><esc>; comma-separated, for a headless test\n"
         "  --net-stress=N     with --out: GekkoNet rolls back N ticks on every tick and checks for desyncs\n"
         "  --local-players=N  verification: open N local human views (1..4) by assigning\n"
         "                     controllers 0..N-1 to the battle panels and give a\n"
@@ -422,6 +424,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--script2=")).empty()) o.script2 = v;
         else if (!(v = val("--plan=")).empty()) o.plan = v;
         else if (!(v = val("--debug-keys=")).empty()) o.debugKeys = v;
+        else if (!(v = val("--text-keys=")).empty()) o.textKeys = v;
         else if (a == "--no-debug-keys") o.noDebugKeys = true;
         else if (!(v = val("--texture-limit=")).empty()) o.textureLimit = static_cast<uint32_t>(std::atoi(v.c_str()));
         else if (!(v = val("--special-mode=")).empty()) o.specialMode = std::atoi(v.c_str());

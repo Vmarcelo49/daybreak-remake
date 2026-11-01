@@ -186,7 +186,7 @@ Limits:
 Done on 2026-10-31, except for the owner's judgment of the layout.
 
 - `NETWORK` on the title opens `src/frontend/screen_online.cpp`: host, join by address, and the name, port
-  and input delay. Text turns on a wheel, so a pad can enter it. Join by code waits for step 7.
+  and input delay. The keyboard types a line, with a cursor, Backspace, Enter and Esc, and a pad turns its characters on a wheel. Enter on a join row joins. Join by code waits for step 7.
 - **The lobby holds only the players, their ping and ready signs, a ready button and a leave button**, by the
   owner's decision. Chat is for a later version. It starts by itself once at least two are ready.
 - **The match is chosen on the game's own selection screen**, played together with no rollback. `MenuLockstep`

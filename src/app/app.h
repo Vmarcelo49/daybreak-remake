@@ -33,6 +33,7 @@ struct Options {
     std::string script2;         // P2 input script; absent -> dummy, like the DX9
     std::string plan;            // --plan=: every slot's input, simctl's format
     std::string debugKeys;       // --debug-keys=f2@0,f4@300
+    std::string textKeys;        // --text-keys=240:AB<bs>,300:<enter>
     bool        noDebugKeys = false;  // the physical test keys do nothing
     uint32_t    textureLimit = 0;  // --texture-limit=: see SpriteRenderer::limitTextureSideForTest
     int         specialMode = -1; // --special-mode=: every fighter's hypermode, else the setup's
@@ -193,6 +194,8 @@ struct App {
     uint64_t                     menuSoundPlays[4] = {};
     uint64_t                     menuVoicePlays = 0;
     bool                         storyEscape = false;
+    bool                         textEntry = false;  // the current screen is writing text
+    ui::TextKeys                 textKeys;
     uint64_t                     menuBgmPushed = 0;  // frames the menu stream accepted
     fnd::audio::DecodedOgg        menuBgm;
     fnd::audio::LoopPlayer        menuLoop;

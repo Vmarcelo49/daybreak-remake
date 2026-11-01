@@ -33,6 +33,7 @@
 #include <vector>
 
 #include "frontend/screen.h"
+#include "frontend/text_edit.h"
 #include "frontend/frontend_state.h"
 #include "frontend/screen_opening.h"
 #include "frontend/screen_title.h"
@@ -329,8 +330,45 @@ void testParseScreenId() {
 
 }  // namespace
 
+void testTextEdit() {
+    std::printf("-- writing a line of text\n");
+    const auto typed = [](const char* text) { ui::TextKeys keys; keys.typed = text; return keys; };
+    std::string code;
+    ui::TextEdit edit;
+    edit.begin(code, "ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 4);
+    edit.apply(typed("a1b2c3d"));
+    checkTrue("lower case rises, a code's missing letters and the fifth are refused", code == "AB2C");
+    ui::TextKeys back;
+    back.backspaces = 2;
+    edit.apply(back);
+    checkTrue("backspace deletes before the cursor", code == "AB");
+    ui::TextKeys left;
+    left.moves = -1;
+    edit.apply(left);
+    edit.apply(typed("z"));
+    checkTrue("typing inserts at the cursor", code == "AZB");
+    edit.cancel();
+    checkTrue("cancel restores the text", code.empty() && !edit.active());
+
+    std::string pad = "12";
+    edit.begin(pad, "0123456789", 3);
+    edit.turn(2);
+    checkTrue("a pad's wheel adds a character at the end", pad == "121");
+    edit.turn(-2);
+    checkTrue("the wheel's blank is a pad's deletion", pad == "12 " && edit.value() == "12");
+    edit.finish();
+    checkTrue("finishing keeps the deletion", pad == "12" && !edit.active());
+
+    std::string name = "A B";
+    edit.begin(name, " ABCDEFGHIJKLMNOPQRSTUVWXYZ", 4);
+    edit.apply(typed(" "));
+    edit.finish();
+    checkTrue("a name keeps its inner space and loses the last", name == "A B");
+}
+
 int main() {
     std::printf("front-end screen stack + title menu (device-free)\n\n");
+    testTextEdit();
     testFadeSchedule();
     testTransitionTimeline();
     testQuit();

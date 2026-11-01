@@ -2,12 +2,12 @@
 
 #include <algorithm>
 #include <cstdio>
-#include <cstring>
 #include <random>
 
 #include "assets/asset_source.h"
 #include "frontend/frontend_settings.h"
 #include "frontend/menu_panel.h"
+#include "frontend/text_edit.h"
 
 namespace ui {
 
@@ -21,7 +21,8 @@ std::uint64_t installHash() {
 }
 
 constexpr char kNameLetters[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_";
-constexpr char kDigits[] = "0123456789";
+constexpr char kNumbers[] = "0123456789";
+constexpr char kAddressLetters[] = "0123456789.:";
 constexpr char kCodeLetters[] = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";  // server/protocol.go's alphabet
 
 // The rendezvous server the settings name, or a zero port.
@@ -29,56 +30,6 @@ net::Address settingsServer() {
     net::Address server;
     if (!net::parse_address(frontendSettings().netServer, server) || server.ip == 0) return {};
     return server;
-}
-
-// The wheel turns digits in place, so every part needs its full width for any address to be reachable.
-std::string wheelAddress(const std::string& text, const char* otherwise) {
-    net::Address address;
-    if (!net::parse_address(text, address)) return otherwise;
-    unsigned char ip[4];
-    std::memcpy(ip, &address.ip, 4);
-    char out[32];
-    std::snprintf(out, sizeof out, "%03u.%03u.%03u.%03u:%05u", ip[0], ip[1], ip[2], ip[3], address.port);
-    return out;
-}
-
-constexpr char kNoServer[] = "000.000.000.000:37565";
-
-// Text edited with the menu's own buttons, so a pad can do it too: left and right pick a place, and
-// up and down turn its character on a wheel.
-struct WheelEdit {
-    std::string* text = nullptr;
-    const char* wheel = nullptr;
-    size_t cursor = 0;
-
-    bool active() const { return text != nullptr; }
-    void begin(std::string& value, const char* letters, size_t minimumLength) {
-        text = &value;
-        wheel = letters;
-        cursor = 0;
-        if (value.size() < minimumLength) value.resize(minimumLength, letters[0]);
-    }
-    bool editable(size_t place) const { return std::string(wheel).find((*text)[place]) != std::string::npos; }
-    void update(const ScreenInput& in) {
-        const int step = in.left ? -1 : in.right ? 1 : 0;
-        if (step) {
-            const int size = (int)text->size();
-            int place = (int)cursor;
-            do place = (place + step + size) % size; while (!editable((size_t)place));
-            cursor = (size_t)place;
-        }
-        if (in.up || in.down) {
-            const std::string letters(wheel);
-            const int at = (int)letters.find((*text)[cursor]);
-            const int count = (int)letters.size();
-            (*text)[cursor] = letters[(size_t)((at + (in.up ? 1 : -1) + count) % count)];
-        }
-    }
-};
-
-std::string trimmedRight(std::string text) {
-    while (!text.empty() && text.back() == ' ') text.pop_back();
-    return text;
 }
 
 }  // namespace
@@ -133,35 +84,26 @@ public:
         if (uploadBackground(batch, "data/config/0001", {{240, 8, 320, 56}, {340, 250, 420, 150}}, background_, error)) loadFace(batch, error);
         auto& settings = frontendSettings();
         name_ = settings.playerName;
-        address_ = wheelAddress(settings.netLastHost, "192.168.000.001:37564");
-        server_ = wheelAddress(settings.netServer, kNoServer);
-        char port[8];
-        std::snprintf(port, sizeof port, "%05d", settings.netPort);
-        port_ = port;
+        address_ = settings.netLastHost;
+        server_ = settings.netServer;
+        port_ = std::to_string(settings.netPort);
         state_.online.reset();
     }
     bool loaded() const { return face_.atlasTexture() >= 0; }
     const char* name() const override { return "netplay"; }
     int takeSound() override { const int cue = sound_; sound_ = -1; return cue; }
 
+    bool wantsText() const override { return edit_.active(); }
+
     ScreenId update(const ScreenInput& in) override {
-        if (in.cancel) sound_ = 1;
-        else if (in.confirm) sound_ = 0;
+        if (in.cancel || in.text.escape) sound_ = 1;
+        else if (in.confirm || in.text.enter) sound_ = 0;
         else if (in.up || in.down || in.left || in.right) sound_ = 2;
 
+        ++blink_;
+        if (edit_.active()) return updateEdit(in);
+
         auto& settings = frontendSettings();
-        if (edit_.active()) {
-            if (in.confirm || in.cancel) {
-                edit_ = {};
-                settings.playerName = trimmedRight(name_).substr(0, net::kMaxNameLength);
-                settings.netLastHost = address_;
-                if (server_ != wheelAddress(settings.netServer, kNoServer)) settings.netServer = server_;
-                settings.netPort = std::clamp(std::atoi(port_.c_str()), 1, 65535);
-            } else {
-                edit_.update(in);
-            }
-            return ScreenId::NetplayMenu;
-        }
         if (in.cancel) return ScreenId::Title;
         if (in.up) row_ = (row_ + kRows - 1) % kRows;
         else if (in.down) row_ = (row_ + 1) % kRows;
@@ -175,20 +117,11 @@ public:
             if (beginOnlineHost(state_, settings.netPort, true, failure)) return ScreenId::NetplayLobby;
             state_.onlineMessage = failure;
             break;
-        case Row::Join:
-            settings.netLastHost = address_;
-            if (beginOnlineJoin(state_, address_, failure)) return ScreenId::NetplayLobby;
-            state_.onlineMessage = failure;
-            break;
-        case Row::Code:
-            if (beginOnlineCode(state_, code_, failure)) return ScreenId::NetplayLobby;
-            state_.onlineMessage = failure;
-            break;
-        case Row::CodeText: edit_.begin(code_, kCodeLetters, net::kRoomCodeLength); break;
-        case Row::Server: edit_.begin(server_, kDigits, 21); break;
-        case Row::Address: edit_.begin(address_, kDigits, 21); break;
-        case Row::Name: edit_.begin(name_, kNameLetters, net::kMaxNameLength); break;
-        case Row::Port: edit_.begin(port_, kDigits, 5); break;
+        case Row::Code: beginEdit(code_, kCodeLetters, net::kRoomCodeLength); break;
+        case Row::Join: beginEdit(address_, kAddressLetters, 21); break;
+        case Row::Server: beginEdit(server_, kAddressLetters, 21); break;
+        case Row::Name: beginEdit(name_, kNameLetters, net::kMaxNameLength); break;
+        case Row::Port: beginEdit(port_, kNumbers, 5); break;
         case Row::Delay: break;
         case Row::Back: return ScreenId::Title;
         }
@@ -201,10 +134,9 @@ public:
         const auto& settings = frontendSettings();
         char delay[32];
         std::snprintf(delay, sizeof delay, "%d", settings.netInputDelay);
-        const Words names[kRows] = {{"部屋を作る", "HOST A ROOM"}, {"コードで入る", "JOIN BY CODE"}, {"部屋のコード", "ROOM CODE"},
-                                    {"住所で入る", "JOIN BY ADDRESS"}, {"相手の住所", "ADDRESS"}, {"名前", "NAME"}, {"ポート", "PORT"},
-                                    {"入力遅延", "INPUT DELAY"}, {"サーバー", "SERVER"}, {"戻る", "BACK"}};
-        const std::string* values[kRows] = {nullptr, nullptr, &code_, nullptr, &address_, &name_, &port_, nullptr, &server_, nullptr};
+        const Words names[kRows] = {{"部屋を作る", "HOST A ROOM"}, {"コードで入る", "JOIN BY CODE"}, {"住所で入る", "JOIN BY ADDRESS"},
+                                    {"名前", "NAME"}, {"ポート", "PORT"}, {"入力遅延", "INPUT DELAY"}, {"サーバー", "SERVER"}, {"戻る", "BACK"}};
+        const std::string* values[kRows] = {nullptr, &code_, &address_, &name_, &port_, nullptr, &server_, nullptr};
         for (int i = 0; i < kRows; ++i) {
             const float y = 112.f + 36.f * i;
             const bool selected = i == row_;
@@ -214,28 +146,86 @@ public:
             else if ((Row)i == Row::Delay) choice(batch, delay, y, selected);
         }
         if (!state_.onlineMessage.empty()) centred(batch, state_.onlineMessage.c_str(), 400, 508, 18.f, kGold);
-        help(batch, edit_.active() ? say({"上下で文字、左右で桁、決定で終了", "Up and down change it, left and right move, confirm finishes."})
+        help(batch, edit_.active() ? say({"入力してください。Enterで決定、Escで取消、Backspaceで削除", "Type it. Enter confirms, Esc cancels, Backspace deletes. On a pad, up and down."})
                                    : say({"コードにはサーバーが必要です。住所はポートも含みます", "A room code needs a server. Without one, the host may have to forward their port."}));
     }
 
 private:
-    enum class Row { Host, Code, CodeText, Join, Address, Name, Port, Delay, Server, Back };
-    static constexpr int kRows = 10;
+    enum class Row { Host, Code, Join, Name, Port, Delay, Server, Back };
+    static constexpr int kRows = 8;
+
+    void beginEdit(std::string& value, const char* letters, size_t maxLength) {
+        edit_.begin(value, letters, maxLength);
+        state_.onlineMessage.clear();
+        blink_ = 0;
+    }
+
+    ScreenId updateEdit(const ScreenInput& in) {
+        if (in.text.any() || in.up || in.down || in.left || in.right) blink_ = 0;
+        edit_.apply(in.text);
+        if (in.left || in.right) edit_.move(in.right ? 1 : -1);
+        if (in.up || in.down) edit_.turn(in.up ? 1 : -1);
+        if (in.cancel || in.text.escape) edit_.cancel();
+        else if (in.confirm || in.text.enter) return finishEdit();
+        return ScreenId::NetplayMenu;
+    }
+
+    // Joining is what JOIN BY CODE and JOIN BY ADDRESS are for, so their Enter does it. A line that
+    // cannot be used stays open with the reason, since the text is what the player has to fix.
+    ScreenId finishEdit() {
+        auto& settings = frontendSettings();
+        const Row row = (Row)row_;
+        const std::string value = edit_.value();
+        net::Address address;
+        const bool readable = net::parse_address(value, address);
+        if (row == Row::Code && value.size() != net::kRoomCodeLength) {
+            state_.onlineMessage = say({"部屋のコードは4文字です。", "A room code has 4 letters."});
+            return ScreenId::NetplayMenu;
+        }
+        if ((row == Row::Join || (row == Row::Server && !value.empty())) && !readable) {
+            state_.onlineMessage = say({"IP:ポート の形で入力してください。", "Write an address as IP:PORT."});
+            return ScreenId::NetplayMenu;
+        }
+        edit_.finish();
+
+        std::string failure;
+        switch (row) {
+        case Row::Code:
+            if (beginOnlineCode(state_, code_, failure)) return ScreenId::NetplayLobby;
+            state_.onlineMessage = failure;
+            break;
+        case Row::Join:
+            settings.netLastHost = address_;
+            if (beginOnlineJoin(state_, address_, failure)) return ScreenId::NetplayLobby;
+            state_.onlineMessage = failure;
+            break;
+        case Row::Server:
+            if (server_.empty()) server_ = settings::kDefaultServer;
+            settings.netServer = server_;
+            break;
+        case Row::Name: settings.playerName = name_; break;
+        case Row::Port:
+            settings.netPort = std::clamp(std::atoi(port_.c_str()), 1, 65535);
+            port_ = std::to_string(settings.netPort);
+            break;
+        default: break;
+        }
+        return ScreenId::NetplayMenu;
+    }
 
     void drawText(SpriteRenderer& batch, const std::string& value, float y, bool selected) const {
         const float x = 400.f;
         label(batch, value.c_str(), x, y, 20.f, selected ? kWhite : kPale);
-        if (edit_.active() && edit_.text == &value) {
+        if (edit_.active() && edit_.text == &value && blink_ / 30 % 2 == 0) {
             const float before = widthOf(value.substr(0, edit_.cursor).c_str(), 20.f);
-            const float width = widthOf(value.substr(edit_.cursor, 1).c_str(), 20.f);
-            batch.pushSolid({x + before, y + 24.f, std::max(width, 8.f), 2.f}, kGold);
+            batch.pushSolid({x + before, y - 2.f, 2.f, 24.f}, kGold);
         }
     }
 
     FrontendState& state_;
-    std::string name_, address_, port_, server_, code_ = "AAAA";
-    WheelEdit edit_;
-    int row_ = 0, sound_ = -1;
+    std::string name_, address_, port_, server_, code_;
+    TextEdit edit_;
+    int row_ = 0, sound_ = -1, blink_ = 0;
 };
 
 // Who is here and whether they are ready. Everything about the match is chosen on the selection

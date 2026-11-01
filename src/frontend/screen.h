@@ -75,11 +75,21 @@ struct ScreenButtons {
     bool up = false, down = false, left = false, right = false, confirm = false, cancel = false;
     bool upHeld = false, downHeld = false, leftHeld = false, rightHeld = false;
 };
+// What the keyboard wrote since the last frame, while a screen is writing text (Screen::wantsText).
+// In that mode no key reaches the game's own actions.
+struct TextKeys {
+    std::string typed;
+    int backspaces = 0, moves = 0;
+    bool enter = false, escape = false;
+    bool any() const { return !typed.empty() || backspaces != 0 || moves != 0; }
+};
+
 struct ScreenInput {
     bool up = false, down = false, left = false, right = false, confirm = false, cancel = false;
     bool upHeld = false, downHeld = false, leftHeld = false, rightHeld = false;
     bool start = false;   // the pad's start button
     bool escape = false;  // the Escape key, for the one scene that does not quit on it
+    TextKeys text;
     int player = 0;
     bool separatePlayers = false;
     std::array<ScreenButtons,4> players{};
@@ -100,6 +110,7 @@ public:
     // A track this scene asks for by name, on top of the host's per-scene music.
     virtual std::string takeMusic() { return {}; }
     virtual bool takeMusicStop() { return false; }
+    virtual bool wantsText() const { return false; }
 };
 
 // FUN_004020a0's switch as a predicate: true for the ids the port can construct. The
@@ -167,6 +178,7 @@ public:
     std::string takeVoice() { return current_ ? current_->takeVoice() : std::string{}; }
     std::string takeMusic() { return current_ ? current_->takeMusic() : std::string{}; }
     bool takeMusicStop() { return current_ && current_->takeMusicStop(); }
+    bool wantsText() const { return current_ && current_->wantsText(); }
 
     bool     finished() const { return finished_; }
     ScreenId current() const { return currentId_; }

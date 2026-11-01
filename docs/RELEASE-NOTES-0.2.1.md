@@ -21,6 +21,7 @@ Linux needs glibc 2.38 or newer, such as Ubuntu 24.04, and a Vulkan driver. Your
 ### Online
 
 - **Room codes work out of the box.** The game now uses our server by default, so you no longer have to find and type one. Hosting a room contacts it to get a code, and no game data passes through it. To use another server, change the SERVER row of the online menu or `server` in the settings file.
+- **Type in the online menu.** Press Enter on JOIN BY CODE, JOIN BY ADDRESS, NAME, PORT or SERVER and write with the keyboard: Backspace deletes, Enter confirms and Esc cancels. Enter on a join row joins the room. A pad can still write, with up and down.
 
 *More to come: the rest of the online changes planned for this version.*
 

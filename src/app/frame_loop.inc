@@ -85,6 +85,44 @@ static SDL_AppResult tickOnlineSelection(App& state) {
 }
 #endif
 
+// The operating system only sends text, with its keyboard layout and IME, while this is on.
+static void syncTextEntry(App& app) {
+    const bool wanted = app.screensMode && app.screens.wantsText();
+    if (wanted == app.textEntry) return;
+    app.textEntry = wanted;
+    app.textKeys = {};
+    if (!app.window) return;
+    if (wanted) SDL_StartTextInput(app.window);
+    else SDL_StopTextInput(app.window);
+}
+
+// --text-keys: a headless run has no keyboard, so these go through appEvent as the real ones do.
+static void runScheduledTextKeys(App& app) {
+    std::istringstream items(app.opts.textKeys);
+    std::string item;
+    while (std::getline(items, item, ',')) {
+        const size_t colon = item.find(':');
+        if (colon == std::string::npos || std::strtoull(item.c_str(), nullptr, 10) != app.frames) continue;
+        for (size_t at = colon + 1; at < item.size();) {
+            SDL_Event event{};
+            const size_t close = item[at] == '<' ? item.find('>', at) : std::string::npos;
+            if (close != std::string::npos) {
+                const std::string name = item.substr(at + 1, close - at - 1);
+                event.type = SDL_EVENT_KEY_DOWN;
+                event.key.key = name == "bs" ? SDLK_BACKSPACE : name == "left" ? SDLK_LEFT : name == "right" ? SDLK_RIGHT
+                              : name == "esc" ? SDLK_ESCAPE : SDLK_RETURN;
+                at = close + 1;
+                appEvent(&app, &event);
+            } else {
+                const std::string letter(1, item[at++]);
+                event.type = SDL_EVENT_TEXT_INPUT;
+                event.text.text = letter.c_str();
+                appEvent(&app, &event);
+            }
+        }
+    }
+}
+
 static SDL_AppResult tickFrontend(App& state) {
     App* app = &state;
 #ifdef DAYBREAK_ONLINE
@@ -106,7 +144,10 @@ static SDL_AppResult tickFrontend(App& state) {
     if (app->frontend.online && app->screens.current() == ui::ScreenId::Select && app->frontend.online->inMatch)
         return tickOnlineSelection(*app);
 #endif
+    syncTextEntry(*app);
+    runScheduledTextKeys(*app);
     ui::ScreenInput in;
+    in.text    = std::exchange(app->textKeys, {});
     in.up      = anyPressed(fnd::input::Up);
     in.down    = anyPressed(fnd::input::Down);
     in.left    = anyPressed(fnd::input::Left);
@@ -830,7 +871,24 @@ static SDL_AppResult appEvent(App* app, SDL_Event* event) {
     switch (event->type) {
         case SDL_EVENT_QUIT:
             return SDL_APP_SUCCESS;
+        case SDL_EVENT_TEXT_INPUT:
+            if (app->textEntry) app->textKeys.typed += event->text.text;
+            return SDL_APP_CONTINUE;
         case SDL_EVENT_KEY_DOWN:
+            if (app->textEntry) {
+                app->matchInput.suppress_key((int)event->key.scancode);
+                switch (event->key.key) {
+                    case SDLK_BACKSPACE: ++app->textKeys.backspaces; break;
+                    case SDLK_LEFT: --app->textKeys.moves; break;
+                    case SDLK_RIGHT: ++app->textKeys.moves; break;
+                    // Not a repeat: the Enter that opened the line may still be held.
+                    case SDLK_RETURN:
+                    case SDLK_KP_ENTER: app->textKeys.enter = app->textKeys.enter || !event->key.repeat; break;
+                    case SDLK_ESCAPE: app->textKeys.escape = app->textKeys.escape || !event->key.repeat; break;
+                    default: break;
+                }
+                return SDL_APP_CONTINUE;
+            }
             if (ui::bindingCaptureActive()) {
                 app->matchInput.suppress_key((int)event->key.scancode);
                 if (event->key.key == SDLK_ESCAPE) ui::cancelBindingCapture();
