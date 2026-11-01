@@ -409,6 +409,8 @@ void Lobby::handle_server(const std::vector<std::uint8_t>& packet) {
         if (m_openings.size() < 8)
             m_openings.push_back({get_server_endpoint(packet.data() + 2), get_server_endpoint(packet.data() + 8), kOpeningMs});
     } else if (!m_isHost && kind == kServerRoom && packet.size() == 2 + 18) {
+        // The server's time should not eat the time the routers need to open.
+        if (m_hostCandidates.empty()) m_sinceHeard = 0;
         m_hostCandidates = {get_server_endpoint(packet.data() + 2), get_server_endpoint(packet.data() + 8)};
         m_public = get_server_endpoint(packet.data() + 14);
     }

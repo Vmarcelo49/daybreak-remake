@@ -139,6 +139,18 @@ static std::string settingsFilePath() {
     return settings::defaultConfigPath();
 }
 
+// A choice as the sheets name it. Empty, or "auto" on the command line, asks the system.
+static std::string sheetLanguageFor(const std::string& choice) {
+    if (choice == "ja") return "";
+    if (!choice.empty() && choice != "auto") return choice;
+    int count = 0;
+    SDL_Locale** locales = SDL_GetPreferredLocales(&count);
+    const std::string first = locales && count > 0 && locales[0]->language ? locales[0]->language : "";
+    SDL_free(locales);
+    std::printf("[settings] system language: %s\n", first.empty() ? "unknown" : first.c_str());
+    return settings::languageForLocale(first);
+}
+
 static void loadUserSettings(App& app) {
     app.settingsPath = settingsFilePath();
     if (app.settingsPath.empty()) {
@@ -1372,12 +1384,13 @@ bool initScreens(App& app) {
         if (screen) std::printf("[menu] scene: %s (tick %llu)\n", screen->name(), (unsigned long long)app.logicTicks);
         return screen;
     };
-    // --language wins for one run and is an error if it cannot load; a stale saved one only warns.
+    // --language wins for one run and is an error if it cannot load; a saved or system one only warns.
+    // A verification run names its language or has none, so its frames do not depend on the machine.
     if (!app.opts.language.empty()) {
-        if (!ui::setSheetLanguage(app.opts.language, app.error)) return false;
-    } else if (!app.userSettings.language.empty()) {
+        if (!ui::setSheetLanguage(sheetLanguageFor(app.opts.language), app.error)) return false;
+    } else if (usesUserConfig(app.opts)) {
         std::string failure;
-        if (!ui::setSheetLanguage(app.userSettings.language, failure)) {
+        if (!ui::setSheetLanguage(sheetLanguageFor(app.userSettings.language), failure)) {
             std::fprintf(stderr, "[settings] %s; using Japanese\n", failure.c_str());
             ui::frontendSettings().language.clear();
         }

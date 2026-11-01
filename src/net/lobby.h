@@ -18,6 +18,9 @@ constexpr size_t kRoomCodeLength = 4;
 constexpr size_t kMaxNameLength = 12;
 constexpr std::uint16_t kDefaultPort = 37564;  // the original's (docs/game-spec.md)
 
+// How far a joiner has got. A host has nothing to reach, so it is always Joined.
+enum class JoinStage : std::uint8_t { Joined, AskingServer, ReachingHost };
+
 enum class Refusal : std::uint8_t { None, WrongVersion, WrongGameData, RoomFull, HostLeft, NoSuchRoom, TooManyTries };
 const char* refusal_text(Refusal refusal);
 
@@ -110,6 +113,11 @@ public:
     void leave();
 
     bool ready() const { return m_ready; }
+    JoinStage join_stage() const {
+        if (m_isHost || m_heardHost) return JoinStage::Joined;
+        return m_server.port != 0 && m_hostCandidates.empty() ? JoinStage::AskingServer : JoinStage::ReachingHost;
+    }
+    bool uses_server() const { return m_server.port != 0; }
     Refusal refused() const { return m_refused; }
     bool host_lost() const { return !m_isHost && m_sinceHeard >= (m_heardHost ? kSilenceMs : kFirstContactMs); }
     const MatchPlan& plan() const { return m_plan; }

@@ -78,10 +78,9 @@ struct ScreenButtons {
 // What the keyboard wrote since the last frame, while a screen is writing text (Screen::wantsText).
 // In that mode no key reaches the game's own actions.
 struct TextKeys {
-    std::string typed;
-    int backspaces = 0, moves = 0;
+    static constexpr char kBackspace = '\b', kLeft = '\x02', kRight = '\x03';
+    std::string typed;  // in the order pressed, with the three controls above among the letters
     bool enter = false, escape = false;
-    bool any() const { return !typed.empty() || backspaces != 0 || moves != 0; }
 };
 
 struct ScreenInput {

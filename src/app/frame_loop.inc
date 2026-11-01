@@ -878,9 +878,9 @@ static SDL_AppResult appEvent(App* app, SDL_Event* event) {
             if (app->textEntry) {
                 app->matchInput.suppress_key((int)event->key.scancode);
                 switch (event->key.key) {
-                    case SDLK_BACKSPACE: ++app->textKeys.backspaces; break;
-                    case SDLK_LEFT: --app->textKeys.moves; break;
-                    case SDLK_RIGHT: ++app->textKeys.moves; break;
+                    case SDLK_BACKSPACE: app->textKeys.typed += ui::TextKeys::kBackspace; break;
+                    case SDLK_LEFT: app->textKeys.typed += ui::TextKeys::kLeft; break;
+                    case SDLK_RIGHT: app->textKeys.typed += ui::TextKeys::kRight; break;
                     // Not a repeat: the Enter that opened the line may still be held.
                     case SDLK_RETURN:
                     case SDLK_KP_ENTER: app->textKeys.enter = app->textKeys.enter || !event->key.repeat; break;

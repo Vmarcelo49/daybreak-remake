@@ -615,6 +615,9 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME online_flow_check COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/online_flow_check.py
         $<TARGET_FILE:daybreak> ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak)
     set_tests_properties(online_flow_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 500 LABELS asset)
+    add_test(NAME online_join_feedback COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/online_join_feedback.py
+        $<TARGET_FILE:daybreak> $<TARGET_FILE:netctl> ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak)
+    set_tests_properties(online_join_feedback PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300 LABELS asset)
     # A game folder with a non-English name. Skips without an install, Wine or a Windows build.
     add_test(NAME unicode_path_check COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/unicode_path_check.py
         ${CMAKE_CURRENT_SOURCE_DIR}/build/windows/daybreak.exe ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak)

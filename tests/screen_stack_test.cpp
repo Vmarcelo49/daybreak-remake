@@ -338,15 +338,10 @@ void testTextEdit() {
     edit.begin(code, "ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 4);
     edit.apply(typed("a1b2c3d"));
     checkTrue("lower case rises, a code's missing letters and the fifth are refused", code == "AB2C");
-    ui::TextKeys back;
-    back.backspaces = 2;
-    edit.apply(back);
+    edit.apply(typed("\b\b"));
     checkTrue("backspace deletes before the cursor", code == "AB");
-    ui::TextKeys left;
-    left.moves = -1;
-    edit.apply(left);
-    edit.apply(typed("z"));
-    checkTrue("typing inserts at the cursor", code == "AZB");
+    edit.apply(typed("\x02z"));
+    checkTrue("typing inserts at the cursor, in the order pressed", code == "AZB");
     edit.cancel();
     checkTrue("cancel restores the text", code.empty() && !edit.active());
 

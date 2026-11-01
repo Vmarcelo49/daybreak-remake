@@ -89,7 +89,7 @@ public:
                 // The two languages this build ships. A failed load keeps the current one.
                 const std::string next = sheetLanguage().empty() ? "en" : "";
                 std::string failure;
-                if (setSheetLanguage(next, failure)) settings.language = next;
+                if (setSheetLanguage(next, failure)) settings.language = next.empty() ? "ja" : next;
                 else std::fprintf(stderr, "[options] %s\n", failure.c_str());
                 break;
             }

@@ -71,6 +71,10 @@ namespace settings {
 //
 // v7 added [network], for online play: name, port, input_delay, last_host and server. A v6 file is MIGRATED
 // additively, and every new key takes its default.
+// The language a player who has not chosen gets, from the system's first language ("ja", "pt"...).
+// The empty sheet language is the game's own Japanese.
+inline std::string languageForLocale(const std::string& systemLanguage) { return systemLanguage == "ja" ? "" : "en"; }
+
 // The project's own rendezvous server. The file leaves it out, so a new build can move it.
 inline constexpr char kDefaultServer[] = "64.181.172.230:3939";
 
@@ -114,7 +118,8 @@ struct UserSettings {
     // a direct run agree on it. A relative value is refused by the parser (see
     // storableInstallDir) because it would name a different folder per working directory.
     std::string installDir;
-    // Which assets/locale/<language>.txt labels the sheets; empty is the game's own Japanese.
+    // Which assets/locale/<language>.txt labels the sheets. "ja" is the game's own text, and empty
+    // means the player has not chosen, so it follows the system (languageForLocale).
     std::string language;
     std::string playerName = "PLAYER";   // plain ASCII, what other players see
     int         netPort = 37564;         // the original's (docs/game-spec.md)

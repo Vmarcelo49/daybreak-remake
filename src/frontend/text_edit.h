@@ -27,11 +27,11 @@ struct TextEdit {
     void apply(const TextKeys& keys) {
         for (const char c : keys.typed) {
             const char letter = (char)std::toupper((unsigned char)c);
-            if (allowed.find(letter) == std::string::npos || text->size() >= limit) continue;
-            text->insert(cursor++, 1, letter);
+            if (c == TextKeys::kLeft) move(-1);
+            else if (c == TextKeys::kRight) move(1);
+            else if (c == TextKeys::kBackspace && cursor > 0) text->erase(--cursor, 1);
+            else if (allowed.find(letter) != std::string::npos && text->size() < limit) text->insert(cursor++, 1, letter);
         }
-        for (int i = 0; i < keys.backspaces && cursor > 0; ++i) text->erase(--cursor, 1);
-        move(keys.moves);
     }
 
     void move(int step) { cursor = (size_t)std::clamp((int)cursor + step, 0, (int)text->size()); }

@@ -93,7 +93,7 @@ void usage() {
         "                     the opening scene (0x00) like the original; a verification\n"
         "                     run (--out/--headless/--script/...) never does, so no\n"
         "                     evidence run pays for the movie decode (issue #40)\n"
-        "  --language=<en>    translated menu and HUD labels\n"
+        "  --language=<en|ja|auto>  menu and HUD labels; auto follows the system as a player's first run does\n"
         "  --texture-pack=<dir> PNGs at the game's paths, replacing its textures at any size\n"
         "  --story=<D41-0>    the script --screen=storyadv plays\n"
         "  --story-team=<N>   run team N's six fights from --screen=storyadv\n"

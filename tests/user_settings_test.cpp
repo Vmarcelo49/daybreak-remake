@@ -128,6 +128,9 @@ int main() {
         check(parses(settings::serialize(settings::UserSettings{}), parsed, error),
               "the default document parses");
         check(parsed == settings::UserSettings{}, "the default document round-trips");
+        check(settings::languageForLocale("ja").empty(), "a Japanese system keeps the game's own text");
+        check(settings::languageForLocale("pt") == "en" && settings::languageForLocale("") == "en",
+              "anywhere else, and an unknown system, is English");
         // The file leaves the default out, so a later build can move the server for everyone.
         const std::string defaults = settings::serialize(settings::UserSettings{});
         check(defaults.find(settings::kDefaultServer) == std::string::npos, "the default server is not written");

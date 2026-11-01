@@ -20,6 +20,9 @@ struct FrontendState {
     std::shared_ptr<OnlineContext> online;
     // Why the last room or selection ended, for the online screens to say.
     std::string onlineMessage;
+    // The menu comes back where it was after a failed join, so a mistyped code is one key from fixed.
+    std::string onlineCode;
+    int onlineMenuRow = 0;
     // Online, how many machines' players the selection screen must wait for. 0 offline.
     int onlineHumans = 0;
     // Entering (or re-entering) the select scene. The original destroys the current scene and

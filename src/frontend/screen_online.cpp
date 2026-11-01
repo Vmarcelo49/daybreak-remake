@@ -80,7 +80,8 @@ namespace {
 
 class OnlineMenuScreen : public PanelScreen {
 public:
-    OnlineMenuScreen(SpriteRenderer& batch, FrontendState& state, std::string& error) : state_(state) {
+    OnlineMenuScreen(SpriteRenderer& batch, FrontendState& state, std::string& error)
+        : state_(state), code_(state.onlineCode), row_(state.onlineMenuRow) {
         if (uploadBackground(batch, "data/config/0001", {{240, 8, 320, 56}, {340, 250, 420, 150}}, background_, error)) loadFace(batch, error);
         auto& settings = frontendSettings();
         name_ = settings.playerName;
@@ -104,7 +105,7 @@ public:
         if (edit_.active()) return updateEdit(in);
 
         auto& settings = frontendSettings();
-        if (in.cancel) return ScreenId::Title;
+        if (in.cancel) return leaveToTitle();
         if (in.up) row_ = (row_ + kRows - 1) % kRows;
         else if (in.down) row_ = (row_ + 1) % kRows;
         if ((Row)row_ == Row::Delay && (in.left || in.right))
@@ -123,7 +124,7 @@ public:
         case Row::Name: beginEdit(name_, kNameLetters, net::kMaxNameLength); break;
         case Row::Port: beginEdit(port_, kNumbers, 5); break;
         case Row::Delay: break;
-        case Row::Back: return ScreenId::Title;
+        case Row::Back: return leaveToTitle();
         }
         return ScreenId::NetplayMenu;
     }
@@ -154,6 +155,12 @@ private:
     enum class Row { Host, Code, Join, Name, Port, Delay, Server, Back };
     static constexpr int kRows = 8;
 
+    ScreenId leaveToTitle() {
+        row_ = 0;
+        state_.onlineMessage.clear();
+        return ScreenId::Title;
+    }
+
     void beginEdit(std::string& value, const char* letters, size_t maxLength) {
         edit_.begin(value, letters, maxLength);
         state_.onlineMessage.clear();
@@ -161,7 +168,7 @@ private:
     }
 
     ScreenId updateEdit(const ScreenInput& in) {
-        if (in.text.any() || in.up || in.down || in.left || in.right) blink_ = 0;
+        if (!in.text.typed.empty() || in.up || in.down || in.left || in.right) blink_ = 0;
         edit_.apply(in.text);
         if (in.left || in.right) edit_.move(in.right ? 1 : -1);
         if (in.up || in.down) edit_.turn(in.up ? 1 : -1);
@@ -223,10 +230,25 @@ private:
     }
 
     FrontendState& state_;
-    std::string name_, address_, port_, server_, code_;
+    std::string& code_;
+    int& row_;
+    std::string name_, address_, port_, server_;
     TextEdit edit_;
-    int row_ = 0, sound_ = -1, blink_ = 0;
+    int sound_ = -1, blink_ = 0;
 };
+
+const char* refusalWords(net::Refusal refusal) {
+    switch (refusal) {
+        case net::Refusal::WrongVersion: return say({"相手とゲームのバージョンが違います。", net::refusal_text(refusal)});
+        case net::Refusal::WrongGameData: return say({"相手とゲームデータが違います。", net::refusal_text(refusal)});
+        case net::Refusal::RoomFull: return say({"部屋が満員か、対戦が始まっています。", net::refusal_text(refusal)});
+        case net::Refusal::HostLeft: return say({"ホストが部屋を閉じました。", net::refusal_text(refusal)});
+        case net::Refusal::NoSuchRoom: return say({"そのコードの部屋はありません。", net::refusal_text(refusal)});
+        case net::Refusal::TooManyTries: return say({"試行回数が多すぎます。1分ほど待ってください。", net::refusal_text(refusal)});
+        case net::Refusal::None: break;
+    }
+    return "";
+}
 
 // Who is here and whether they are ready. Everything about the match is chosen on the selection
 // screen, which starts by itself once everyone is ready.
@@ -249,8 +271,9 @@ public:
 
     ScreenId update(const ScreenInput& in) override {
         net::Lobby& lobby = *state_.online->lobby;
-        if (lobby.refused() != net::Refusal::None) return close(net::refusal_text(lobby.refused()));
-        if (lobby.host_lost()) return close(say({"部屋から応答がありません。", "The room stopped answering."}));
+        ++ticks_;
+        if (lobby.refused() != net::Refusal::None) return close(refusalWords(lobby.refused()));
+        if (lobby.host_lost()) return close(lostWords(lobby));
         if (lobby.is_host() && lobby.can_start()) lobby.start();
         if (lobby.ready()) return begin_selection();
 
@@ -258,6 +281,10 @@ public:
         else if (in.confirm) sound_ = 0;
         else if (in.up || in.down) sound_ = 2;
 
+        if (lobby.join_stage() != net::JoinStage::Joined) {
+            if (in.cancel || in.confirm) return leave();
+            return ScreenId::NetplayLobby;
+        }
         if (in.cancel) return leave();
         if (in.up || in.down) row_ = 1 - row_;
         if (in.confirm) {
@@ -274,9 +301,18 @@ public:
         frame(batch, {"通信対戦 ロビー", "ONLINE LOBBY"}, 40, 540);
         const net::Lobby& lobby = *state_.online->lobby;
         const net::MatchPlan& plan = lobby.plan();
+        if (lobby.join_stage() != net::JoinStage::Joined) {
+            drawJoining(batch, lobby);
+            return;
+        }
         if (!lobby.room_code().empty()) {
             const std::string code = std::string(say({"部屋のコード  ", "ROOM CODE  "})) + lobby.room_code();
             centred(batch, code.c_str(), 400, 460, 28.f, kGold);
+        } else if (lobby.uses_server()) {
+            const std::string waiting = std::string(say({"部屋のコードを取得しています", "Getting a room code"})) + dots();
+            centred(batch, ticks_ < kCodeWaitTicks ? waiting.c_str()
+                                                   : say({"サーバーから応答がありません。住所で入ることはできます", "The server did not answer. Others can still join by address."}),
+                    400, 460, 18.f, kPale);
         }
         for (int peer = 0; peer < 4; ++peer) {
             const float y = 124.f + 46.f * (float)peer;
@@ -304,6 +340,31 @@ public:
     }
 
 private:
+    static constexpr int kCodeWaitTicks = 300;
+
+    std::string dots() const { return std::string((size_t)(1 + ticks_ / 20 % 3), '.'); }
+
+    void drawJoining(SpriteRenderer& batch, const net::Lobby& lobby) const {
+        const bool asking = lobby.join_stage() == net::JoinStage::AskingServer;
+        const std::string status = asking ? std::string(say({"部屋を探しています  ", "Looking for room "})) + state_.onlineCode + dots()
+                                          : std::string(say({"相手に接続しています", "Connecting to the host"})) + dots();
+        centred(batch, status.c_str(), 400, 210, 24.f, kGold);
+        batch.pushSolid({116, 344, 568, 34}, kHighlight);
+        centred(batch, say({"取消", "CANCEL"}), 400, 350, 20.f, kWhite);
+        help(batch, say({"しばらくお待ちください。決定で取消します", "This takes up to 20 seconds. Confirm cancels."}));
+    }
+
+    const char* lostWords(const net::Lobby& lobby) const {
+        switch (lobby.join_stage()) {
+            case net::JoinStage::AskingServer: return say({"サーバーから応答がありません。", "The server did not answer."});
+            case net::JoinStage::ReachingHost:
+                return lobby.uses_server() ? say({"部屋はありますが、相手から応答がありません。", "Room found, but the host did not answer."})
+                                           : say({"その住所から応答がありません。", "Nobody answered at that address."});
+            case net::JoinStage::Joined: break;
+        }
+        return say({"部屋から応答がありません。", "The room stopped answering."});
+    }
+
     void drawRow(SpriteRenderer& batch, int row, const char* value) const {
         const float y = 350.f + 46.f * (float)row;
         const bool selected = row == row_;
@@ -330,13 +391,15 @@ private:
         return ScreenId::NetplayMenu;
     }
     ScreenId close(const char* why) {
+        // The screen keeps updating through the fade out.
+        if (state_.onlineMessage != why) std::printf("[online] %s\n", why);
         state_.onlineMessage = why;
         return ScreenId::NetplayMenu;
     }
 
     FrontendState& state_;
     net::LocalChoice choice_;
-    int row_ = 0, sound_ = -1;
+    int row_ = 0, sound_ = -1, ticks_ = 0;
 };
 
 template <class ScreenType>

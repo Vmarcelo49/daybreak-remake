@@ -22,8 +22,12 @@ Linux needs glibc 2.38 or newer, such as Ubuntu 24.04, and a Vulkan driver. Your
 
 - **Room codes work out of the box.** The game now uses our server by default, so you no longer have to find and type one. Hosting a room contacts it to get a code, and no game data passes through it. To use another server, change the SERVER row of the online menu or `server` in the settings file.
 - **Type in the online menu.** Press Enter on JOIN BY CODE, JOIN BY ADDRESS, NAME, PORT or SERVER and write with the keyboard: Backspace deletes, Enter confirms and Esc cancels. Enter on a join row joins the room. A pad can still write, with up and down.
+- **You can see what a join is doing.** The screen says it's looking for the room or connecting to the host, and you can cancel. If it fails, you go back to the menu with your code still there and the reason: no room has that code, the server didn't answer, or the room exists but the host didn't answer.
+- **Hosting tells you when there's no code.** The lobby says it's getting a room code, and says so if the server doesn't answer. Others can still join by address.
 
-*More to come: the rest of the online changes planned for this version.*
+### Language
+
+- **The game picks its language from your system on first run.** A Japanese system keeps the game's Japanese menus, and anything else starts in English. You can still change it in Options, and your choice is kept. If you chose Japanese in 0.2.0 on a non-Japanese system, choose it once more. Story dialogue is still Japanese.
 
 ### Fixes
 

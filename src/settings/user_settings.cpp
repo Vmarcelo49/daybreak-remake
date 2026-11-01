@@ -459,7 +459,7 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
     case kSchemaVersionV5:
         report.messages.push_back(
             "config version 5: migrated to " + std::to_string(kSchemaVersion) +
-            " (the language defaults to Japanese; every stored value kept)");
+            " (the language follows the system; every stored value kept)");
         break;
     case kSchemaVersionV6:
         report.messages.push_back(
@@ -504,7 +504,7 @@ std::string serialize(const UserSettings& settings) {
         << "install_dir = "
         << (storableInstallDir(settings.installDir) ? settings.installDir : std::string())
         << "\n"
-        << "# The language of the menus and the HUD: en, or empty for the game's own Japanese.\n"
+        << "# The language of the menus and the HUD: en, ja, or empty to follow the system.\n"
         << "language = " << settings.language << "\n\n";
 
     out << "[network]\n"

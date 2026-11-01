@@ -27,7 +27,7 @@ version = 7
 
 [game]
 install_dir = /home/u/Games/Higurashi-Daybreak   # absolute; empty = none remembered
-language = en                 # menus and HUD; empty = the game's own Japanese
+language = en                 # menus and HUD: en, ja, or empty to follow the system (Japanese stays Japanese, anything else English)
 
 [network]
 name = PLAYER                 # what other players see, up to 12 plain characters
