@@ -22,6 +22,8 @@ go build -o daybreak-rendezvous .
 ./daybreak-rendezvous -addr :37565 -log info
 ```
 
+To publish another port, put `DAYBREAK_PUBLIC_PORT=3939` in a `.env` file beside `docker-compose.yml`.
+
 Then put the address in the game: `server = 203.0.113.10:37565` under `[network]` in the settings file, or
 the SERVER row of the online menu.
 

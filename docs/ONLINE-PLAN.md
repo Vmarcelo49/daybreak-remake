@@ -214,7 +214,7 @@ reason now goes to the log as `[net] selection ended`.
 
 ### 7. Rendezvous server and NAT punching
 
-Built on 2026-10-31. **The owner deploys the server** and sets its address, and real routers are judged at step 8.
+Built on 2026-10-31, and running on the owner's server since then, on UDP port 3939. The game has no default address yet, so each player sets it, and real routers are judged at step 8.
 
 - `server/` is adapted from the owner's relay in `Vmarcelo49/ReCaster`. It is UDP only and takes a room of up to 4,
   since a client already resends everything and only the game socket's address matters. It introduces a joiner and
