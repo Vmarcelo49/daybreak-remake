@@ -1,7 +1,7 @@
 # 0.2.1 release notes: DRAFT
 
 > **Not released.** The owner holds this version until the online changes below are decided and done.
-> Up to date through `a393826a`. Add to it as work lands. Everything from "Before publishing" down is
+> Up to date through `bc3e3cc6`. Add to it as work lands. Everything from "Before publishing" down is
 > for us: delete it, and this note, when the text goes on the release page.
 
 **This is a test build.** Online play still needs testing over real networks. Expect problems, and please report them.
@@ -92,6 +92,7 @@ We added these for testing, and they aren't in the original:
 - [ ] Follow `docs/RELEASE-CHECKLIST.md`.
 - [ ] #90: reword or drop the fix if a tester says otherwise. It is not verified on an affected machine, and why the device refused the sheet is unknown.
 - [ ] F6 goes to stdout. Check that it reaches `daybreak.log` on a packaged build, or reword its row.
+- [ ] Type in the online menu with a real keyboard, and write with a real pad. So far only a headless schedule has driven it.
 - [ ] Press F1 to F8 by hand in a versus battle. Only a schedule has driven F1 to F6, and F7 and F8 have never run.
 - [ ] Look at the bucket and the flash in a real match. So far they've only been seen in headless captures.
 
@@ -109,3 +110,4 @@ We added these for testing, and they aren't in the original:
 | `8fa47413` | #90's fallback, #89's flow gate, `AGENTS.md` | Fixes (#90 only) |
 | `2f25d7e5` | The rendezvous server deployed, its port set by `DAYBREAK_PUBLIC_PORT` | No: the server, not the game |
 | `a393826a` | The owner's server as the default, and the SERVER row at full width | Online |
+| `bc3e3cc6` | Typing in the online menu, `--text-keys` | Online |
