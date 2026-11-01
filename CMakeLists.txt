@@ -677,6 +677,10 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     set_tests_properties(web_match_group_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 LABELS asset)
 
 
+    add_test(NAME texture_fallback_check COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/texture_fallback_check.py $<TARGET_FILE:daybreak>
+        ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak)
+    set_tests_properties(texture_fallback_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 240 LABELS asset)
     add_test(NAME texture_pack_check COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/texture_pack_check.py)
     set_tests_properties(texture_pack_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)

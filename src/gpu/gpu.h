@@ -60,6 +60,12 @@ WGPUBuffer       createBuffer(WGPUDevice, uint64_t size, WGPUBufferUsage usage, 
 bool readBuffer(WGPUInstance, WGPUBuffer, uint64_t offset, uint64_t size,
                 std::vector<uint8_t>& out, std::string& error);
 
+// Creating an object never fails visibly: the device hands back a handle, and every use of it is
+// then ignored. Between these two, whatever the device rejects comes back as a result instead of
+// reaching the uncaptured callback. False, with `error` set, when it rejected something.
+void pushErrorChecks(WGPUDevice);
+bool popErrorChecks(WGPUDevice, std::string& error);
+
 const char* presentModeName(WGPUPresentMode);
 const char* backendName(WGPUBackendType);
 

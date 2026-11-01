@@ -231,6 +231,9 @@ public:
     // xm::CnvImage::rgba holds, so CNV textures transfer without conversion
     // (BMP-backed callers decode to the same layout first). Returns the slot id
     // for pushTextured, or -1 on failure. Slot 0 is the 1x1 white fallback.
+    // Verification: the device refuses any texture with a side above this, as a machine short of
+    // memory would (issue #90).
+    void limitTextureSideForTest(uint32_t side) { textureSideLimit_ = side; }
     int addTexture(uint32_t w, uint32_t h, const void* rgba, std::string& error);
     // A texture larger than the sheet it stands for: callers keep the logical size's pixel rects,
     // and a full mip chain keeps it clean when the canvas is drawn smaller than the pixels.
@@ -329,6 +332,7 @@ private:
     // creates or destroys them, so addTexture/updateTexture/clearTextures cannot drift.
     bool createTexture(Texture& t, uint32_t w, uint32_t h, const void* rgba, std::string& error,
                        bool mips = false);
+    uint32_t textureSideLimit_ = UINT32_MAX;
     static void destroyTexture(Texture& t);
 
     WGPUDevice device_ = nullptr;   // borrowed

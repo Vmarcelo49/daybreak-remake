@@ -6,8 +6,8 @@
 #
 # Run it from the repository root, with the game install at Higurashi-Daybreak. Each case runs
 # twice, and a case whose two runs differ is reported as UNSTABLE instead of being compared.
-# The filter keeps a connected pad out of the runs. With it, frontend-4p.txt ends after one
-# round, because the gate scripts were calibrated with a pad attached (issue #63).
+# The filter keeps a connected pad out of the runs, as release_flow_check.py does. A pad takes its
+# slot from the synthetic pad, which changes how the round plays.
 set -u
 export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT=0x0000/0x0000
 

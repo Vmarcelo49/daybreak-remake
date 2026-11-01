@@ -1304,6 +1304,7 @@ bool initScreens(App& app) {
     // frame needs it initialized even though render() is never called.
     if (!app.rendererReady && !app.renderer.init(app.ctx, app.error)) return false;
     app.rendererReady = true;
+    if (app.opts.textureLimit) app.uiRenderer.limitTextureSideForTest(app.opts.textureLimit);
     if (!app.uiReady && !app.uiRenderer.init(app.ctx.device, app.ctx.queue, app.error)) return false;
     app.uiReady = true;
     // The input backend has to exist before the first screen: scene 0x00 reads its raw key

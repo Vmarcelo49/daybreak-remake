@@ -18,6 +18,7 @@ Usage:
     release_flow_check.py <demo> <install> [--recipe 1v1|2v2|com|4p] [--rounds N]
                           [--frames N] [--out FILE] [--workdir DIR]
 """
+import os
 import argparse
 import re
 import subprocess
@@ -32,14 +33,14 @@ SCRIPTS = FOUNDATION / "tests" / "scripts"
 # the launch must present and the rounds the run has to complete. The scene names are the
 # ones the demo prints as `[menu] scene: <name>`.
 RECIPES = {
-    "1v1": {"script": "frontend-1v1-rematch.txt", "players": 2, "fighters": 2,
+    "1v1": {"script": "frontend-1v1-rematch.txt", "players": 2, "fighters": 4,
             "scenes": ["select", "vs", "result"], "rounds": 3, "frames": 15500},
     "2v2": {"script": "frontend-2v2-rematch.txt", "players": 4, "fighters": 4,
             "scenes": ["select", "vs", "result"], "rounds": 3, "frames": 15500},
-    "com": {"script": "frontend-com-rematch.txt", "players": 1, "fighters": 2,
+    "com": {"script": "frontend-com-rematch.txt", "players": 1, "fighters": 4,
             "scenes": ["select", "vs", "result"], "rounds": 3, "frames": 15500},
     "4p":  {"script": "frontend-4p.txt", "players": 4, "fighters": 4,
-            "scenes": ["select", "vs", "result"], "rounds": 1, "frames": 9600},
+            "scenes": ["select", "vs", "result"], "rounds": 1, "frames": 5000},
 }
 
 SCENE_RE = re.compile(r"\[menu\] scene: (\w+)")
@@ -74,16 +75,22 @@ def main():
         return 77
 
     fighters = args.fighters if args.fighters is not None else recipe["fighters"]
+    # The scripts are taps on fixed ticks, measured with rounds that end at the time limit. F1 keeps
+    # every round alive until then, whoever is fighting (issue #89).
+    keep_alive = ",".join("f1@%d" % tick for tick in range(0, 3600, 120))
     cmd = [str(Path(args.demo).resolve()), "--install=" + str(Path(args.install).resolve()),
            "--screen=title", "--local-players=%d" % recipe["players"],
            "--script=" + str(SCRIPTS / recipe["script"]),
+           "--debug-keys=" + keep_alive,
            "--headless", "--no-audio", "--out=" + str(out), "--size=1280x720",
            "--frames=%d" % frames] + args.demo_arg
+    # An attached pad takes its slot from the synthetic pad and changes the run.
+    env = dict(os.environ, SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT="0x0000/0x0000")
     print("release_flow_check: %s (%d frame budget, %d round(s) required)"
           % (args.recipe, frames, rounds_required))
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
-                              errors="replace", timeout=args.timeout)
+                              errors="replace", timeout=args.timeout, env=env)
     except subprocess.TimeoutExpired:
         print("FAIL: the run did not finish within %ss — a stuck state, not a pass"
               % args.timeout)

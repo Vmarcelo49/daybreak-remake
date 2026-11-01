@@ -15,10 +15,11 @@ and byte-identity with it is not a goal. The target is faithful **behaviour**.
 Original-runtime parity is a separate claim, requiring original-runtime evidence.
 A claim that cannot name its evidence tier, scope and limitations is not a result.
 
-## Current state (2026-10-30)
+## Current state (2026-10-31)
 
-**Playable locally, with no known blocker.** The native build runs the whole loop: title,
-story, versus, character select, battle, results and options.
+**Playable, locally and online, with no known blocker.** The native build runs the whole loop: title,
+story, versus, character select, battle, results, options and network play. 0.2.0 is out as a
+pre-release for testers; 0.2.1 is collecting fixes until the owner releases it.
 
 | Area | State | Where |
 |---|---|---|
@@ -28,7 +29,7 @@ story, versus, character select, battle, results and options.
 | Options and settings | Our own settings file, never the original's | `src/frontend/screen_options.cpp`, `docs/USER-SETTINGS.md` |
 | Texture packs | Read from beside the executable; extractor and verifier exist. Download and prompt wait for a pack | `docs/TEXTURE-PACKS.md`, `tools/asset-tools/texture_pack.py` |
 | Web | Builds and fights, with an open crash (#88) | `docs/BUILD-web.md`, `webdelivery/` |
-| Online | **The current priority.** Not built yet; follow the plan step by step (#3) | `docs/ONLINE-PLAN.md` |
+| Online | **The current priority.** Built through step 7: menus, lobby, shared selection, rollback and room codes. Step 8, real play on real networks, is the owner's, and then #3 closes | `docs/ONLINE-PLAN.md`, `src/net/`, `src/frontend/screen_online.cpp`, `server/` |
 | Not built | macOS | |
 
 Open issues are on GitHub (`Vmarcelo49/daybreak-remake`), and they are the current bug list.

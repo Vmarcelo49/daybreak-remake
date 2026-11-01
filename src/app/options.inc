@@ -131,8 +131,9 @@ void usage() {
         "  --script=<file>    P1 input script for --match (\"<frame> TOKEN...\" lines,\n"
         "                     the DX9 visual-suite format); absent -> live device\n"
         "  --plan=<file>      with --match: every slot's input, simctl's format, instead of the devices\n"
-        "  --debug-keys=<k>   with --match: test keys by tick, e.g. f2@0,f4@300 (docs/DEBUG-KEYS.md)\n"
+        "  --debug-keys=<k>   test keys by battle tick, e.g. f2@0,f4@300 (docs/DEBUG-KEYS.md)\n"
         "  --no-debug-keys    the physical F1-F8 test keys do nothing\n"
+        "  --texture-limit=<n> the device refuses textures with a side above n, for testing that case\n"
         "  --special-mode=<m> with --match: every fighter's hypermode, 0 Oyashiro, 1 Friendship, 2 Kakera\n"
         "  --view-fighter=<n> with --match: show fighter n's camera and HUD (0-3)\n"
         "  --hash-log=<file>  with --match: stateHash per tick, as simctl --hash-log writes it\n"
@@ -422,6 +423,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--plan=")).empty()) o.plan = v;
         else if (!(v = val("--debug-keys=")).empty()) o.debugKeys = v;
         else if (a == "--no-debug-keys") o.noDebugKeys = true;
+        else if (!(v = val("--texture-limit=")).empty()) o.textureLimit = static_cast<uint32_t>(std::atoi(v.c_str()));
         else if (!(v = val("--special-mode=")).empty()) o.specialMode = std::atoi(v.c_str());
         else if (!(v = val("--view-fighter=")).empty()) o.viewFighter = std::atoi(v.c_str());
         else if (!(v = val("--hash-log=")).empty()) o.hashLog = v;
@@ -491,8 +493,8 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         error = "--enemy needs --versus or --match (P2 placement and rig ownership live there)";
         return false;
     }
-    if ((!o.plan.empty() || !o.debugKeys.empty() || !o.hashLog.empty() || o.viewFighter != 0 || o.specialMode >= 0) && !o.match) {
-        error = "--plan, --debug-keys, --hash-log, --special-mode and --view-fighter need --match";
+    if ((!o.plan.empty() || !o.hashLog.empty() || o.viewFighter != 0 || o.specialMode >= 0) && !o.match) {
+        error = "--plan, --hash-log, --special-mode and --view-fighter need --match";
         return false;
     }
     if (o.specialMode > 2) {

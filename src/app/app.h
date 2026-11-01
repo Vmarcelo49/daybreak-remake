@@ -34,6 +34,7 @@ struct Options {
     std::string plan;            // --plan=: every slot's input, simctl's format
     std::string debugKeys;       // --debug-keys=f2@0,f4@300
     bool        noDebugKeys = false;  // the physical test keys do nothing
+    uint32_t    textureLimit = 0;  // --texture-limit=: see SpriteRenderer::limitTextureSideForTest
     int         specialMode = -1; // --special-mode=: every fighter's hypermode, else the setup's
     int         viewFighter = 0; // --view-fighter=: whose camera and HUD a --match shows
     std::string hashLog;         // --hash-log=: stateHash per tick, to compare with simctl's

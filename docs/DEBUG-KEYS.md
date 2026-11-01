@@ -59,8 +59,8 @@ pause key (`docs/PAUSE.md`), so it is not one of these.
 
 ## 2. Options
 
-Both `daybreak --match` and `simctl` take a schedule. A scheduled key lands right after its tick, in
-both programs, so they stay comparable.
+Both `daybreak` and `simctl` take a schedule, counted in each battle's own ticks. A scheduled key lands
+right after its tick, in both programs, so they stay comparable.
 
 ```
 --debug-keys=f2@0,f4@300     hold a key on one tick; f1 to f6, simctl spells it --debug-keys f2@0

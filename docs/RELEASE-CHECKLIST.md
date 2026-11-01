@@ -347,10 +347,12 @@ the stage, is per round.
 ### 3.3 Four fighters (2v2), three rounds
 
 ```bash
-./build/linux/daybreak --install=<game-dir> --screen=title \
-  --local-players=4 --script=tests/scripts/frontend-2v2-rematch.txt \
-  --headless --out=/tmp/rel-2v2.ppm --size=1280x720 --frames=15500
+python3 tests/release_flow_check.py build/linux/daybreak <game-dir> --recipe 2v2
 ```
+
+The script's taps sit on fixed ticks, so the check holds a connected pad out of the run and keeps
+every round alive with a scheduled F1 until the taps' measured cycle (issue #89). A run by hand needs
+the same `SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT` and `--debug-keys` as the check passes.
 
 Four synthetic pads walk panels 1–3 while the script walks panel 0. The
 roster, the four views and the per-round loop:

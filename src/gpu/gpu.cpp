@@ -72,7 +72,50 @@ void onMapped(WGPUMapAsyncStatus status, WGPUStringView message, void* ud1, void
     if (!w->ok) std::fprintf(stderr, "[gpu] buffer map failed: %s\n", toString(message).c_str());
 }
 
+struct ScopeWaiter {
+    bool        done = false;
+    std::string message;
+};
+
+void onScopePopped(WGPUPopErrorScopeStatus status, WGPUErrorType type, WGPUStringView message, void* ud1, void*) {
+    auto* w = static_cast<ScopeWaiter*>(ud1);
+    w->done = true;
+    if (status == WGPUPopErrorScopeStatus_Success && type != WGPUErrorType_NoError) {
+        w->message = toString(message);
+        if (w->message.empty()) w->message = "error type " + std::to_string((int)type);
+    }
+}
+
 }  // namespace
+
+// wgpu-native panics on WGPUErrorFilter_Internal, so an internal error still goes uncaptured.
+void pushErrorChecks(WGPUDevice device) {
+    wgpuDevicePushErrorScope(device, WGPUErrorFilter_Validation);
+    wgpuDevicePushErrorScope(device, WGPUErrorFilter_OutOfMemory);
+}
+
+bool popErrorChecks(WGPUDevice device, std::string& error) {
+    bool clean = true;
+    for (int scope = 0; scope < 2; ++scope) {
+        ScopeWaiter waiter;
+        WGPUPopErrorScopeCallbackInfo info = {};
+        info.mode = WGPUCallbackMode_AllowProcessEvents;
+        info.callback = onScopePopped;
+        info.userdata1 = &waiter;
+        wgpuDevicePopErrorScope(device, info);
+        while (!waiter.done) {
+            wgpuInstanceProcessEvents(g_instance);
+#if defined(__EMSCRIPTEN__)
+            emscripten_sleep(0);
+#endif
+        }
+        if (!waiter.message.empty()) {
+            if (clean) error = waiter.message;
+            clean = false;
+        }
+    }
+    return clean;
+}
 
 const char* backendName(WGPUBackendType t) {
     switch (t) {
