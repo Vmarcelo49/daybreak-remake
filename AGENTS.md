@@ -18,8 +18,8 @@ A claim that cannot name its evidence tier, scope and limitations is not a resul
 ## Current state (2026-10-31)
 
 **Playable, locally and online, with no known blocker.** The native build runs the whole loop: title,
-story, versus, character select, battle, results, options and network play. 0.2.0 is out as a
-pre-release for testers; 0.2.1 is collecting fixes until the owner releases it.
+story, versus, character select, battle, results, options and network play. 0.2.1 is out as a
+pre-release for testers.
 
 | Area | State | Where |
 |---|---|---|
@@ -28,7 +28,7 @@ pre-release for testers; 0.2.1 is collecting fixes until the owner releases it.
 | Language | Menus and HUD in English or Japanese. Dialogue is still Japanese | `src/ui/sheet_locale.*`, `assets/locale/en.txt`, `docs/TRANSLATION-INVENTORY.md` |
 | Options and settings | Our own settings file, never the original's | `src/frontend/screen_options.cpp`, `docs/USER-SETTINGS.md` |
 | Texture packs | Read from beside the executable; extractor and verifier exist. Download and prompt wait for a pack | `docs/TEXTURE-PACKS.md`, `tools/asset-tools/texture_pack.py` |
-| Web | Builds and fights, with an open crash (#88) | `docs/BUILD-web.md`, `webdelivery/` |
+| Web | Builds and fights, with an open crash (#88). Not in CI since 0.2.1, where its build stalled | `docs/BUILD-web.md`, `webdelivery/` |
 | Online | **The current priority.** Built through step 7: menus, lobby, shared selection, rollback and room codes. Step 8, real play on real networks, is the owner's, and then #3 closes | `docs/ONLINE-PLAN.md`, `src/net/`, `src/frontend/screen_online.cpp`, `server/` |
 | Not built | macOS | |
 

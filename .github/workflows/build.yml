@@ -1,4 +1,4 @@
-# Builds and packages every platform when the version changes. VERSION is the one file that
+# Builds and packages Windows and Linux when the version changes. VERSION is the one file that
 # asks for a build, so ordinary pushes cost nothing; run it by hand with `gh workflow run build.yml`.
 # The runners have no game data: tests that need the install skip, so green here says nothing
 # about battles or pixels. tools/fingerprints.sh and tests/release_flow_check.py cover those locally.
@@ -76,37 +76,4 @@ jobs:
         with:
           name: daybreak-windows-x86_64
           path: build/package/daybreak-*-windows-x86_64.zip
-          if-no-files-found: error
-
-  web:
-    runs-on: ubuntu-24.04
-    env:
-      EMSDK: ${{ github.workspace }}/.emsdk
-      # The version this tree is verified with (docs/BUILD-web.md).
-      EMSDK_VERSION: 6.0.10
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install the system packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build
-      - uses: actions/cache@v4
-        with:
-          path: third_party
-          key: third-party-${{ hashFiles('scripts/fetch_deps.sh') }}
-      - name: Install Emscripten
-        run: |
-          git clone --depth 1 https://github.com/emscripten-core/emsdk "$EMSDK"
-          "$EMSDK/emsdk" install "$EMSDK_VERSION"
-          "$EMSDK/emsdk" activate "$EMSDK_VERSION"
-      - run: ./build.sh deps
-      - run: ./build.sh web
-      - uses: actions/upload-artifact@v4
-        with:
-          name: daybreak-web
-          path: |
-            build/web/daybreak.html
-            build/web/daybreak.js
-            build/web/daybreak.wasm
-            build/web/daybreak.data
           if-no-files-found: error
