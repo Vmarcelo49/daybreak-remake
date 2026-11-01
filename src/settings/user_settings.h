@@ -71,6 +71,9 @@ namespace settings {
 //
 // v7 added [network], for online play: name, port, input_delay, last_host and server. A v6 file is MIGRATED
 // additively, and every new key takes its default.
+// The project's own rendezvous server. The file leaves it out, so a new build can move it.
+inline constexpr char kDefaultServer[] = "64.181.172.230:3939";
+
 inline constexpr int kSchemaVersion = 7;
 inline constexpr int kSchemaVersionV6 = 6;
 inline constexpr int kSchemaVersionV5 = 5;
@@ -117,7 +120,7 @@ struct UserSettings {
     int         netPort = 37564;         // the original's (docs/game-spec.md)
     int         netInputDelay = 2;       // frames, 0..8
     std::string netLastHost;             // the address last joined
-    std::string netServer;               // the rendezvous server, for room codes
+    std::string netServer = kDefaultServer;  // the rendezvous server, for room codes
     bool        fullscreen = false;
     DisplaySize resolution{0, 0};
     // Toon rendering (issue #21), the Options screen's first row. Off is the shipped

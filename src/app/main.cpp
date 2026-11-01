@@ -1190,7 +1190,7 @@ bool initScreens(App& app) {
 #ifdef DAYBREAK_ONLINE
     if (!app.opts.netHost.empty() || !app.opts.netJoin.empty()) {
         const bool opened = app.opts.netHost.empty() ? ui::beginOnlineJoin(app.frontend, app.opts.netJoin, app.error)
-                                                     : ui::beginOnlineHost(app.frontend, std::atoi(app.opts.netHost.c_str()), app.error);
+                                                     : ui::beginOnlineHost(app.frontend, std::atoi(app.opts.netHost.c_str()), false, app.error);
         if (!opened) return false;
     }
 #endif

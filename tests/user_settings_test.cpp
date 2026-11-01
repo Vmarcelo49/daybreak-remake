@@ -128,6 +128,18 @@ int main() {
         check(parses(settings::serialize(settings::UserSettings{}), parsed, error),
               "the default document parses");
         check(parsed == settings::UserSettings{}, "the default document round-trips");
+        // The file leaves the default out, so a later build can move the server for everyone.
+        const std::string defaults = settings::serialize(settings::UserSettings{});
+        check(defaults.find(settings::kDefaultServer) == std::string::npos, "the default server is not written");
+        const auto withServer = [&](const std::string& value) {
+            std::string text = defaults;
+            const std::string key = "\nserver = ";
+            return text.insert(text.find(key) + key.size(), value);
+        };
+        check(parses(withServer("000.000.000.000:37565"), parsed, error) && parsed.netServer == settings::kDefaultServer,
+              "0.2.0's zero placeholder means the default server");
+        check(parses(withServer("203.0.113.10:37565"), parsed, error) && parsed.netServer == "203.0.113.10:37565",
+              "another server is kept");
         // The document must not grow a session-state field by accident: no persisted KEY
         // may name one (the header comment explains why they are absent).
         bool sessionKey = false;

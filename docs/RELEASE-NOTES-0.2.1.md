@@ -20,7 +20,9 @@ Linux needs glibc 2.38 or newer, such as Ubuntu 24.04, and a Vulkan driver. Your
 
 ### Online
 
-*To be written: the online changes planned for this version.*
+- **Room codes work out of the box.** The game now uses our server by default, so you no longer have to find and type one. Hosting a room contacts it to get a code, and no game data passes through it. To use another server, change the SERVER row of the online menu or `server` in the settings file.
+
+*More to come: the rest of the online changes planned for this version.*
 
 ### Fixes
 

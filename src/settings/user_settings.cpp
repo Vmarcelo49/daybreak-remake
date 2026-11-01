@@ -331,8 +331,10 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                 else warn("input_delay: '" + value + "' is not 0 to 8, ignoring it");
             } else if (key == "last_host" || key == "server") {
                 const bool plain = std::all_of(value.begin(), value.end(), [](char c) { return (c >= '0' && c <= '9') || c == '.' || c == ':'; });
-                if (plain && value.size() <= 21) (key == "server" ? candidate.netServer : candidate.netLastHost) = value;
-                else warn(key + ": '" + value + "' is not an address, ignoring it");
+                // 0.2.0's menu saved its all-zero placeholder without anyone choosing it.
+                const bool unchosen = key == "server" && (value.empty() || value.rfind("000.000.000.000:", 0) == 0);
+                if (!plain || value.size() > 21) warn(key + ": '" + value + "' is not an address, ignoring it");
+                else if (!unchosen) (key == "server" ? candidate.netServer : candidate.netLastHost) = value;
             } else {
                 warn("ignoring unknown key '" + key + "'");
             }
@@ -514,8 +516,8 @@ std::string serialize(const UserSettings& settings) {
         << "input_delay = " << settings.netInputDelay << "\n"
         << "# The address last joined.\n"
         << "last_host = " << settings.netLastHost << "\n"
-        << "# The rendezvous server, for room codes: an IP address and port.\n"
-        << "server = " << settings.netServer << "\n\n";
+        << "# The rendezvous server, for room codes: an IP address and port. Empty is the project's own.\n"
+        << "server = " << (settings.netServer == kDefaultServer ? "" : settings.netServer) << "\n\n";
 
     out << "[display]\n"
         << "fullscreen = " << (settings.fullscreen ? "true" : "false") << "\n"

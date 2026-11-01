@@ -198,7 +198,7 @@ Done on 2026-10-31, except for the owner's judgment of the layout.
 - A `[network]` settings section, schema v7. The server list waits for step 7.
 - The match leaves on `Session::round_over_confirmed`, and everyone returns to the lobby after results.
 - Pause is off. The pause key leaves the match at once, and the others get a COM after the timeout.
-- `--net-host=PORT` and `--net-join=IP:PORT` open the lobby directly. A capture in a room runs at 60 Hz, since
+- `--net-host=PORT` and `--net-join=IP:PORT` open the lobby directly, and a room opened so asks no server for a code. A capture in a room runs at 60 Hz, since
   peers live in real time.
 
 **Done when:** a scripted run walks title, lobby, battle, results and lobby on two instances. **The
@@ -214,7 +214,7 @@ reason now goes to the log as `[net] selection ended`.
 
 ### 7. Rendezvous server and NAT punching
 
-Built on 2026-10-31, and running on the owner's server since then, on UDP port 3939. The game has no default address yet, so each player sets it, and real routers are judged at step 8.
+Built on 2026-10-31, and running on the owner's server since then, on UDP port 3939. It is the game's default server, and the SERVER row or the settings file can name another. Real routers are judged at step 8.
 
 - `server/` is adapted from the owner's relay in `Vmarcelo49/ReCaster`. It is UDP only and takes a room of up to 4,
   since a client already resends everything and only the game socket's address matters. It introduces a joiner and

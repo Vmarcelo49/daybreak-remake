@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <random>
 
 #include "assets/asset_source.h"
@@ -29,6 +30,19 @@ net::Address settingsServer() {
     if (!net::parse_address(frontendSettings().netServer, server) || server.ip == 0) return {};
     return server;
 }
+
+// The wheel turns digits in place, so every part needs its full width for any address to be reachable.
+std::string wheelAddress(const std::string& text, const char* otherwise) {
+    net::Address address;
+    if (!net::parse_address(text, address)) return otherwise;
+    unsigned char ip[4];
+    std::memcpy(ip, &address.ip, 4);
+    char out[32];
+    std::snprintf(out, sizeof out, "%03u.%03u.%03u.%03u:%05u", ip[0], ip[1], ip[2], ip[3], address.port);
+    return out;
+}
+
+constexpr char kNoServer[] = "000.000.000.000:37565";
 
 // Text edited with the menu's own buttons, so a pad can do it too: left and right pick a place, and
 // up and down turn its character on a wheel.
@@ -75,12 +89,12 @@ void onlineMatchNumbers(std::uint32_t& token, std::uint32_t& seed) {
     seed = random();
 }
 
-bool beginOnlineHost(FrontendState& state, int port, std::string& error) {
+bool beginOnlineHost(FrontendState& state, int port, bool announce, std::string& error) {
     auto context = std::make_shared<OnlineContext>();
     if (!context->socket.open(static_cast<std::uint16_t>(port), error)) return false;
     net::MatchPlan plan;
     onlineMatchNumbers(plan.token, plan.seed);
-    context->lobby = std::make_unique<net::Lobby>(net::Lobby::host(context->socket, plan, installHash(), settingsServer()));
+    context->lobby = std::make_unique<net::Lobby>(net::Lobby::host(context->socket, plan, installHash(), announce ? settingsServer() : net::Address{}));
     state.online = std::move(context);
     return true;
 }
@@ -119,8 +133,8 @@ public:
         if (uploadBackground(batch, "data/config/0001", {{240, 8, 320, 56}, {340, 250, 420, 150}}, background_, error)) loadFace(batch, error);
         auto& settings = frontendSettings();
         name_ = settings.playerName;
-        address_ = settings.netLastHost.empty() ? "192.168.000.001:37564" : settings.netLastHost;
-        server_ = settings.netServer.empty() ? "000.000.000.000:37565" : settings.netServer;
+        address_ = wheelAddress(settings.netLastHost, "192.168.000.001:37564");
+        server_ = wheelAddress(settings.netServer, kNoServer);
         char port[8];
         std::snprintf(port, sizeof port, "%05d", settings.netPort);
         port_ = port;
@@ -141,7 +155,7 @@ public:
                 edit_ = {};
                 settings.playerName = trimmedRight(name_).substr(0, net::kMaxNameLength);
                 settings.netLastHost = address_;
-                settings.netServer = server_;
+                if (server_ != wheelAddress(settings.netServer, kNoServer)) settings.netServer = server_;
                 settings.netPort = std::clamp(std::atoi(port_.c_str()), 1, 65535);
             } else {
                 edit_.update(in);
@@ -158,7 +172,7 @@ public:
         std::string failure;
         switch ((Row)row_) {
         case Row::Host:
-            if (beginOnlineHost(state_, settings.netPort, failure)) return ScreenId::NetplayLobby;
+            if (beginOnlineHost(state_, settings.netPort, true, failure)) return ScreenId::NetplayLobby;
             state_.onlineMessage = failure;
             break;
         case Row::Join:

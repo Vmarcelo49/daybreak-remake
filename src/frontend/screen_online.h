@@ -19,7 +19,9 @@ struct OnlineContext {
 
 // Opens a room or joins one, leaving state.online set. False with `error` when the port cannot be
 // bound or the address cannot be read.
-bool beginOnlineHost(FrontendState& state, int port, std::string& error);
+// announce asks the settings' server for a room code; --net-host stays off it, so a test never
+// reaches the public server.
+bool beginOnlineHost(FrontendState& state, int port, bool announce, std::string& error);
 bool beginOnlineJoin(FrontendState& state, const std::string& address, std::string& error);
 bool beginOnlineCode(FrontendState& state, const std::string& code, std::string& error);
 // A fresh random pair for the match's token and seed.
