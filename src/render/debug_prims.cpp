@@ -69,12 +69,15 @@ bool DebugPrims::init(const gpu::Context& ctx, std::string& error) {
         return false;
     }
 
-    // One bind group with one uniform: the viewProj the scene pass also receives. No
-    // dynamic offset is needed — there is one camera per frame, not one per draw.
+    // One bind group with one uniform: the viewProj the pass draws with. It is addressed
+    // by a dynamic offset so every pass in a frame gets its own slot (issue #61): a frame
+    // records all of a view's overlay passes before its single submission, so one shared
+    // slot left each cell drawing with the last view's matrix.
     WGPUBindGroupLayoutEntry entry = {};
     entry.binding = 0;
     entry.visibility = WGPUShaderStage_Vertex;   // the fragment stage reads colour only
     entry.buffer.type = WGPUBufferBindingType_Uniform;
+    entry.buffer.hasDynamicOffset = true;
     entry.buffer.minBindingSize = sizeof(glm::mat4);
 
     WGPUBindGroupLayoutDescriptor bglDesc = {};
@@ -87,7 +90,7 @@ bool DebugPrims::init(const gpu::Context& ctx, std::string& error) {
     plDesc.bindGroupLayouts = &bgl_;
     layout_ = wgpuDeviceCreatePipelineLayout(device_, &plDesc);
 
-    ubuf_ = gpu::createBuffer(device_, sizeof(glm::mat4),
+    ubuf_ = gpu::createBuffer(device_, (uint64_t)kUniformSlots * kUniformStride,
                               WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst, nullptr);
     if (!bgl_ || !layout_ || !ubuf_) {
         error = "debug prims setup failed (bind group layout, pipeline layout or uniform)";
@@ -123,6 +126,7 @@ void DebugPrims::shutdown() {
     group_ = nullptr;
     ubuf_ = vbuf_ = nullptr;
     vbufCapacity_ = 0;
+    pass_ = 0;
 
     if (layout_) wgpuPipelineLayoutRelease(layout_);
     if (bgl_) wgpuBindGroupLayoutRelease(bgl_);
@@ -324,6 +328,13 @@ bool DebugPrims::drawBatch(const Target& target, const glm::mat4& viewProj,
         return false;
     }
     if (count == 0) return true;   // nothing queued: leave the frame untouched
+    // The vertex slot is sized by the batch cap, so a pass larger than the cap would
+    // bleed into the next pass's region — the very aliasing this file fixes (issue #61).
+    if (count > kMaxVertices) {
+        error = "debug prims pass has " + std::to_string(count) + " vertices, over the " +
+                std::to_string(kMaxVertices) + "-vertex slot";
+        return false;
+    }
 
     // The depth view decides the pipeline variant, not a runtime switch.
     const DepthMode depthMode = depthView ? (options.depthTest ? kDepthTested : kDepthAlways)
@@ -332,11 +343,24 @@ bool DebugPrims::drawBatch(const Target& target, const glm::mat4& viewProj,
     WGPURenderPipeline pipeline = pipelineFor(target.format, depthMode, blend, topology, error);
     if (!pipeline) return false;
 
-    if (!ensureVertexBuffer((uint64_t)count * sizeof(DebugVertex), error)) return false;
-    wgpuQueueWriteBuffer(queue_, vbuf_, 0, verts.data(), count * sizeof(DebugVertex));
+    // This pass's own slot in both buffers (issue #61): the next pass of the frame takes
+    // the next one, so it cannot overwrite what this one reads before the single submit.
+    // Overrunning the budget is an error, not a silent wrap into the first pass's region.
+    if (pass_ >= kMaxPassesPerFrame) {
+        error = "debug prims frame overran its " + std::to_string(kMaxPassesPerFrame) +
+                " per-pass slots";
+        return false;
+    }
+    const uint32_t slot = pass_++;
+    const uint64_t uniformOffset = (uint64_t)slot * kUniformStride;
+    const uint64_t vertexOffset = (uint64_t)slot * kVertexSlotStride;
+
+    if (!ensureVertexBuffer(vertexOffset + (uint64_t)count * sizeof(DebugVertex), error))
+        return false;
+    wgpuQueueWriteBuffer(queue_, vbuf_, vertexOffset, verts.data(), count * sizeof(DebugVertex));
     // No transpose: glm and WGSL are both column-major, and the scene pass writes its
     // CameraUniform the same way.
-    wgpuQueueWriteBuffer(queue_, ubuf_, 0, &viewProj, sizeof viewProj);
+    wgpuQueueWriteBuffer(queue_, ubuf_, uniformOffset, &viewProj, sizeof viewProj);
 
     WGPURenderPassColorAttachment color = {};
     color.view = target.colorView;
@@ -372,15 +396,16 @@ bool DebugPrims::drawBatch(const Target& target, const glm::mat4& viewProj,
         return false;
     }
     wgpuRenderPassEncoderSetPipeline(pass, pipeline);
-    wgpuRenderPassEncoderSetBindGroup(pass, 0, group_, 0, nullptr);
+    const uint32_t dynamicOffset = (uint32_t)uniformOffset;
+    wgpuRenderPassEncoderSetBindGroup(pass, 0, group_, 1, &dynamicOffset);
     applyViewport(pass, options);
-    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vbuf_, 0, WGPU_WHOLE_SIZE);
+    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vbuf_, vertexOffset, WGPU_WHOLE_SIZE);
     wgpuRenderPassEncoderDraw(pass, (uint32_t)count, 1, 0, 0);
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
 
     stats_.vertices = count;
-    stats_.passes = 1;
+    stats_.passes = pass_;
     return true;
 }
 

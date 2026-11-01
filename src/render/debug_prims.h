@@ -384,12 +384,28 @@ public:
         size_t cubes = 0;            // cubes the last drawCubes submission drew
         size_t vertices = 0;         // == 2 * lines (or 36 * cubes), after any trim
         size_t droppedVertices = 0;  // trimmed by kMaxVertices, or reported by the batch
-        size_t passes = 0;           // 1 when a pass was recorded, 0 when nothing was queued
+        size_t passes = 0;           // passes the frame has recorded so far
     };
 
     // One uint32 draw call can address far more; this is a runaway guard, not a limit
     // anything real should reach.
     static constexpr size_t kMaxVertices = DebugLineBatch::kDefaultLimit;
+
+    // One vertex region AND one uniform slot per pass (issue #61). This is the defect #56
+    // fixed in the UI batch: a frame records several passes on one encoder, every
+    // wgpuQueueWriteBuffer lands before that frame's single submission, and a shared
+    // offset 0 therefore left every split-screen cell reading the LAST view's vertices
+    // and the LAST view's viewProj.
+    //
+    // beginFrame() opens a frame's budget. The composer's worst case is one match frame
+    // of four views, each drawing the time stop's negative plus its solid, additive and
+    // line passes (render_capture.inc) — exactly this number. A frame that overruns it
+    // fails in drawBatch() rather than wrapping into the first pass's region.
+    static constexpr uint32_t kMaxPassesPerFrame = 16;
+
+    // The overlay is drawn once per captured frame, so whoever issues the per-view passes
+    // calls this first. Without it the budget keeps counting across frames.
+    void beginFrame() { pass_ = 0; }
 
     DebugPrims() = default;
     ~DebugPrims();
@@ -461,6 +477,17 @@ private:
                                    Topology topology, std::string& error);
     bool               ensureVertexBuffer(uint64_t bytes, std::string& error);
 
+    // One uniform slot per pass, addressed by a dynamic offset (issue #61). The dynamic
+    // offset's alignment is fixed by WebGPU, hence the stride; the bind group's own
+    // binding size stays one matrix, and validation is satisfied at the largest offset
+    // because the buffer holds a whole slot after it.
+    static constexpr uint32_t kUniformSlots = kMaxPassesPerFrame;
+    static constexpr uint64_t kUniformStride = 256;  // minUniformBufferOffsetAlignment
+    // ... and one VERTEX region per pass, addressed by the binding's own byte offset: a
+    // WebGPU vertex buffer has no dynamic offset. Sized by the batch cap so any pass that
+    // kMaxVertices allows fits its region.
+    static constexpr uint64_t kVertexSlotStride = (uint64_t)kMaxVertices * sizeof(DebugVertex);
+
     WGPUDevice device_ = nullptr;   // borrowed
     WGPUQueue  queue_ = nullptr;    // borrowed
 
@@ -468,9 +495,10 @@ private:
     WGPUBindGroupLayout bgl_ = nullptr;
     WGPUPipelineLayout  layout_ = nullptr;
     WGPUBindGroup       group_ = nullptr;
-    WGPUBuffer          ubuf_ = nullptr;
-    WGPUBuffer          vbuf_ = nullptr;
+    WGPUBuffer          ubuf_ = nullptr;   // kUniformSlots * kUniformStride
+    WGPUBuffer          vbuf_ = nullptr;   // grown on demand to (pass + 1) * kVertexSlotStride
     uint64_t            vbufCapacity_ = 0;
+    uint32_t            pass_ = 0;         // passes recorded in the frame beginFrame() opened
 
     std::vector<PipelineEntry> pipelines_;   // created lazily, one per (format, mode, blend)
     DebugLineBatch             staging_;     // reused by the std::vector<DebugLine> forms

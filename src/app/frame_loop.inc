@@ -686,6 +686,26 @@ static SDL_AppResult appIterate(App* app) {
                     const render::DebugPrims::Stats& ds = app->debugPrims.stats();
                     std::printf("debug prims : %zu line(s), %zu vertices, %zu dropped, %zu pass(es)\n",
                                 ds.lines, ds.vertices, ds.droppedVertices, ds.passes);
+                    // Where each view's crosses belong in its own cell (issue #61), so a
+                    // capture test can count pixels at those points instead of assuming
+                    // that a frame with crossings somewhere is a correct one.
+                    for (size_t v = 0; v < frameCameras.size(); ++v) {
+                        const render::ViewCamera& cam = frameCameras[v];
+                        const render::ViewportRect cell = cellOf(cam.rect, (uint32_t)w, (uint32_t)h);
+                        float tx = 0.f, ty = 0.f, dx = 0.f, dy = 0.f;
+                        const bool hasTarget = projectToCell(cell, cam.viewProj, app->target, tx, ty);
+                        const bool hasDesired = app->opts.camera == "arena" &&
+                            projectToCell(cell, cam.viewProj, app->arenaDesired, dx, dy);
+                        char targetText[32] = "-";
+                        char desiredText[32] = "-";
+                        if (hasTarget)
+                            std::snprintf(targetText, sizeof targetText, "(%.1f,%.1f)", tx, ty);
+                        if (hasDesired)
+                            std::snprintf(desiredText, sizeof desiredText, "(%.1f,%.1f)", dx, dy);
+                        std::printf("[prims] view %zu: cell=(%.0f,%.0f,%.0f,%.0f) "
+                                    "target=%s desired=%s\n",
+                                    v, cell.x, cell.y, cell.w, cell.h, targetText, desiredText);
+                    }
                 }
                 // The front-end battle runs the same Match as --match, so its end-of-run
                 // summary (and issue #14's per-COM counters) is printed for it too.

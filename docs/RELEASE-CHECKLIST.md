@@ -566,6 +566,50 @@ test and is retired. A host rule matrix checks owner suppression, both colors
 and one-way versus mutual locks; the asset-backed scene test checks that mutual
 targeting reaches the opponent's HUD entry through the product's view builder.
 
+### 3.8 Which baselines the debug overlay's per-pass slots moved (issue #61)
+
+`render::DebugPrims` handed every pass of a frame one vertex buffer written at offset 0 and
+one `viewProj` uniform slot at offset 0, and every queue write of a frame lands before its
+single submission — so a four-view frame drew the LAST view's crosses in every cell. The fix
+gives each pass its own vertex region (a binding offset) and its own uniform slot (a dynamic
+offset), the same shape `src/ui/sprite.h` uses since §3.7; `DebugPrims::beginFrame()` opens
+the per-frame budget and a 17th pass fails in `drawBatch()` instead of wrapping.
+
+| recipe (add `--headless --no-audio --install=`, then) | before | after |
+|---|---|---|
+| `--screen=battle --local-players=1 --frames=240 --size=960x540 --debug-prims --camera=arena` | `36b46787` | `36b46787` (identical) |
+| `--screen=battle --local-players=1 --frames=300 --size=960x540 --debug-prims --camera=arena` | `b831bded` | `1a85b4b8` (**moves**) |
+| `--screen=battle --local-players=4 --frames=300 --size=960x540 --debug-prims --camera=arena` | `a7eae1bf` | `fe7fb125` (**moves**) |
+| `--screen=battle --local-players=4 --frames=400 --size=960x540 --debug-prims --camera=arena` | `ebdf0496` | `0a279da0` (**moves**) |
+| `--screen=battle --local-players=1 --frames=300 --size=960x540` (no `--debug-prims`) | — | unchanged, A/B identical |
+| `--screen=battle --local-players=4 --frames=300 --size=960x540` (no `--debug-prims`) | — | unchanged, A/B identical |
+
+Hashes are the first eight hex digits of `sha256sum` of the written PPM. **Issue #61's own
+acceptance expected the single-view output to be byte-identical, and it is — but only for a
+frame with ONE prims pass.** A single-view frame with the match's shot/spark cubes and the
+line overlay has two passes, and it moves because it was already wrong: the line pass
+overwrote the cube pass's vertices at offset 0, so the cubes were drawn from line data. The
+frames=240 row is the pinned identical case; the frames=300 single-view row is the repair.
+
+The test that pins the behaviour is `tests/prims_view_geometry.py` (`ctest -R
+prims_view_geometry`, host suite, skips 77 without a GPU or the install). Its oracle is the
+demo's own `[prims] view N: cell=… target=… desired=…` line, projected with the matrix that
+pass received: a cell whose own cyan desired-eye cross projects on-screen must carry it at
+that point, and a cell whose own projection is far outside must carry none. In the four-view
+frame the arena's desired eye projects above three cells and behind the fourth, so a correct
+frame draws it in ONE cell — the old "same cross in all four cells" was the defect's own
+artefact, which is why the suite cannot be written as "every cell has a cross". Reverting
+`drawBatch` to a shared slot 0 fails it on three views ("stray cyan" at (154,0-7) in cells
+that project the cross elsewhere); with the fix it passes. Evidence, including the before/after
+frames and the pre-fix binary, is untracked under `local-data/harness/issue61/`.
+
+The regression gate is unchanged: `tools/fingerprints.sh` still prints SIM `746ce7a9cbe6e44a` /
+`5331c6e70cd13962` / `e79f1dbb68d73853` and PIX `ff54a85d` / `a88d4de4` / `8ebdbd62`. That is
+expected rather than lucky — the gate's captures are `--screen=battle`, and the cube batches
+only fill under `--debug-prims` (`fillMatchCubes` returns early otherwise, issue #17), so every
+pass the gate photographs is a one-pass frame. `--match` captures at frames 120/300/600/900 are
+A/B identical for the same reason.
+
 ## 4. Asset sweep — every legal selection and every stage
 
 ### 4.1 All 46 character/weapon selections

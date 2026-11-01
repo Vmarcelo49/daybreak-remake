@@ -419,6 +419,18 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                          "${CMAKE_CURRENT_SOURCE_DIR}")
         set_tests_properties(hud_view_geometry PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
+        # Issue #61's debug overlay: the same defect one renderer over — DebugPrims gave every
+        # pass of a frame one vertex region and one uniform slot, so a four-view frame drew the
+        # last view's crosses in every cell. Its oracle is the demo's own `[prims] view N` line,
+        # the per-view projection each pass drew with. Same skip rule as the HUD checks.
+        add_test(NAME prims_view_geometry
+                 COMMAND ${Python3_EXECUTABLE}
+                         "${CMAKE_CURRENT_SOURCE_DIR}/tests/prims_view_geometry.py"
+                         "$<TARGET_FILE:daybreak>" "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak"
+                         "${CMAKE_CURRENT_SOURCE_DIR}")
+        set_tests_properties(prims_view_geometry PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900
+                                                     LABELS asset)
+
         # Issue #50's pause overlay pixels: a capture test for the same reason — the defect
         # was the overlay's pass reading the battle HUD's vertices out of the shared UI
         # buffer, which no layout test can see. It drives --pause-overlay=N (the same

@@ -241,6 +241,33 @@ bool screenCaptureHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTexture
         : ui::drawScreenFrame(*sk->screens, *sk->ui, w, h, enc, view, format, *sk->error);
 }
 
+// A view's cell in target pixels: an empty rect is the single-view frame, which draws over
+// the whole target (debug_prims.h's Options::viewport documents the same default).
+render::ViewportRect cellOf(const render::ViewportRect& rect, uint32_t width, uint32_t height) {
+    if (!rect.empty()) return rect;
+    return render::ViewportRect{0.f, 0.f, (float)width, (float)height};
+}
+
+// Where a world point lands inside one cell, in that cell's own pixels: the mapping the
+// prims pass gets from its viewport (clip -> NDC -> the cell), with WebGPU's Y-up NDC
+// against the framebuffer's Y-down rows. False when the point is behind the eye or outside
+// the depth range, where the shader clips it and nothing can be drawn: a caller then reports
+// "not in this view" rather than a mirrored or far-plane pixel.
+//
+// This exists so tests/prims_view_geometry.py can hold each cell's drawn crosses against
+// the matrix that view actually drew with (issue #61). "The crosses moved" would not be
+// enough: a cell reading another view's matrix still lands somewhere plausible.
+bool projectToCell(const render::ViewportRect& cell, const glm::mat4& viewProj,
+                   const glm::vec3& world, float& x, float& y) {
+    const glm::vec4 clip = viewProj * glm::vec4(world, 1.f);
+    if (!(clip.w > 0.f)) return false;   // at or behind the eye
+    const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+    if (ndc.z < 0.f || ndc.z > 1.f) return false;   // clipped by the depth range
+    x = (ndc.x * 0.5f + 0.5f) * cell.w;
+    y = (0.5f - ndc.y * 0.5f) * cell.h;
+    return true;
+}
+
 // The overlay's line set: a pure function of loaded state (bounds, aim, desired eye), so
 // two runs of the same frame upload identical bytes — no clock, no RNG, no container
 // iteration whose order could vary. render/debug_prims.h documents why captures care.
@@ -340,6 +367,9 @@ bool captureHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTextureFormat
             !drawBattlePauseOverlay(paused, enc, view, w, h, format)) return false;
     }
     const render::Target target{enc, view, format, w, h};
+    // This hook runs once per frame, after the scene pass, and issues every view's overlay
+    // below — so it is the frame boundary the prims' per-pass slots count from (issue #61).
+    if (ck->prims) ck->prims->beginFrame();
     if (ck->prims && ck->timeStop)
         for (const render::ViewCamera& frameView : ck->views)
             if (!ck->prims->invertView(target, frameView.rect, *ck->error)) return false;
