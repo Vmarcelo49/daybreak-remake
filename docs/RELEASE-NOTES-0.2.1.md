@@ -1,7 +1,7 @@
 # 0.2.1 release notes: DRAFT
 
 > **Not released.** The owner holds this version until the online changes below are decided and done.
-> Up to date through `8fa47413`. Add to it as work lands. Everything from "Before publishing" down is
+> Up to date through `a393826a`. Add to it as work lands. Everything from "Before publishing" down is
 > for us: delete it, and this note, when the text goes on the release page.
 
 **This is a test build.** Online play still needs testing over real networks. Expect problems, and please report them.
@@ -106,3 +106,5 @@ We added these for testing, and they aren't in the original:
 | `76b26cae` | Debug keys, `--plan` and related options, the `combo-test` skill | Test keys |
 | `d0766e21` | A session event counted twice, a fragile slot check in `net_play_check` | No: statistics and a test |
 | `8fa47413` | #90's fallback, #89's flow gate, `AGENTS.md` | Fixes (#90 only) |
+| `2f25d7e5` | The rendezvous server deployed, its port set by `DAYBREAK_PUBLIC_PORT` | No: the server, not the game |
+| `a393826a` | The owner's server as the default, and the SERVER row at full width | Online |
