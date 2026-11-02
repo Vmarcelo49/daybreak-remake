@@ -24,12 +24,17 @@
 namespace render {
 
 struct TitleCamera {
-    glm::vec3 pivot{0.f};   // what the sweep looks at: the arena camera's aim at the spawn
-    float radius = 800.f;   // ground distance from the pivot
-    float height = 250.f;   // eye height above the pivot
+    glm::vec3 pivot{0.f};   // what the sweep looks at
+    float radius = 800.f;   // horizontal distance from the pivot
+    float height = 250.f;   // eye height relative to the pivot; negative puts the eye below it
     float azimuth0 = 0.f;   // centre of the sweep, radians about +Y (from +X toward +Z)
     float swing = 0.35f;    // half-width of the sweep, radians
     float period = 44.f;    // seconds for one there-and-back pass
+    float fovY = 45.f;      // vertical field of view, degrees; 45 is viewProj's own
+    // Clamp the eye to collision_camera, as the arena camera does. Only a framing seeded
+    // from the arena wants it: that mesh bounds the play area, and an authored eye that
+    // stands outside it on purpose would be pulled in against the aim.
+    bool clampToArena = true;
 };
 
 struct TitleCameraPose {
@@ -63,6 +68,26 @@ inline TitleCamera titleCameraFor(const glm::vec3& spawn, float facingYaw = 0.f,
     // The sweep starts exactly where the arena camera would put the eye, so its first
     // frame is the game's own view of that spawn; the swing then moves away from it.
     camera.azimuth0 = std::atan2(offset.z, offset.x);
+    return camera;
+}
+
+// stage03 (the Furude shrine) composed after the painting in data/title/back00: the main
+// hall small and low in the frame, a stone lantern either side, cedars filling the top.
+// Measured on stage03's own geometry, not recovered: the hall (本体メイン) spans x ±570,
+// y 383..1080, z 4346..5225, and the yard in front of it sits at y ~200 behind a retaining
+// wall whose top the eye has to clear. The eye stands at (0, 430, 2300) — above that wall,
+// short of the torii at z ~1800 — and looks up at (0, 1000, 4800), so the hall's base
+// lands near the bottom of the menu. Beyond ±0.2 rad the flanking cedars cross the hall,
+// hence the narrow swing.
+inline TitleCamera shrineTitleCamera() {
+    TitleCamera camera;
+    camera.pivot = glm::vec3(0.f, 1000.f, 4800.f);
+    camera.radius = 2500.f;
+    camera.height = -570.f;
+    camera.azimuth0 = -1.57079632679f;   // eye on -Z of the hall, facing its front
+    camera.swing = 0.12f;
+    camera.fovY = 50.f;
+    camera.clampToArena = false;   // the eye is south of the play area by design
     return camera;
 }
 

@@ -181,8 +181,10 @@ void listScene(const xm::Scene& scene) {
 
 // Left-handed view + projection, unmodified: WebGPU presents a Y-up NDC on every
 // backend, so the negation a raw Vulkan port needs would render everything upside down.
+// `fovYDegrees` is 45 for every battle and demo frame — the value this function always
+// used — and only the title backdrop's composed framing asks for another (title_camera.h).
 glm::mat4 viewProj(const glm::vec3& eye, const glm::vec3& target, float aspect, float radius,
-                   float sceneReach) {
+                   float sceneReach, float fovYDegrees) {
     const float dist = glm::length(eye - target);
     // Near scales with the distance being framed; FAR must reach the whole scene, not
     // just the subject. A stage's sky dome sits tens of thousands of units out, so a
@@ -190,7 +192,7 @@ glm::mat4 viewProj(const glm::vec3& eye, const glm::vec3& target, float aspect, 
     // which reads as "the skybox has no texture" rather than as a clipping bug.
     const float nearZ = std::max(0.01f, dist * 0.001f);
     const float farZ = std::max({1000.f, dist + radius * 4.f, sceneReach * 1.05f});
-    return glm::perspectiveLH_ZO(glm::radians(45.f), aspect, nearZ, farZ) *
+    return glm::perspectiveLH_ZO(glm::radians(fovYDegrees), aspect, nearZ, farZ) *
            glm::lookAtLH(eye, target, glm::vec3(0, 1, 0));
 }
 

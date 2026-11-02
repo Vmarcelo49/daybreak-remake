@@ -6,10 +6,15 @@
 // the row must agree, and only these have labels. The original has no such row — its title
 // is data/title/back00 and nothing else — so every word here is the port's (PORT RULE).
 //
-// Why the shrine: the original's backdrop is itself a painted shrine approach
-// (docs/reference/README.md), so these candidates continue the subject the title already
-// has. --title-backdrop=stageNN accepts any stage directory for a one-off comparison; a
-// value the table does not carry then shows its directory name in the row.
+// Why the shrine, and why only these two: the original's backdrop is itself a painted
+// shrine approach (docs/reference/README.md), so these continue the subject the title
+// already has, and stage13 is stage03 at sunset — the same layout, so the composed framing
+// applies to both. The "upper" shrine scenes (stage06/16) are listed in neither: their
+// layout differs, so the shrine's numbers put a cedar through the frame there (rendered and
+// checked), and their own composed framing does not exist yet — the arena camera's fallback
+// gives them a gameplay view, not a title one.
+// --title-backdrop=stageNN still accepts any stage directory for a one-off comparison; a
+// value the table does not carry shows its directory name in the row.
 #include <string>
 
 #include "frontend/menu_panel.h"   // Words, say
@@ -25,9 +30,7 @@ struct TitleBackdropChoice {
 inline constexpr TitleBackdropChoice kTitleBackdrops[] = {
     {"",        "元のタイトル", "ORIGINAL"},
     {"stage03", "神社 昼",       "SHRINE DAY"},      // data/stage03 shrine_grounds_day
-    {"stage13", "神社 夕",       "SHRINE SUNSET"},   // data/stage13
-    {"stage06", "神社上 昼",     "UPPER DAY"},       // data/stage06 shrine_upper_day
-    {"stage16", "神社上 夕",     "UPPER SUNSET"},    // data/stage16
+    {"stage13", "神社 夕",       "SHRINE SUNSET"},   // data/stage13, same layout as 03
 };
 inline constexpr int kTitleBackdropCount =
     (int)(sizeof(kTitleBackdrops) / sizeof(kTitleBackdrops[0]));

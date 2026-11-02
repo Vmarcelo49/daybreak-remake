@@ -19,6 +19,16 @@ static std::string titleBackdropStage(const App& app) {
                                      : ui::frontendSettings().titleBackdrop;
 }
 
+// The framing a stage's title backdrop uses. stage13 is stage03 at sunset — the same
+// layout — so the shrine's composed framing applies to both, verified by rendering it on
+// each: the hall lands in the same place, only the light differs. Any other stage keeps the
+// arena camera's view of its spawn, which is a gameplay framing, not a title one: a curated
+// framing there is follow-up work if the owner keeps the experiment.
+static render::TitleCamera titleCameraForStage(const std::string& stage, const glm::vec3& spawn) {
+    if (stage == "stage03" || stage == "stage13") return render::shrineTitleCamera();
+    return render::titleCameraFor(spawn);
+}
+
 // Loads `stage` into app.titleBackdrop: geometry, bind pose, the camera's framing and the
 // camera-collision mesh. A stage that does not load is reported once and remembered as
 // failed, so a missing folder cannot turn into a per-frame load attempt.
@@ -71,7 +81,7 @@ static bool loadTitleBackdrop(App& app, const std::string& stage) {
     }
     const glm::vec3 spawn = state.scene.env.present ? state.scene.env.points[0]
                                                     : (lo + hi) * 0.5f;
-    state.camera = render::titleCameraFor(spawn);
+    state.camera = titleCameraForStage(stage, spawn);
     // The far plane has to reach the sky dome: the same reach the asset path computes.
     glm::vec3 slo(1e30f), shi(-1e30f);
     if (state.scene.bounds(slo, shi, /*playArea=*/false)) {
@@ -112,7 +122,7 @@ static bool ensureTitleBackdrop(App& app, const std::string& stage) {
 static void applyTitleBackdropCamera(App& app, float aspect) {
     TitleBackdropState& state = app.titleBackdrop;
     render::TitleCameraPose pose = render::titleCameraPose(state.camera, state.seconds);
-    if (!app.opts.noCameraClamp) {
+    if (state.camera.clampToArena && !app.opts.noCameraClamp) {
         const game::CameraClampResult clamp =
             app.cameraCollision.queryClamp({state.camera.pivot, pose.eye});
         if (clamp.hit) {
@@ -125,7 +135,8 @@ static void applyTitleBackdropCamera(App& app, float aspect) {
     app.target = pose.aim;
     // A stage's sky dome sits far outside the framed mesh, so the far plane follows the
     // scene's own reach (viewProj, scene.inc:184) instead of the framed distance.
-    app.renderer.setCamera(viewProj(pose.eye, pose.aim, aspect, state.camera.radius, state.reach));
+    app.renderer.setCamera(viewProj(pose.eye, pose.aim, aspect, state.camera.radius, state.reach,
+                                    state.camera.fovY));
     app.renderer.setEye(pose.eye);
 }
 

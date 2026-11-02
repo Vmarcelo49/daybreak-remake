@@ -45,7 +45,7 @@ toon = false                  # the Options screen's toon-rendering row (issue #
 shadows = false               # character shadow-map row (issue #21, row 1)
 
 [title]
-backdrop =                    # original art, or a stage directory drawn live behind the title menu (issue #98): stage03, stage13, stage06, stage16
+backdrop =                    # original art, or a stage directory drawn live behind the title menu (issue #98): stage03 or stage13
 
 [audio]
 master = 100                  # 0..100, one per bus
@@ -105,9 +105,12 @@ pad2_guid =
   stage live behind the same menu with a slow camera. It is a **port experiment**, labelled
   as such: the original's title is one still sheet and has no 3D pass, so nothing here is
   recovered behaviour and the owner's eye decides whether it stays. The Options row
-  (TITLE BACKGROUND) cycles a short list of shrine stages, whose labels are the port's
-  (`src/frontend/title_backdrop.h`); `--title-backdrop=stageNN` overrides the row for one
-  run, and `--title-backdrop=off` is the same as the empty value. The row's choice takes
+  (TITLE BACKGROUND) cycles the curated pair — `stage03` and `stage13`, the shrine grounds
+  by day and at sunset, which share one layout and therefore one composed camera — and its
+  labels are the port's (`src/frontend/title_backdrop.h`); `--title-backdrop=stageNN`
+  overrides the row for one run and accepts any stage, though only those two have a
+  composed framing (the rest get the arena camera's view of the spawn), and
+  `--title-backdrop=off` is the same as the empty value. The row's choice takes
   effect the next time the title is entered, because that is when its scene is built. A
   stage that is not in the install is reported and the original art stays, so a moved or
   partial install cannot leave a black title. The camera is a port rule

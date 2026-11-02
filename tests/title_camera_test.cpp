@@ -79,6 +79,24 @@ int main() {
         CHECK(std::fabs(delta) <= camera.swing + 1e-5f);
     }
 
+    // The composed shrine framing (issue #98): these numbers are an authored port rule, but
+    // they are the ones the owner judged against the original's painting, so the frame is
+    // pinned here — a later tweak to the pose math or a stray constant would move it.
+    const TitleCamera shrine = shrineTitleCamera();
+    const TitleCameraPose shrineStart = titleCameraPose(shrine, 0.f);
+    CHECK(nearly(shrineStart.eye, glm::vec3(0.f, 430.f, 2300.f), 0.01f));
+    CHECK(nearly(shrineStart.aim, glm::vec3(0.f, 1000.f, 4800.f), 0.01f));
+    CHECK(std::fabs(shrine.fovY - 50.f) < 1e-4f);
+    CHECK(!shrine.clampToArena);   // the eye stands outside the play area on purpose
+    // The hall's front is at z 4346 and its side walls at x ±570 (title_camera.h): through
+    // the whole sweep the eye must stay in front of it, centred enough to keep it framed.
+    for (float seconds = 0.f; seconds < shrine.period; seconds += 0.5f) {
+        const TitleCameraPose pose = titleCameraPose(shrine, seconds);
+        CHECK(pose.eye.z < 4346.f);
+        CHECK(std::fabs(pose.eye.x) < 600.f);
+        CHECK(std::isfinite(pose.eye.x) && std::isfinite(pose.eye.y) && std::isfinite(pose.eye.z));
+    }
+
     // The spawn's facing turns the sweep with it: a stage that faces another way is framed
     // from that way, because the seeding is arenaViewProj's own bearing.
     const TitleCamera turned = titleCameraFor(spawn, 1.2f);

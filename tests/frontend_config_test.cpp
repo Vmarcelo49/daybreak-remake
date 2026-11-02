@@ -204,13 +204,13 @@ int main() {
         CHECK(ui::titleBackdropIndex("stage03") == 1);
         CHECK(ui::titleBackdropIndex("stage99") < 0);
         CHECK(ui::cycleTitleBackdrop("", 1) == "stage03");
-        CHECK(ui::cycleTitleBackdrop("", -1) == "stage16");
-        CHECK(ui::cycleTitleBackdrop("stage16", 1) == "");
+        CHECK(ui::cycleTitleBackdrop("", -1) == "stage13");
+        CHECK(ui::cycleTitleBackdrop("stage13", 1) == "");
         CHECK(ui::cycleTitleBackdrop("stage99", 1) == "");
-        CHECK(ui::cycleTitleBackdrop("stage99", -1) == "stage16");
+        CHECK(ui::cycleTitleBackdrop("stage99", -1) == "stage13");
         CHECK(ui::titleBackdropLabel("stage13") != "stage13");   // a labelled choice
         CHECK(ui::titleBackdropLabel("stage99") == "stage99");   // unlisted: the directory
-        CHECK(ui::titleBackdropLabel("") == ui::titleBackdropLabel(""));
+        CHECK(ui::titleBackdropIndex("stage06") < 0);            // the upper shrine is not curated
 
         // A value that is not a stage directory warns and leaves the original art; "off" is
         // the documented spelling of the same thing and is not a warning.

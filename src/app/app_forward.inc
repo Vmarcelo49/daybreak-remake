@@ -6,7 +6,7 @@ static size_t appendCharacter(xm::Scene& scene, const std::string& spec, const x
 static size_t firstCharacter(const xm::Scene& scene, size_t from);
 static xm::Scene loadScene(const Options& o, std::string& error, size_t* enemyBegin );
 static void listScene(const xm::Scene& scene);
-static glm::mat4 viewProj(const glm::vec3& eye, const glm::vec3& target, float aspect, float radius, float sceneReach);
+static glm::mat4 viewProj(const glm::vec3& eye, const glm::vec3& target, float aspect, float radius, float sceneReach, float fovYDegrees = 45.f);
 static Mat4 rotationZ(float radians, float scale);
 static bool historicalMatchCapture(const App& app);
 static void applyWeaponVisibility(App& app);
