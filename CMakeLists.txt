@@ -379,6 +379,22 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
             DESTINATION LICENSES RENAME daybreak-decomp.txt)
 endif()
 
+# The release signing tool (issue #100). Host-only and never shipped: the owner signs
+# update-manifest.txt on their own machine, so the Windows and web builds have no use
+# for it, and the game only ever carries the public key. It links the pinned Monocypher
+# that scripts/fetch_deps.sh fetches.
+if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
+    set(MONOCYPHER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/monocypher")
+    if(NOT EXISTS "${MONOCYPHER_DIR}/monocypher.c")
+        message(FATAL_ERROR "third_party/monocypher is missing — run ./build.sh deps")
+    endif()
+    add_executable(release_sign
+        tools/release_sign/main.cpp
+        "${MONOCYPHER_DIR}/monocypher.c"
+        "${MONOCYPHER_DIR}/monocypher-ed25519.c")
+    target_include_directories(release_sign PRIVATE "${MONOCYPHER_DIR}")
+endif()
+
 # Host-side tests. Native-only on purpose: the Windows target is cross-compiled and
 # the web target cannot run a host binary, so neither can execute them, and building
 # them there would only add a target nothing runs. All three are device-free by design:
@@ -814,6 +830,14 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
              COMMAND ${Python3_EXECUTABLE}
                      "${CMAKE_CURRENT_SOURCE_DIR}/tests/update_manifest_test.py")
 
+    # The offline signing tool (issue #100): RFC 8032 vectors, a keygen/sign/verify round
+    # trip, tamper and wrong-key refusals, and the key-file rules. Throwaway keys live in
+    # a temp directory; the real release key is never generated on this machine.
+    add_test(NAME release_sign_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/release_sign_test.py"
+                     $<TARGET_FILE:release_sign>)
+
     # The battle HUD's sprite table and draw geometry: device-free arithmetic over the
     # transcribed .rdata anchors, so it needs the headers' include path and webgpu.h only.
     add_executable(hud_sprite_table tests/hud_sprite_table.cpp)
@@ -1100,6 +1124,7 @@ set(DAYBREAK_AREA_SETTINGS
 set(DAYBREAK_AREA_PLATFORM
     input_backend_test launcher_test controller_scene_lifetime_test bgm_loop_test
     unicode_path_check check_tools_test package_manifest_test update_manifest_test
+    release_sign_test
 )
 
 foreach(daybreak_area frontend hud battle net render data settings platform)
