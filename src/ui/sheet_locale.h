@@ -6,7 +6,8 @@
 // assets/locale/<language>.txt. No art enters the repository, and changing a label is one line.
 //
 // A line is `sheet | x y w h | style | text`, where `\n` breaks a line. With no language set, or for
-// a sheet the file does not name, the sheet is untouched.
+// a sheet the file does not name, the sheet is untouched. Runtime text uses
+// `key | index 0 0 0 | text | translation` instead of a sheet rectangle.
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -18,6 +19,8 @@ namespace ui {
 bool setSheetLanguage(const std::string& language, std::string& error);
 // Empty until a language is set: the game's own Japanese.
 const std::string& sheetLanguage();
+// Returns an empty string when the active locale has no matching runtime text.
+const std::string& localeText(const std::string& key, int index);
 
 struct SheetLabel {
     std::string sheet;  // lower case, without an extension

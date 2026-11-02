@@ -20,6 +20,9 @@ static ui::FrontendState twoVsTwo() {
 }
 
 int main() {
+    CHECK(ui::resultTitleScale(0.f) == .8f);
+    CHECK(ui::resultTitleScale(500.f) == .8f);
+    CHECK(ui::resultTitleScale(920.f) == .5f);
     // A 1v1 is panels 0 and 2 — the two PRIMARY panels the old code assumed — and nothing else.
     ui::FrontendState solo;
     solo.slots[0].character = 0;

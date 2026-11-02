@@ -150,6 +150,12 @@ struct ResultRow {
 inline constexpr float kResultRowTop = 100.f;
 inline constexpr float kResultRowStep = 72.f;
 
+// The earned title's scale: .8 of its layout, narrowed so a long translation stays inside the
+// report column (textX 300, 500 px to the canvas edge) instead of running off the screen.
+inline float resultTitleScale(float widthAtOne) {
+    return widthAtOne * .8f > 460.f ? 460.f / widthAtOne : .8f;
+}
+
 inline ResultRow resultRow(int row) {
     const float y = kResultRowTop + kResultRowStep * (float)row;
     return ResultRow{200.f, y, 300.f, y, y + 32.f, y + 50.f};

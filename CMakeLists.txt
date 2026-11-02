@@ -318,7 +318,9 @@ endif()
 
 set(CAPTION_CJK_FONT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/NotoSansCJKjp-Regular.otf")
 if(EMSCRIPTEN)
-    set_property(TARGET daybreak APPEND PROPERTY LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/gyrotrope-black.otf")
+    set_property(TARGET daybreak APPEND PROPERTY LINK_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/gyrotrope-black.otf"
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/locale/en.txt")
     if(EXISTS "${CAPTION_CJK_FONT}")
         target_link_options(daybreak PRIVATE "SHELL:--preload-file ${CAPTION_CJK_FONT}@/assets/fonts/NotoSansCJKjp-Regular.otf")
         set_property(TARGET daybreak APPEND PROPERTY LINK_DEPENDS "${CAPTION_CJK_FONT}")
@@ -399,6 +401,14 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_tools_test.py")
         set_tests_properties(check_tools_test PROPERTIES TIMEOUT 300)
 
+
+        add_test(NAME english_captions_test
+                 COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tests/english_captions_test.py")
+
+        add_test(NAME locale_screen_check
+                 COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tests/locale_screen_check.py"
+                         "$<TARGET_FILE:daybreak>" "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak")
+        set_tests_properties(locale_screen_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
         add_test(NAME hud_cell_scale
                  COMMAND ${Python3_EXECUTABLE}
@@ -883,8 +893,19 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME story_script_test COMMAND story_script_test)
     set_tests_properties(story_script_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
+    add_executable(locale_coverage_test tests/locale_coverage_test.cpp)
+    target_link_libraries(locale_coverage_test PRIVATE ui assets glm)
+    add_test(NAME locale_coverage_test COMMAND locale_coverage_test)
+
+    add_executable(locale_sheets_test tests/locale_sheets_test.cpp)
+    target_link_libraries(locale_sheets_test PRIVATE ui assets glm)
+    add_dependencies(locale_sheets_test caption_fonts)
+    add_test(NAME locale_sheets_test COMMAND locale_sheets_test)
+    set_tests_properties(locale_sheets_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
+
     add_executable(result_title_test tests/result_title_test.cpp)
     target_link_libraries(result_title_test PRIVATE gameplay ui assets glm)
+    add_dependencies(result_title_test caption_fonts)
     add_test(NAME result_title_test COMMAND result_title_test)
     set_tests_properties(result_title_test PROPERTIES LABELS asset)
 

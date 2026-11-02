@@ -6,12 +6,15 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 #define CHECK(condition) do { if (!(condition)) { std::fprintf(stderr,"%s:%d: %s\n",__FILE__,__LINE__,#condition); return 1; } } while (false)
 
 #include "frontend/result_title.h"
 #include "frontend/result_quote.h"
+#include "ui/sheet_locale.h"
 
 namespace fs = std::filesystem;
 
@@ -113,6 +116,50 @@ int main() {
         const int pick = ui::resultQuoteEntryIndex((int)entries.size(), 1, 3600);
         CHECK(pick >= 0 && pick < 2);
         CHECK(ui::resultQuoteEntryIndex(0, 0, 0) == -1);
+    }
+
+    // The locale must have exactly one nonempty ASCII translation for every title index.
+    {
+        // Parse the copy the runtime loads (CWD, beside the binary), falling back to the source.
+        fs::path locale = "assets/locale/en.txt";
+        std::ifstream file(locale);
+        if (!file.good()) {
+            locale = fs::path(__FILE__).parent_path().parent_path() / locale;
+            file.open(locale);
+        }
+        CHECK(file.good());
+        const std::string contents{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+        std::string error;
+        const auto labels = ui::parseSheetLabels(contents, error);
+        CHECK(error.empty());
+        int seen[gameplay::kResultTitleCount] = {};
+        for (const auto& label : labels) {
+            if (label.sheet != "result/title") continue;
+            CHECK(label.style == "text" && label.y == 0 && label.w == 0 && label.h == 0);
+            CHECK(label.x >= 0 && label.x < gameplay::kResultTitleCount);
+            CHECK(!label.text.empty());
+            for (unsigned char c : label.text) CHECK(c >= 32 && c < 127);
+            ++seen[label.x];
+        }
+        for (int count : seen) CHECK(count == 1);
+        CHECK(ui::setSheetLanguage("en", error));
+        gameplay::ResultTitleTable fake;
+        fake.titles.resize(gameplay::kResultTitleCount, "日本語");
+        for (int i = 0; i < gameplay::kResultTitleCount; ++i) {
+            CHECK(!ui::localeText("result/title", i).empty());
+            CHECK(gameplay::resultTitleForLanguage(fake, i) == ui::localeText("result/title", i));
+        }
+        CHECK(gameplay::resultTitleForLanguage(fake, 0, true, "") == "UNKNOWN TITLE");
+        CHECK(gameplay::resultTitleForLanguage(fake, 0, false, "") == "日本語");
+        CHECK(gameplay::resultTitleForLanguage(fake, -1, true, "").empty());
+        CHECK(ui::localeText("result/title", -1).empty());
+        CHECK(ui::localeText("result/title", gameplay::kResultTitleCount).empty());
+        CHECK(!ui::setSheetLanguage("missing-locale", error));
+        CHECK(ui::sheetLanguage() == "en");
+        CHECK(!ui::localeText("result/title", 6).empty());
+        CHECK(ui::setSheetLanguage("ja", error));
+        CHECK(ui::localeText("result/title", 0).empty());
+        CHECK(gameplay::resultTitleForLanguage(fake, 0) == "日本語");
     }
 
     // --- the shipped title table (asset-backed, skipped without the install) ---

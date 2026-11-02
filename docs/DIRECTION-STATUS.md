@@ -19,6 +19,32 @@
 > in `DIRECTION.md` §4 Phase 2 and §5. The work log is append-only and unchanged;
 > entries written under the previous plan stand as history.
 
+## Issue #96 — work report (closed)
+
+The menus, HUD and result report are translated through `assets/locale/en.txt`. Earned result
+titles have 41 English entries; Japanese mode keeps the installed executable's strings (table at
+VA `0x6b7308`, pinned executable SHA-256
+`27e61475fbb3ea67f5058e3e0e6e93ad71d16a4d83fa42b02e605913a6a07f02`). The English wording is
+translation, not original-runtime evidence.
+
+- **Delivered:** the 41 titles and their locale route; an English-mode miss shows `UNKNOWN TITLE`
+  instead of the Japanese name; long titles shrink into the report column; three unreachable
+  locale rows removed; the locale parser rejects malformed rects, empty text, trailing fields and
+  duplicate cells.
+- **Checks:** `locale_coverage_test` (every key maps to a maintained cell manifest, both ways),
+  `locale_sheets_test` (each cell actually changes on the bundle-first sheets),
+  `locale_screen_check` (paired English/Japanese captures on seven screens plus the result
+  report), `english_captions_test` (bilingual literal pairs have no CJK English branch), and
+  `result_title_test` (41 lookups and missing-entry behaviour).
+- **Verified:** native suite **74/74 passed, 3 skipped** (`cross_build_check`, `unicode_path_check`,
+  `texture_pack_check`); a tier-5 result capture shows four translated titles inside the column.
+  Web/Windows builds were not rebuilt for this change.
+- **Limitations:** the screen checks sample states; they do not prove every English-mode screen
+  state is free of Japanese. The 41 titles' readability was reviewed only in that capture.
+- **Owner-approved exceptions:** the Japanese title logo stays as branding, and burned-in movie
+  text stays. Dialogue and win-screen victory quotes move to #99 (far future), with scope in
+  [`TRANSLATION-INVENTORY.md`](TRANSLATION-INVENTORY.md).
+
 ## Current snapshot (2026-10-30) — authoritative over older cells
 
 | Item | Current value |

@@ -430,7 +430,7 @@ static SDL_AppResult appIterate(App* app) {
                     const int title = app->battle->fighter(i).result_title();
                     static gameplay::ResultTitleTable titleTable;
                     static bool titleTableTried = false;
-                    if (!titleTableTried) {
+                    if (ui::sheetLanguage().empty() && !titleTableTried) {
                         titleTableTried = true;
                         std::string titleError;
                         const std::string& install = fnd::assets::assetSource().installDir();
@@ -440,14 +440,15 @@ static SDL_AppResult appIterate(App* app) {
                             std::fprintf(stderr, "[title] names unavailable: %s\n",
                                          titleError.empty() ? "no install open" : titleError.c_str());
                     }
-                    app->frontend.resultTitleText[panel] = titleTable.text(title);
+                    app->frontend.resultTitleText[panel] = gameplay::resultTitleForLanguage(titleTable, title);
                     // The penalty title's session flag (FUN_00635d40:377-380), keyed by the panel
                     // because that is a local player's stable identity here. Session state only:
                     // it is never written to any settings file.
                     if (title == gameplay::kResultTitlePenalty &&
                         app->frontend.slots[panel].controller < 4)
                         app->frontend.penaltyDecided[panel] = true;
-                    std::printf("[title] panel %d fighter %d -> %d '%s'\n", panel, i, title, titleTable.text(title));
+                    std::printf("[title] panel %d fighter %d -> %d '%s'\n", panel, i, title,
+                                app->frontend.resultTitleText[panel].c_str());
                 }
 #ifdef DAYBREAK_ONLINE
                 endOnlineMatch(*app);

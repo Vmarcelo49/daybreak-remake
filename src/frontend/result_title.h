@@ -26,4 +26,10 @@ struct ResultTitleTable {
 // `exePath` is the installed DaybreakDX.exe.
 bool loadResultTitles(const std::string& exePath, ResultTitleTable& out, std::string& error);
 
+// A missing English entry must never fall back to the Japanese name.
+std::string resultTitleForLanguage(const ResultTitleTable& table, int index);
+// The explicit form, for a caller (or test) that already resolved the locale lookup.
+std::string resultTitleForLanguage(const ResultTitleTable& table, int index,
+                                   bool translated, const std::string& translation);
+
 }  // namespace gameplay

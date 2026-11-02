@@ -210,7 +210,7 @@ public:
                 const int controller = std::clamp(participants_[i].controller,0,4);
                 batch.pushSprite(systemSheet_,{controller*64.f,384,64,32},0,0,row.badgeX,row.badgeY);
                 drawText(batch,rowLayout_[i],row.textX,row.textY,.5f);
-                drawText(batch,titleLayout_[i],row.textX,row.titleY,.8f);
+                drawText(batch,titleLayout_[i],row.textX,row.titleY,resultTitleScale(titleLayout_[i].width(1.f)));
                 drawText(batch,statsLayout_[i],row.textX,row.statsY,.5f);
             }
         }

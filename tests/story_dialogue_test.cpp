@@ -157,6 +157,19 @@ static void testSheetLabels() {
     }
     ui::parseSheetLabels("data/title/title | 1 2 | label | STORY\n", error);
     CHECK(error.find("line 1") != std::string::npos);
+    for (const char* invalid : {"sheet | -1 0 3 4 | label | BAD",
+                                "sheet | 0 0 0 4 | label | BAD",
+                                "sheet | 0 0 3 4 extra | label | BAD",
+                                "result/title | 0 1 0 0 | text | BAD",
+                                "result/title | -1 0 0 0 | text | BAD",
+                                "result/title | 0 0 0 0 | text | "}) {
+        error.clear();
+        CHECK(ui::parseSheetLabels(invalid, error).empty());
+        CHECK(!error.empty());
+    }
+    error.clear();
+    CHECK(ui::parseSheetLabels("result/title | 0 0 0 0 | text | TITLE", error).size() == 1);
+    CHECK(error.empty());
 }
 
 int main() {

@@ -381,8 +381,12 @@ std::vector<SheetLabel> parseSheetLabels(const std::string& text, std::string& e
             label.style = trim(line.substr(b + 1, c - b - 1));
             label.text = trim(line.substr(c + 1));
             std::istringstream rect(line.substr(a + 1, b - a - 1));
-            rect >> label.x >> label.y >> label.w >> label.h;
-            if (rect && !label.sheet.empty()) {
+            const bool parsed = static_cast<bool>(rect >> label.x >> label.y >> label.w >> label.h);
+            char extra;
+            const bool trailing = static_cast<bool>(rect >> extra);
+            if (parsed && !trailing && !label.sheet.empty() && !label.text.empty() &&
+                (label.style == "text" ? label.x >= 0 && label.y == 0 && label.w == 0 && label.h == 0
+                                       : label.x >= 0 && label.y >= 0 && label.w > 0 && label.h > 0)) {
                 labels.push_back(std::move(label));
                 continue;
             }
@@ -404,30 +408,54 @@ bool setSheetLanguage(const std::string& language, std::string& error) {
         return false;
     }
     std::string failure;
-    gLabels = parseSheetLabels(text, failure);
+    auto labels = parseSheetLabels(text, failure);
     if (!failure.empty()) {
         error = language + ".txt, " + failure;
         return false;
     }
-    for (const SheetLabel& label : gLabels)
-        if (!kStyles.count(label.style)) {
+    for (size_t i = 0; i < labels.size(); ++i) {
+        const SheetLabel& label = labels[i];
+        if (label.style != "text" && !kStyles.count(label.style)) {
             error = language + ".txt: unknown style " + label.style;
             return false;
         }
-    gFontBytes = readFontFile(kFontFile);
-    if (gFontBytes.empty() || !stbtt_InitFont(&gFont, gFontBytes.data(), 0)) {
+        for (size_t j = 0; j < i; ++j) {
+            const SheetLabel& previous = labels[j];
+            if (label.sheet == previous.sheet && (label.style == "text") == (previous.style == "text") &&
+                label.x == previous.x && label.y == previous.y &&
+                label.w == previous.w && label.h == previous.h) {
+                error = language + ".txt: duplicate cell " + label.sheet + " at " +
+                        std::to_string(label.x) + "," + std::to_string(label.y);
+                return false;
+            }
+        }
+    }
+    auto fontBytes = readFontFile(kFontFile);
+    stbtt_fontinfo font;
+    if (fontBytes.empty() || !stbtt_InitFont(&font, fontBytes.data(), 0)) {
         error = std::string("cannot read ") + kFontFile + " from assets/fonts";
         return false;
     }
+    gFontBytes = std::move(fontBytes);
+    gFont = font;
+    gGlyphs.clear();
+    gLabels = std::move(labels);
     gLanguage = language;
     return true;
 }
 
 const std::string& sheetLanguage() { return gLanguage; }
 
+const std::string& localeText(const std::string& key, int index) {
+    static const std::string empty;
+    for (const SheetLabel& label : gLabels)
+        if (label.style == "text" && label.sheet == key && label.x == index) return label.text;
+    return empty;
+}
+
 bool localizeSheet(const std::string& stem, const uint8_t* rgba, int width, int height, int logicalWidth, LocalizedSheet& out) {
     const std::string key = lowered(stem);
-    const auto named = [&](const SheetLabel& label) { return label.sheet == key; };
+    const auto named = [&](const SheetLabel& label) { return label.style != "text" && label.sheet == key; };
     if (std::none_of(gLabels.begin(), gLabels.end(), named)) return false;
     // A pack image may already be as large as the labels want, or larger.
     const int sourceScale = width / logicalWidth;

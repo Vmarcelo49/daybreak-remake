@@ -1,6 +1,50 @@
 # English labels for the menus and the HUD.
 # sheet | x y w h | style | text
 # A rect is the label's cell on the sheet. \n breaks a line. Styles are in src/ui/sheet_locale.cpp.
+# Runtime text uses key | index 0 0 0 | text | translation.
+
+# Result titles: indices follow the 41-entry executable table.
+result/title |  0 0 0 0 | text | MERCILESS HIGURASHI
+result/title |  1 0 0 0 | text | BEAUTIFUL HIGURASHI
+result/title |  2 0 0 0 | text | ULTIMATE WEAPON HIGURASHI
+result/title |  3 0 0 0 | text | LONE WOLF
+result/title |  4 0 0 0 | text | NEWTYPE
+result/title |  5 0 0 0 | text | BULLET HELL IS POWER
+result/title |  6 0 0 0 | text | HIGURASHI MASTER
+result/title |  7 0 0 0 | text | L5 PATIENT
+result/title |  8 0 0 0 | text | BULLET HELL IS BRAINS
+result/title |  9 0 0 0 | text | MADE IN HEAVEN
+result/title | 10 0 0 0 | text | MY BRO AND ME
+result/title | 11 0 0 0 | text | TERMINATOR
+result/title | 12 0 0 0 | text | LEGENDARY HERO
+result/title | 13 0 0 0 | text | GOLGO
+result/title | 14 0 0 0 | text | BIG MAGNUM
+result/title | 15 0 0 0 | text | ASSASSIN
+result/title | 16 0 0 0 | text | AUTOMATED TURRET
+result/title | 17 0 0 0 | text | FORTRESS
+result/title | 18 0 0 0 | text | HYENA
+result/title | 19 0 0 0 | text | CLUB ROOKIE
+result/title | 20 0 0 0 | text | MELANCHOLY HERO
+result/title | 21 0 0 0 | text | SITTING DUCK
+result/title | 22 0 0 0 | text | CONVENTIONAL WEAPON HIGURASHI
+result/title | 23 0 0 0 | text | KNOWN FOR DEFENSE
+result/title | 24 0 0 0 | text | NOBODY HIGURASHIS BETTER THAN ME
+result/title | 25 0 0 0 | text | AT YOUR SERVICE!
+result/title | 26 0 0 0 | text | THAT HIGURASHI
+result/title | 27 0 0 0 | text | TONNURA
+result/title | 28 0 0 0 | text | FAMOUS TWINS
+result/title | 29 0 0 0 | text | LUCKY TRIGGER
+result/title | 30 0 0 0 | text | EASY AS PIE
+result/title | 31 0 0 0 | text | LAND OF MONSTERS
+result/title | 32 0 0 0 | text | FIGHTING WHILE FALLING
+result/title | 33 0 0 0 | text | RECKLESS CHARGER
+result/title | 34 0 0 0 | text | FALSE REINFORCEMENTS
+result/title | 35 0 0 0 | text | MICHAEL
+result/title | 36 0 0 0 | text | MYSTERIOUS HIGURASHI
+result/title | 37 0 0 0 | text | CLUB GUEST
+result/title | 38 0 0 0 | text | LONELY SOUL
+result/title | 39 0 0 0 | text | VILLAGER A
+result/title | 40 0 0 0 | text | PENALTY GAME DECIDED
 
 # Title: selected and unselected columns
 data/title/title |   0   0 192 48 | menu | STORY
@@ -50,7 +94,6 @@ data/select/p01 |   0  64 256 64 | dim   | START BATTLE
 data/select/p01 |   0 128 256 64 | label | READY!
 data/select/p01 | 256  64 128 64 | label | OK
 data/select/p01 | 384  64 128 64 | label | BACK
-data/select/p01 | 256 128 128 64 | dim   | OK
 data/select/p01 | 384 128 128 64 | dim   | BACK
 data/select/p01 |   0 320 256 64 | label | TIME LIMIT
 data/select/p01 | 256 320 256 64 | dim   | TIME LIMIT
@@ -186,7 +229,6 @@ data/select/pbg00 |   0 192 320 64 | label | FURUDE SHRINE
 data/select/pbg00 |   0 256 320 64 | label | RIVERSIDE ROAD
 data/select/pbg00 |   0 320 320 64 | label | DAM SITE RUINS
 data/select/pbg00 |   0 384 320 64 | label | SHRINE VAULT
-data/select/pbg00 | 384   0 128 64 | label | RANDOM
 data/select/pbg00 | 384  64 128 64 | label | DAY
 data/select/pbg00 | 384 128 128 64 | label | DUSK
 data/select/pbg00 | 384 192 128 64 | label | NIGHT
@@ -197,7 +239,6 @@ data/select/pbg02 |   0 192 320 64 | dim | FURUDE SHRINE
 data/select/pbg02 |   0 256 320 64 | dim | RIVERSIDE ROAD
 data/select/pbg02 |   0 320 320 64 | dim | DAM SITE RUINS
 data/select/pbg02 |   0 384 320 64 | dim | SHRINE VAULT
-data/select/pbg02 | 384   0 128 64 | dim | RANDOM
 data/select/pbg02 | 384  64 128 64 | dim | DAY
 data/select/pbg02 | 384 128 128 64 | dim | DUSK
 data/select/pbg02 | 384 192 128 64 | dim | NIGHT

@@ -1,6 +1,7 @@
 #include "frontend/result_title.h"
 
 #include "assets/exe_strings.h"
+#include "ui/sheet_locale.h"
 
 namespace gameplay {
 bool loadResultTitles(const std::string& exePath, ResultTitleTable& out, std::string& error) {
@@ -14,6 +15,16 @@ bool loadResultTitles(const std::string& exePath, ResultTitleTable& out, std::st
         return false;
     }
     return true;
+}
+
+std::string resultTitleForLanguage(const ResultTitleTable& table, int index,
+                                   bool translated, const std::string& translation) {
+    if (!translated) return table.text(index);
+    return translation.empty() && index >= 0 && index < kResultTitleCount ? "UNKNOWN TITLE" : translation;
+}
+
+std::string resultTitleForLanguage(const ResultTitleTable& table, int index) {
+    return resultTitleForLanguage(table, index, !ui::sheetLanguage().empty(), ui::localeText("result/title", index));
 }
 
 }  // namespace gameplay
