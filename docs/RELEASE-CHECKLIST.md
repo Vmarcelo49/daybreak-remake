@@ -74,8 +74,8 @@ ctest --test-dir build/linux -L slow --output-on-failure  # required before a re
 
 The suite is split by the wall time a test structurally needs (`slow` labels, set beside
 the tests in `CMakeLists.txt`). The default tier is the per-change set. The `slow` tier is
-`online_flow_check`, `net_play_check`, `rollback_pixels_check`, `animation_pose_test`,
-`effect_catalog_test`, `sim_pose_test` and `npr_experiments`: real games over a network
+`online_flow_check`, `online_join_feedback`, `net_play_check`, `rollback_pixels_check`,
+`animation_pose_test`, `effect_catalog_test`, `sim_pose_test` and `npr_experiments`: real games over a network
 (an online capture is throttled to the frame rate, so the flow's own duration is the wall
 time), the full rollback pixel matrix, and the whole-roster / all-models audits. **A release
 gate runs both.** Every test has a hard timeout, so a hang fails rather than holds the run.

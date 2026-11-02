@@ -111,7 +111,7 @@ ctest --test-dir build/linux -L slow --output-on-failure      # before a release
 
 The suite is split by the wall time a test structurally needs. The default tier is the
 per-change set and takes a few minutes; the `slow` label marks the tests whose cost is
-their subject — the two online walks (an online capture is throttled to the frame rate, so
+their subject — the three online tests (an online capture is throttled to the frame rate, so
 the flow's own duration is the wall time), the full rollback pixel matrix, and the
 whole-roster/all-models audits. Every test also has a hard timeout, so a hang fails the run
 instead of holding it. The label list lives in `CMakeLists.txt` beside the tests.
@@ -120,6 +120,32 @@ Read CTest's own summary rather than a count in a document. Tests that need the 
 skip themselves (exit 77) on a checkout without one; the release checklist is
 [`docs/RELEASE-CHECKLIST.md`](docs/RELEASE-CHECKLIST.md), which also documents the full
 command set and the current status.
+
+#### Run what you touched
+
+Every test also carries the **area** its subject lives in, so a menu change runs the menu
+tests and not the rollback and renderer sweeps:
+
+```bash
+ctest --test-dir build/linux -L frontend -LE slow    # a menu change
+```
+
+| Area | Protects |
+|---|---|
+| `frontend` | `src/frontend`: title, selection, stage page, options, story screens, result, the online menus |
+| `hud` | `src/hud`, and the caption/text drawing beside it |
+| `battle` | `src/battle`, `src/battle/core`, the fight's camera and physics |
+| `net` | `src/net`, `server/`, lobby, room codes, online play |
+| `render` | `src/render` and the captures that pin each technique |
+| `data` | `src/assets`, delivery, paths, texture packs |
+| `settings` | `src/settings` and the Options persistence seam |
+| `platform` | input, audio, the launcher, tooling |
+
+A test may carry more than one area — rollback work is `battle` and `net`, and the online
+walk drives the netplay menu — and `slow` is orthogonal to all of them. `-L` takes a regular
+expression, so a change that spans areas runs them together (`-L "frontend|hud"`: 29 tests),
+and `CMakeLists.txt` warns at configure time when a test carries no area at all, so a new
+test cannot quietly fall outside every selection.
 
 All scripted, headless, capture and bounded `--frames` runs are silent by default. CTest also
 forces SDL's dummy audio driver for its tests and their child processes. Use `--no-audio` on

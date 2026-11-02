@@ -993,6 +993,7 @@ endif()
 #   * online_flow_check and net_play_check run REAL games over a network, and the port
 #     throttles an online capture to the frame rate because peers and their timeouts live
 #     in real time (frame_loop.inc): their wall time is the flow's own duration;
+#   * online_join_feedback waits out the lobby's real first-contact silence four times;
 #   * rollback_pixels_check renders the full frame matrix (three lengths, three rollback
 #     modes) at 640x360;
 #   * animation_pose_test, effect_catalog_test, sim_pose_test and npr_experiments are
@@ -1002,6 +1003,7 @@ endif()
 # (docs/RELEASE-CHECKLIST.md §2).
 set(DAYBREAK_SLOW_TESTS
     online_flow_check
+    online_join_feedback
     net_play_check
     rollback_pixels_check
     animation_pose_test
@@ -1013,3 +1015,99 @@ foreach(daybreak_slow_test IN LISTS DAYBREAK_SLOW_TESTS)
         set_property(TEST ${daybreak_slow_test} APPEND PROPERTY LABELS slow)
     endif()
 endforeach()
+
+# --- which part of the product each test protects ----------------------------------
+# A change to the menus should not have to wait for the rollback and renderer sweeps: every
+# test carries the area its subject lives in, and a developer runs the area they touched
+# (`ctest -L frontend -LE slow`). The mapping is the module boundary, not a test's incidental
+# dependencies: `frontend` is src/frontend and the screens it builds, `hud` is src/hud plus
+# the caption/text drawing beside it, `battle` is src/battle, src/battle/core and the
+# camera/physics a fight uses, `net` is src/net and server/, `render` is src/render and the
+# captures that pin its techniques, `data` is src/assets plus the delivery and path layers,
+# `settings` is src/settings, and `platform` is input, audio, the launcher and tooling.
+#
+# One test may protect more than one area (rollback work is battle AND net; the online walk
+# drives the netplay menu), and `slow` is orthogonal: it says a test is expensive to run,
+# not what it guards. Every configured test must carry at least one area — a new test that
+# has none is reported here at configure time rather than quietly running in no area.
+
+set(DAYBREAK_AREA_FRONTEND
+    english_captions_test locale_screen_check locale_coverage_test locale_sheets_test
+    title_camera_test screen_stack_test frontend_config_test frontend_lifecycle_test
+    result_title_test result_screen_test participant_layout_test select_menu_test
+    select_cursor_test select_row_slidein_test stage_vs_test story_dialogue_test
+    story_script_test sim_frontend_flow online_flow_check online_join_feedback
+    pause_overlay_panel pause_overlay_layout_test
+)
+
+set(DAYBREAK_AREA_HUD
+    hud_cell_scale hud_view_geometry hud_layout_test hud_sprite_table hud_text_test
+    canvas_layout_test view_layout_test pause_overlay_layout_test pause_overlay_panel
+    text_test caption_font_test
+)
+
+set(DAYBREAK_AREA_BATTLE
+    sim_core_test sim_oracle_test sim_pose_test sim_fuzz_regression weapon_definition_test
+    match_economy_test effect_catalog_test animation_pose_test combat_audio_test
+    battle_pause_test fixed_step_test arena_camera_test raycast_analytic
+    rollback_stress_test rollback_presentation_test rollback_pixels_check net_stress_test
+    sim_frontend_flow math_accuracy_test
+)
+
+set(DAYBREAK_AREA_NET
+    net_lobby_test net_stress_test net_play_check online_flow_check online_join_feedback
+    rollback_stress_test rollback_presentation_test rollback_pixels_check
+    rendezvous_server_test cross_build_check math_accuracy_test
+)
+
+set(DAYBREAK_AREA_RENDER
+    toon_ramp character_shadow npr_experiments npr_normals_test lighting_test
+    shadow_map_test prims_view_geometry debug_prims_geometry unlit_cube_geometry
+    fx_cards_test texture_fallback_check texture_pack_check rollback_pixels_check
+)
+
+set(DAYBREAK_AREA_DATA
+    dat_bundle_bytes web_catalog_order web_assets_test web_delivery_test
+    web_match_group_check texture_fallback_check texture_pack_check env_spawn_test
+    unicode_path_check
+)
+
+set(DAYBREAK_AREA_SETTINGS
+    user_settings_test frontend_config_test
+)
+
+set(DAYBREAK_AREA_PLATFORM
+    input_backend_test launcher_test controller_scene_lifetime_test bgm_loop_test
+    unicode_path_check check_tools_test
+)
+
+foreach(daybreak_area frontend hud battle net render data settings platform)
+    string(TOUPPER ${daybreak_area} daybreak_area_upper)
+    foreach(daybreak_area_test IN LISTS DAYBREAK_AREA_${daybreak_area_upper})
+        if(TEST ${daybreak_area_test})
+            set_property(TEST ${daybreak_area_test} APPEND PROPERTY LABELS ${daybreak_area})
+        else()
+            # Conditional tests (Go, Python, a web build) are absent on some hosts, so this
+            # is a warning, not an error; a name no host registers is a typo that would
+            # silently stop guarding anything, which is why it is not silent.
+            message(WARNING "test area ${daybreak_area} names '${daybreak_area_test}', "
+                            "which this configuration does not register")
+        endif()
+    endforeach()
+endforeach()
+
+# Every test must be reachable from at least one area, or "run what I touched" has a hole.
+if(daybreak_tests)
+    set(daybreak_uncovered "")
+    foreach(daybreak_test ${daybreak_tests})
+        get_test_property(${daybreak_test} LABELS daybreak_test_labels)
+        if(NOT daybreak_test_labels)
+            list(APPEND daybreak_uncovered ${daybreak_test})
+        endif()
+    endforeach()
+    if(daybreak_uncovered)
+        message(WARNING "tests with no area label (see DAYBREAK_AREA_* in CMakeLists.txt): "
+                        "${daybreak_uncovered}")
+    endif()
+endif()
+

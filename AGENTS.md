@@ -253,6 +253,8 @@ Original-side runs may be audible; muting there is convenience only (above).
 ./build.sh deps && ./build.sh linux
 ctest --test-dir build/linux --output-on-failure            # default tier, a few minutes
 ctest --test-dir build/linux -L slow --output-on-failure    # before a release
+ctest --test-dir build/linux -L frontend -LE slow           # one area you touched; see DEVELOPMENT.md
+                                                            # frontend|hud|battle|net|render|data|settings|platform
 ./tools/launch_original.sh            # the original, under Wine
 python3 research/tools/coverage_report.py
 ```
