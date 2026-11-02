@@ -2,6 +2,7 @@
 #include "frontend/frontend_state.h"
 #include "frontend/soft_keyboard.h"
 #include "frontend/screen_options.h"
+#include "frontend/title_backdrop.h"
 #include <cstdio>
 #define CHECK(x) do { if(!(x)) { std::fprintf(stderr,"failure: %s\n",#x); return 1; } } while(0)
 int main() {
@@ -169,6 +170,71 @@ int main() {
         ui::applyUserSettings(afterRestart, reparsed);
         CHECK(afterRestart.toonRendering);
         CHECK(afterRestart.volumes.sfx == 45 && afterRestart.keyboard[fnd::input::Pause] == 311);
+    }
+    // Issue #98's title backdrop: the setting reaches the live state, the Options row cycles
+    // it, a value the file cannot mean keeps the original art, and a v7 file loads with the
+    // original art (which is what a v7 build showed).
+    {
+        ui::FrontendSettings chosen;
+        chosen.titleBackdrop = "stage03";
+        const settings::UserSettings document98 = ui::toUserSettings(chosen);
+        CHECK(document98.titleBackdrop == "stage03");
+        const std::string text98 = settings::serialize(document98);
+        CHECK(text98.find("[title]") != std::string::npos);
+        CHECK(text98.find("backdrop = stage03") != std::string::npos);
+        settings::UserSettings back98;
+        std::string error98;
+        settings::LoadReport report98;
+        CHECK(settings::parse(text98, back98, error98, report98));
+        CHECK(back98.titleBackdrop == "stage03");
+        ui::FrontendSettings live98;
+        ui::applyUserSettings(live98, back98);
+        CHECK(live98.titleBackdrop == "stage03");
+
+        // The admitted values: empty (the original art), or a stage directory.
+        CHECK(settings::storableTitleBackdrop(""));
+        CHECK(settings::storableTitleBackdrop("stage03"));
+        CHECK(!settings::storableTitleBackdrop("stage3"));
+        CHECK(!settings::storableTitleBackdrop("stage03x"));
+        CHECK(!settings::storableTitleBackdrop("../data"));
+        CHECK(!settings::storableTitleBackdrop("/absolute"));
+
+        // The Options row cycles the table and wraps; a stage the list does not carry snaps
+        // onto it, so one press always reaches a labelled choice.
+        CHECK(ui::titleBackdropIndex("stage03") == 1);
+        CHECK(ui::titleBackdropIndex("stage99") < 0);
+        CHECK(ui::cycleTitleBackdrop("", 1) == "stage03");
+        CHECK(ui::cycleTitleBackdrop("", -1) == "stage16");
+        CHECK(ui::cycleTitleBackdrop("stage16", 1) == "");
+        CHECK(ui::cycleTitleBackdrop("stage99", 1) == "");
+        CHECK(ui::cycleTitleBackdrop("stage99", -1) == "stage16");
+        CHECK(ui::titleBackdropLabel("stage13") != "stage13");   // a labelled choice
+        CHECK(ui::titleBackdropLabel("stage99") == "stage99");   // unlisted: the directory
+        CHECK(ui::titleBackdropLabel("") == ui::titleBackdropLabel(""));
+
+        // A value that is not a stage directory warns and leaves the original art; "off" is
+        // the documented spelling of the same thing and is not a warning.
+        settings::UserSettings rejected98;
+        std::string rejectedError98;
+        settings::LoadReport rejectedReport98;
+        CHECK(settings::parse("version = 8\n[game]\ninstall_dir =\n[title]\nbackdrop = ../../etc\n",
+                              rejected98, rejectedError98, rejectedReport98));
+        CHECK(rejectedReport98.warnings == 1 && rejected98.titleBackdrop.empty());
+        settings::UserSettings off98;
+        std::string offError98;
+        settings::LoadReport offReport98;
+        CHECK(settings::parse("version = 8\n[game]\ninstall_dir =\n[title]\nbackdrop = off\n",
+                              off98, offError98, offReport98));
+        CHECK(offReport98.warnings == 0 && off98.titleBackdrop.empty());
+
+        // v7 -> v8 drops nothing and defaults the backdrop to the original art.
+        settings::UserSettings fromV7;
+        std::string fromV7Error;
+        settings::LoadReport fromV7Report;
+        CHECK(settings::parse("version = 7\n[game]\ninstall_dir =\n[render]\ntoon = true\n",
+                              fromV7, fromV7Error, fromV7Report));
+        CHECK(fromV7Report.warnings == 0);
+        CHECK(fromV7.toonRendering && fromV7.titleBackdrop.empty());
     }
     ui::FrontendSettings fresh;
     fresh.resolutions = settings.resolutions;

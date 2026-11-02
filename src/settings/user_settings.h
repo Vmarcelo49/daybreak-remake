@@ -71,6 +71,11 @@ namespace settings {
 //
 // v7 added [network], for online play: name, port, input_delay, last_host and server. A v6 file is MIGRATED
 // additively, and every new key takes its default.
+//
+// v8 (issue #98) added [title] backdrop: which stage, if any, is drawn live behind the
+// title menu instead of data/title/back00. A v7 file is MIGRATED additively — empty is the
+// original art, which is what v7 showed — so a file written before the experiment loads
+// and behaves exactly as it did.
 // The language a player who has not chosen gets, from the system's first language ("ja", "pt"...).
 // The empty sheet language is the game's own Japanese.
 inline std::string languageForLocale(const std::string& systemLanguage) { return systemLanguage == "ja" ? "" : "en"; }
@@ -78,7 +83,8 @@ inline std::string languageForLocale(const std::string& systemLanguage) { return
 // The project's own rendezvous server. The file leaves it out, so a new build can move it.
 inline constexpr char kDefaultServer[] = "64.181.172.230:3939";
 
-inline constexpr int kSchemaVersion = 7;
+inline constexpr int kSchemaVersion = 8;
+inline constexpr int kSchemaVersionV7 = 7;
 inline constexpr int kSchemaVersionV6 = 6;
 inline constexpr int kSchemaVersionV5 = 5;
 inline constexpr int kSchemaVersionLegacy = 1;
@@ -136,6 +142,13 @@ struct UserSettings {
     // Off is the shipped default (DAT_006cfcea is zero-initialised) and the state every
     // banked capture was made in.
     bool        shadowRendering = false;
+    // Which stage is drawn live behind the title menu (issue #98), as a stage directory
+    // name ("stage03"); empty is the original's data/title/back00 art, which is the
+    // default and the state every banked capture was made in. PORT DECISION: the original
+    // has one static title background, so this is an experiment the owner judges, not
+    // recovered behaviour. The Options screen cycles a short list (frontend/title_backdrop.h)
+    // and --title-backdrop= overrides it for one run.
+    std::string titleBackdrop;
     fnd::audio::Volumes volumes;
     std::array<int, fnd::input::ActionCount> keyboard{};
     std::array<std::array<int, fnd::input::ActionCount>, fnd::input::kMaxPlayers> gamepad{};
@@ -169,6 +182,14 @@ bool persistenceSupported();
 // run opened, and serialize() writes an unstorable value as empty, so the file can never
 // carry the one thing the parser would refuse to read back.
 bool storableInstallDir(const std::string& value);
+
+// --- the title backdrop (issue #98) -----------------------------------------------
+// True when `value` may be a title backdrop at all: empty, which is the original's static
+// art, or a stage directory name — "stage" and the two digits of the stage scheme
+// (docs/ASSET-CATALOG.md §1.1). Whether that stage exists is the renderer's question:
+// it reports a missing folder and falls back to the original art rather than failing the
+// launch, so this check stays syntactic.
+bool storableTitleBackdrop(const std::string& value);
 
 // --- parse / serialize ------------------------------------------------------------
 // One line of human-readable context per accepted warning and one message per rejection.

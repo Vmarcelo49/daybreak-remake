@@ -60,7 +60,12 @@ void TitleScreen::draw(SpriteRenderer& batch) const {
     // FUN_004114f0.c:17-22's order: background, logo, then the six item cells. The cell
     // column is the selection (0 white = selected, 1 dark = not), which is what
     // FUN_00655830's third argument `selected != i` selects in the original.
-    batch.pushSprite(sheets_[(int)TitleSheet::Back], kTitleBackSrc, 0.f, 0.f, 0.f, 0.f);
+    //
+    // The background is the one sheet the live backdrop replaces (issue #98): the stage is
+    // drawn under this batch by the host, and an 800x600 opaque sprite would hide it. The
+    // original's draw has no such switch, so this is a port addition, labelled as such.
+    if (!backdropLive_)
+        batch.pushSprite(sheets_[(int)TitleSheet::Back], kTitleBackSrc, 0.f, 0.f, 0.f, 0.f);
     batch.pushSprite(sheets_[(int)TitleSheet::Logo], kTitleLogoSrc, kTitleLogoPivotX,
                      kTitleLogoPivotY, kTitleLogoX, kTitleLogoY);
     for (int i = 0; i < kTitleItemCount; ++i) {

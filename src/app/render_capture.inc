@@ -241,6 +241,27 @@ bool screenCaptureHook(WGPUCommandEncoder enc, WGPUTextureView view, WGPUTexture
         : ui::drawScreenFrame(*sk->screens, *sk->ui, w, h, enc, view, format, *sk->error);
 }
 
+// A front-end frame with no scene under it: an opaque black target (the UI pass loads,
+// sprite.cpp:468, and the screen art is authored 800x600, so a larger window would otherwise
+// present undefined pixels around the canvas) and the screen over it. The title's live
+// backdrop (issue #98) is the one menu frame that skips this, drawing the stage instead.
+bool drawMenuOverClear(App& app, gpu::Frame& frame) {
+    WGPURenderPassColorAttachment clear = {};
+    clear.view = frame.view;
+    clear.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+    clear.loadOp = WGPULoadOp_Clear;
+    clear.storeOp = WGPUStoreOp_Store;
+    clear.clearValue = WGPUColor{0.0, 0.0, 0.0, 1.0};
+    WGPURenderPassDescriptor clearPass = {};
+    clearPass.colorAttachmentCount = 1;
+    clearPass.colorAttachments = &clear;
+    WGPURenderPassEncoder clearRp = wgpuCommandEncoderBeginRenderPass(frame.encoder, &clearPass);
+    wgpuRenderPassEncoderEnd(clearRp);
+    wgpuRenderPassEncoderRelease(clearRp);
+    return ui::drawScreenFrame(app.screens, app.uiRenderer, app.sc.width, app.sc.height,
+                               frame.encoder, frame.view, app.sc.format, app.error);
+}
+
 // A view's cell in target pixels: an empty rect is the single-view frame, which draws over
 // the whole target (debug_prims.h's Options::viewport documents the same default).
 render::ViewportRect cellOf(const render::ViewportRect& rect, uint32_t width, uint32_t height) {

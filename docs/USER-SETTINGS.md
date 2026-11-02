@@ -20,10 +20,10 @@ forbids for the port.
 
 Delete the file to reset everything to its defaults; there is no separate reset file.
 
-## What is stored (schema version 7)
+## What is stored (schema version 8)
 
 ```ini
-version = 7
+version = 8
 
 [game]
 install_dir = /home/u/Games/Higurashi-Daybreak   # absolute; empty = none remembered
@@ -43,6 +43,9 @@ resolution = desktop          # or WxH, e.g. 1920x1080
 [render]
 toon = false                  # the Options screen's toon-rendering row (issue #21)
 shadows = false               # character shadow-map row (issue #21, row 1)
+
+[title]
+backdrop =                    # original art, or a stage directory drawn live behind the title menu (issue #98): stage03, stage13, stage06, stage16
 
 [audio]
 master = 100                  # 0..100, one per bus
@@ -97,6 +100,19 @@ pad2_guid =
   frame) and this key is what makes it survive a restart. `ROADMAP-PENDING.md`
   §"Renderer options (issue #21)" carries what the original's global gates and the port
   rules.
+* `[title] backdrop` (issue #98) picks what the title menu is drawn over: empty is the
+  original's `data/title/back00` painting, and a stage directory name (`stage03`) draws that
+  stage live behind the same menu with a slow camera. It is a **port experiment**, labelled
+  as such: the original's title is one still sheet and has no 3D pass, so nothing here is
+  recovered behaviour and the owner's eye decides whether it stays. The Options row
+  (TITLE BACKGROUND) cycles a short list of shrine stages, whose labels are the port's
+  (`src/frontend/title_backdrop.h`); `--title-backdrop=stageNN` overrides the row for one
+  run, and `--title-backdrop=off` is the same as the empty value. The row's choice takes
+  effect the next time the title is entered, because that is when its scene is built. A
+  stage that is not in the install is reported and the original art stays, so a moved or
+  partial install cannot leave a black title. The camera is a port rule
+  (`src/render/title_camera.h`): seeded from the arena camera's own view of that stage's
+  spawn, then swept slowly back and forth.
 * The binding rows are one comma-separated value per action, in `fnd::input::Action`
   order: `up, down, left, right, attack_a, attack_b, guard, shoot, jump, special,
   tactics, lock_switch, pause`. `-1` is unbound. Keyboard values are SDL scancodes,
@@ -115,12 +131,13 @@ pad2_guid =
 | 4 | issue #36 added `[game] install_dir` | migrated: every value kept, `shadows` takes its default (off), **no warning** (a context line) |
 | 5 | issue #21 row 1 added `[render] shadows` | migrated: every value kept, the language defaults to Japanese |
 | 6 | added `[game] language` | migrated: every value kept, `[network]` takes its defaults |
-| 7 | added `[network]`, for online play | current |
+| 7 | added `[network]`, for online play | migrated: every value kept, `[title]` takes its default (the original title art) |
+| 8 | issue #98 added `[title] backdrop`, the title-screen backdrop | current |
 
 Migration is per document, never partial: the version line decides how the binding rows are
-read, and the next save writes the current version. The `[render]` and `[game]` sections
-themselves are read whatever the version line says, so a hand-edited file is not rejected
-for naming a key this build knows. A version this build cannot migrate (6 and up) is
+read, and the next save writes the current version. The `[render]`, `[title]` and `[game]`
+sections themselves are read whatever the version line says, so a hand-edited file is not
+rejected for naming a key this build knows. A version this build cannot migrate (9 and up) is
 rejected whole. A migration never drops a stored value; the only thing an older file cannot
 carry is a key that did not exist yet, and that key's default is what the older file meant.
 

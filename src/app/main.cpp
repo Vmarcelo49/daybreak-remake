@@ -38,6 +38,7 @@
 #include "camera/arena_view.h"
 #include "render/debug_prims.h"
 #include "render/scene_renderer.h"
+#include "render/title_camera.h"
 // After the renderer on purpose: raycast.h includes assets/xmodel.h without
 // XMODEL_WEBGPU (its queries need the mesh arrays, not the GPU helpers), and xmodel.h's
 // include guard means a first include without that macro would hide xm::CameraUniform
@@ -51,6 +52,7 @@
 #include "frontend/screen_vs.h"
 #include "frontend/screen_opening.h"
 #include "frontend/screen_story.h"
+#include "frontend/screen_title.h"
 #include "ui/sheet_locale.h"
 #include "frontend/frontend_state.h"
 #include "frontend/frontend_launch.h"
@@ -105,6 +107,7 @@ namespace {
 #include "combat_audio.inc"
 #include "match.inc"
 #include "render_capture.inc"
+#include "title_backdrop.inc"
 #include "frame_loop.inc"
 
 

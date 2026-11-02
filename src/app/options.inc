@@ -93,6 +93,12 @@ void usage() {
         "                     the opening scene (0x00) like the original; a verification\n"
         "                     run (--out/--headless/--script/...) never does, so no\n"
         "                     evidence run pays for the movie decode (issue #40)\n"
+        "  --title-backdrop=<stageNN|off>\n"
+        "                     draw a stage live behind the title menu for this run\n"
+        "                     (issue #98), overriding the Options row and the stored\n"
+        "                     [title] backdrop; off is the original art. --dt is one sweep\n"
+        "                     step per frame, so --frames picks the phase a capture sees:\n"
+        "                     --screen title --title-backdrop=stage03 --dt=0.1 --frames=110\n"
         "  --language=<en|ja|auto>  menu and HUD labels; auto follows the system as a player's first run does\n"
         "  --texture-pack=<dir> PNGs at the game's paths, replacing its textures at any size\n"
         "  --story=<D41-0>    the script --screen=storyadv plays\n"
@@ -374,6 +380,18 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (a == "--no-toon") { o.toon = false; o.toonSet = true; }
         else if (a == "--shadows") { o.shadows = true; o.shadowsSet = true; }
         else if (a == "--no-shadows") { o.shadows = false; o.shadowsSet = true; }
+        else if (!(v = val("--title-backdrop=")).empty()) {
+            // "off" is the empty value: the original art, spelled the way a command line
+            // should be able to say it. Any other value must name a stage directory, which
+            // is the same check the stored setting goes through.
+            if (v == "off" || v == "none" || v == "original") v.clear();
+            else if (!settings::storableTitleBackdrop(v)) {
+                error = "--title-backdrop takes a stage directory (stage03) or off";
+                return false;
+            }
+            o.titleBackdrop = v;
+            o.titleBackdropSet = true;
+        }
         else if (!(v = val("--npr=")).empty()) {
             if (!parseNprSpec(v, o.npr, error)) return false;
             o.nprSet = true;

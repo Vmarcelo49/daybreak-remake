@@ -96,6 +96,11 @@ struct Options {
     int         bench      = 0;
     bool        list       = false;
     std::string screen;          // --screen=<id|name>: boot a front-end screen
+    // --title-backdrop=<stageNN|off> (issue #98): the stage the title draws live behind its
+    // menu, for one run, overriding the Options row and the stored [title] backdrop. Same
+    // `Set` split as the toon flag: without it the stored value governs.
+    std::string titleBackdrop;
+    bool        titleBackdropSet = false;
     // --movie=<path>: which file the opening scene plays (default data/movie/op.mpg — the
     // original's FUN_00404eb0 @0x404eb0 opens it as "movie/op.mpg" from its data/ working
     // directory). The staff roll is the same player and the same scene kind, so it is driven
@@ -150,6 +155,22 @@ struct BattleEntryScreen final : ui::Screen {
     const char* name() const override { return "battle"; }
 };
 
+// The title's live backdrop (issue #98): one stage, loaded the first time the title asks
+// for it and kept afterwards, because returning to the title from a menu must not pay the
+// load again. It is deliberately NOT App::scene: the battle owns that one and rebuilds it,
+// and the title must not disturb what the next scene loads.
+struct TitleBackdropState {
+    xm::Scene                      scene;
+    std::vector<std::vector<glm::mat4>> worlds;   // bind pose, evaluated once per load
+    std::vector<glm::mat4>         matrices;
+    std::string                    stage;    // the stage loaded here; empty = none
+    std::string                    failed;   // a stage that did not load, never retried
+    bool                           uploaded = false;   // the renderer currently holds it
+    render::TitleCamera            camera;
+    float                          reach = 0.f;   // eye to farthest scene corner, far plane
+    float                          seconds = 0.f; // the sweep's clock
+};
+
 struct App {
     Options      opts;
     SDL_Window*  window = nullptr;
@@ -178,6 +199,7 @@ struct App {
     game::physics::CameraCollision cameraCollision;   // arena eye clamp, per stage
     ui::SpriteRenderer           uiRenderer;
     ui::ScreenStack              screens;          // front end: current screen + fade
+    TitleBackdropState           titleBackdrop;
     bool                         screensMode = false;
     // The result screen draws over the battle it concludes (FUN_0063a740), which keeps running.
     bool                         resultOverScene = false;

@@ -1,6 +1,7 @@
 #include "frontend/screen_options.h"
 #include "frontend/frontend_settings.h"
 #include "frontend/menu_panel.h"
+#include "frontend/title_backdrop.h"
 #include "assets/asset_source.h"
 #include "assets/cnv.h"
 #include "ui/caption.h"
@@ -17,11 +18,15 @@ namespace {
 // baked labels mixed faces with the runtime captions. Every word here is one face.
 constexpr int kKeyConfigBackRow = fnd::input::ActionCount;
 
-enum class OptionRow { Toon, Shadow, Fullscreen, Resolution, Language, Master, Music, Voice, Sfx, Back, Count };
+enum class OptionRow { Toon, Shadow, Fullscreen, Resolution, Language, TitleBackdrop, Master, Music, Voice, Sfx, Back, Count };
 constexpr int kOptionRowCount = (int)OptionRow::Count;
-constexpr float kOptionY[kOptionRowCount] = {130, 164, 198, 232, 266, 334, 368, 402, 436, 494};
+// The SOUND block and BACK sit 34 and 6 lower than before the title-backdrop row existed
+// (issue #98): the extra GRAPHICS row does not fit above the heading otherwise.
+constexpr float kOptionY[kOptionRowCount] = {130, 164, 198, 232, 266, 300, 368, 402, 436, 470, 500};
+constexpr float kSoundHeadingY = 342.f;
 constexpr Words kOptionNames[kOptionRowCount] = {
     {"トゥーンレンダリング", "TOON SHADING"}, {"影の表示", "SHADOWS"}, {"画面モード", "SCREEN MODE"}, {"解像度", "RESOLUTION"}, {"言語", "LANGUAGE"},
+    {"タイトル背景", "TITLE BACKGROUND"},
     {"全体の音量", "MASTER"}, {"音楽の音量", "MUSIC"}, {"音声の音量", "VOICE"}, {"効果音の音量", "EFFECTS"}, {"終了", "BACK"},
 };
 constexpr Words kOptionHelp[kOptionRowCount] = {
@@ -30,6 +35,7 @@ constexpr Words kOptionHelp[kOptionRowCount] = {
     {"←→ で画面モードを切り替えます", "Left and right switch the window and fullscreen."},
     {"←→ で解像度を変更します", "Left and right change the resolution."},
     {"←→ で言語を切り替えます", "Left and right change the language of the menus and the HUD."},
+    {"←→ でタイトル画面の背景を切り替えます", "Left and right switch the title background between the original art and a live stage."},
     {"←→ で全体の音量を調整します", "Left and right set the overall volume."},
     {"←→ で音楽の音量を調整します", "Left and right set the music volume."},
     {"←→ で音声の音量を調整します", "Left and right set the voice volume."},
@@ -93,6 +99,12 @@ public:
                 else std::fprintf(stderr, "[options] %s\n", failure.c_str());
                 break;
             }
+            case OptionRow::TitleBackdrop:
+                // One step per press, like the resolution row: the title is constructed
+                // again the next time it is entered, and that is where the new stage loads.
+                if (in.left || in.right)
+                    settings.titleBackdrop = cycleTitleBackdrop(settings.titleBackdrop, in.right ? 1 : -1);
+                break;
             case OptionRow::Master:
             case OptionRow::Music:
             case OptionRow::Voice:
@@ -128,7 +140,7 @@ private:
         const auto& settings = frontendSettings();
         frame(batch, {"環境設定", "OPTIONS"}, 40, 540);
         label(batch, say({"映像", "GRAPHICS"}), 130, 104, 16.f, kGold);
-        label(batch, say({"音量", "SOUND"}), 130, 308, 16.f, kGold);
+        label(batch, say({"音量", "SOUND"}), 130, kSoundHeadingY, 16.f, kGold);
         const Words on{"有効", "ON"}, off{"無効", "OFF"};
         for (int i = 0; i < kOptionRowCount; ++i) {
             const float y = kOptionY[i];
@@ -160,6 +172,8 @@ private:
         }
         choice(batch, resolution, kOptionY[(int)OptionRow::Resolution], isRow(OptionRow::Resolution));
         choice(batch, sheetLanguage().empty() ? "日本語" : "ENGLISH", kOptionY[(int)OptionRow::Language], isRow(OptionRow::Language));
+        choice(batch, titleBackdropLabel(settings.titleBackdrop).c_str(), kOptionY[(int)OptionRow::TitleBackdrop],
+               isRow(OptionRow::TitleBackdrop));
         const int values[] = {settings.volumes.master, settings.volumes.music, settings.volumes.voice, settings.volumes.sfx};
         for (int i = 0; i < 4; ++i) {
             const int row = (int)OptionRow::Master + i;

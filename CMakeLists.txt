@@ -613,6 +613,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(arena_camera_test PRIVATE assets glm)
     add_test(NAME arena_camera_test COMMAND arena_camera_test)
 
+    # The title backdrop's sweep (issue #98): header-only math, checked against the arena
+    # camera it is seeded from, so the seeded framing cannot drift from that view silently.
+    add_executable(title_camera_test tests/title_camera_test.cpp)
+    target_include_directories(title_camera_test PRIVATE src)
+    target_link_libraries(title_camera_test PRIVATE glm)
+    add_test(NAME title_camera_test COMMAND title_camera_test)
+
 
     # The per-weapon combat definitions (issue #9): the data/item/NNN.dat reader
     # transcribed from FUN_00433eb0, every shipped weapon swept, and a match smoke run

@@ -106,10 +106,18 @@ public:
     bool loaded() const;
     int takeSound() override { const int id = sound_; sound_ = -1; return id; }
 
+    // The host draws a live stage behind this screen when the [title] backdrop setting (or
+    // --title-backdrop=) asks for one, and reports it here each frame before the draw
+    // (issue #98). The painted background is then left out so the scene shows through;
+    // false is the original title, art and all. The backdrop is host state, not a sheet,
+    // because a stage is a scene the renderer owns, not something this batch can upload.
+    void setBackdropLive(bool live) { backdropLive_ = live; }
+
 private:
     int       sheets_[kTitleSheetCount] = {-1, -1, -1};
     TitleMenu menu_;
     int sound_ = -1;
+    bool      backdropLive_ = false;
 };
 
 // makeScreen(ScreenId::Title)'s constructor. Null (with `error`) when one of the three

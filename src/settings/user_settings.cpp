@@ -168,6 +168,7 @@ bool UserSettings::operator==(const UserSettings& other) const {
            resolution == other.resolution &&
            toonRendering == other.toonRendering &&
            shadowRendering == other.shadowRendering &&
+           titleBackdrop == other.titleBackdrop &&
            volumes.master == other.volumes.master && volumes.music == other.volumes.music &&
            volumes.voice == other.volumes.voice && volumes.sfx == other.volumes.sfx &&
            keyboard == other.keyboard && gamepad == other.gamepad && padGuid == other.padGuid &&
@@ -204,6 +205,14 @@ bool persistenceSupported() {
 
 bool storableInstallDir(const std::string& value) {
     return absolutePath(value) && value.size() <= kMaxPathValue;
+}
+
+bool storableTitleBackdrop(const std::string& value) {
+    if (value.empty()) return true;
+    // The stage scheme is "stage" plus two digits (time of day, scene); anything else is
+    // not a directory xm::loadStage could be handed.
+    if (value.size() != 7 || value.compare(0, 5, "stage") != 0) return false;
+    return value[5] >= '0' && value[5] <= '9' && value[6] >= '0' && value[6] <= '9';
 }
 
 bool parse(const std::string& text, UserSettings& out, std::string& error, LoadReport& report) {
@@ -259,7 +268,7 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
             if (line.back() != ']') return fail(": unterminated section header");
             section = trimmed(line.substr(1, line.size() - 2));
             if (section != "game" && section != "network" && section != "display" && section != "render" &&
-                section != "audio" && section != "bindings" && section != "controllers") {
+                section != "title" && section != "audio" && section != "bindings" && section != "controllers") {
                 return fail(": unknown section [" + section + "]");
             }
             continue;
@@ -280,7 +289,8 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                 if (!parseInt(value, version)) return fail(": version is not a number");
                 if (version != kSchemaVersion && version != kSchemaVersionLegacy &&
                     version != kSchemaVersionV2 && version != kSchemaVersionV3 &&
-                    version != kSchemaVersionV4 && version != kSchemaVersionV5 && version != kSchemaVersionV6) {
+                    version != kSchemaVersionV4 && version != kSchemaVersionV5 && version != kSchemaVersionV6 &&
+                    version != kSchemaVersionV7) {
                     error = "unsupported config version " + std::to_string(version) +
                             " (this build writes " + std::to_string(kSchemaVersion) + ")";
                     return false;
@@ -361,6 +371,18 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                 const std::optional<bool> on = parseBool(value);
                 if (!on) warn("shadows: keeping the default");
                 else candidate.shadowRendering = *on;
+            } else {
+                warn("ignoring unknown key '" + key + "'");
+            }
+        } else if (section == "title") {
+            // v8's section (issue #98). "off" is accepted as the empty value's spelling: a
+            // hand-edited file should not have to know which one serialize() writes.
+            if (key == "backdrop") {
+                if (value.empty() || value == "off") candidate.titleBackdrop.clear();
+                else if (!storableTitleBackdrop(value))
+                    warn("backdrop: '" + value + "' is not a stage directory, keeping the original title art");
+                else
+                    candidate.titleBackdrop = value;
             } else {
                 warn("ignoring unknown key '" + key + "'");
             }
@@ -466,6 +488,11 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
             "config version 6: migrated to " + std::to_string(kSchemaVersion) +
             " (online play takes its defaults; every stored value kept)");
         break;
+    case kSchemaVersionV7:
+        report.messages.push_back(
+            "config version 7: migrated to " + std::to_string(kSchemaVersion) +
+            " (the title backdrop is the original art; every stored value kept)");
+        break;
     case kSchemaVersion:
         // A CURRENT document always carries the folder key — serialize() writes it even when
         // no folder is remembered — so its absence is a hand-edit or a lossy writer, and the
@@ -534,6 +561,15 @@ std::string serialize(const UserSettings& settings) {
         << "# body and weapon are drawn once more into a light-space map that the stage\n"
         << "# samples, so the fighters cast a shadow on the ground.\n"
         << "shadows = " << (settings.shadowRendering ? "true" : "false") << "\n\n";
+
+    // A value this build would refuse to read back (a hand-edited non-stage name) is written
+    // as empty, so the port's own output always round-trips.
+    out << "[title]\n"
+        << "# Which stage is drawn live behind the title menu, as a stage directory name\n"
+        << "# (issue #98); empty is the original's data/title/back00 art.\n"
+        << "backdrop = "
+        << (storableTitleBackdrop(settings.titleBackdrop) ? settings.titleBackdrop : std::string())
+        << "\n\n";
 
     out << "[audio]\n"
         << "master = " << settings.volumes.master << "\n"

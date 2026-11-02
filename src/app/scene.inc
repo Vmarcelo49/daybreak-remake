@@ -1281,6 +1281,9 @@ bool initScene(App& app) {
         return false;
     app.renderer.setFog(app.scene.env);
     app.renderer.setAppearance(app.appearance);
+    // The renderer holds ONE scene, so this upload replaced whatever the title backdrop had
+    // put there (issue #98). Re-entering the title must upload its stage again.
+    app.titleBackdrop.uploaded = false;
 
     // The HUD test rig: same renderer, same swapchain format, one deterministic
     // synthetic HUD composited into --out captures. Font upload is fatal here (a

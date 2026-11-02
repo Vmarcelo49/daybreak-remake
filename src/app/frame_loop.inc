@@ -491,17 +491,32 @@ static SDL_AppResult appIterate(App* app) {
     }
 
     if (app->screensMode && !app->resultOverScene) {
+        // The title's live backdrop (issue #98): an experiment behind a setting, so this is
+        // the only menu scene that can have a 3D pass under it. The call also advances the
+        // sweep and tells the screen whether to leave its painted background out.
+        const bool backdropLive = titleBackdropThisFrame(*app, capturing, delta);
 
         if (capturing) {
             if (app->frames >= (uint64_t)app->opts.frames) {
                 std::vector<uint8_t> rgba;
-                ScreenCaptureHook hook{&app->screens, &app->uiRenderer, &app->error};
-                // captureUi: a menu frame has no 3D scene, so the scene pass is skipped
-                // and the UI hook draws onto the cleared target (scene_renderer.h).
-                if (!app->renderer.captureUi((uint32_t)app->opts.sizeW,
-                                             (uint32_t)app->opts.sizeH, rgba, app->error,
-                                             screenCaptureHook, &hook))
-                    return SDL_APP_FAILURE;
+                if (backdropLive) {
+                    // The stage needs the scene pass, and the screen has to load over it
+                    // (drawScreenOverlay), which is the pair resultOverScene captures with.
+                    applyTitleBackdropCamera(*app, (float)app->opts.sizeW / (float)app->opts.sizeH);
+                    ScreenCaptureHook overlay{&app->screens, &app->uiRenderer, &app->error, true};
+                    if (!app->renderer.capture((uint32_t)app->opts.sizeW,
+                                               (uint32_t)app->opts.sizeH, rgba, app->error,
+                                               screenCaptureHook, &overlay))
+                        return SDL_APP_FAILURE;
+                } else {
+                    // captureUi: a menu frame has no 3D scene, so the scene pass is skipped
+                    // and the UI hook draws onto the cleared target (scene_renderer.h).
+                    ScreenCaptureHook hook{&app->screens, &app->uiRenderer, &app->error};
+                    if (!app->renderer.captureUi((uint32_t)app->opts.sizeW,
+                                                 (uint32_t)app->opts.sizeH, rgba, app->error,
+                                                 screenCaptureHook, &hook))
+                        return SDL_APP_FAILURE;
+                }
                 reportCoverage(rgba, app->opts.sizeW, app->opts.sizeH);
                 writePpm(app->opts.out, rgba, app->opts.sizeW, app->opts.sizeH);
                 reportShadows(app->renderer.stats());
@@ -513,24 +528,24 @@ static SDL_AppResult appIterate(App* app) {
 
         gpu::Frame frame;
         if (!gpu::beginFrame(app->ctx, app->sc, frame, app->error)) return SDL_APP_FAILURE;
-        // Clear first: the UI pass loads (sprite.cpp:468), the screen art is authored
-        // 800x600, and a larger window would otherwise present undefined backbuffer
-        // pixels around it. Same opaque-black background captureUi gives a --out frame.
-        WGPURenderPassColorAttachment clear = {};
-        clear.view = frame.view;
-        clear.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-        clear.loadOp = WGPULoadOp_Clear;
-        clear.storeOp = WGPUStoreOp_Store;
-        clear.clearValue = WGPUColor{0.0, 0.0, 0.0, 1.0};
-        WGPURenderPassDescriptor clearPass = {};
-        clearPass.colorAttachmentCount = 1;
-        clearPass.colorAttachments = &clear;
-        WGPURenderPassEncoder clearRp =
-            wgpuCommandEncoderBeginRenderPass(frame.encoder, &clearPass);
-        wgpuRenderPassEncoderEnd(clearRp);
-        wgpuRenderPassEncoderRelease(clearRp);
-        if (!ui::drawScreenFrame(app->screens, app->uiRenderer, app->sc.width, app->sc.height,
-                                 frame.encoder, frame.view, app->sc.format, app->error)) {
+        if (backdropLive) {
+            // The stage pass clears colour and depth itself (SceneRenderer::render), so the
+            // black clear of the backdrop-free path is not used here.
+            render::Target target;
+            target.encoder = frame.encoder;
+            target.colorView = frame.view;
+            target.format = app->sc.format;
+            target.width = app->sc.width;
+            target.height = app->sc.height;
+            applyTitleBackdropCamera(*app, (float)app->sc.width / (float)app->sc.height);
+            if (!app->renderer.render(target, app->error) ||
+                !ui::drawScreenOverlay(app->screens, app->uiRenderer, app->sc.width,
+                                       app->sc.height, frame.encoder, frame.view, app->sc.format,
+                                       app->error)) {
+                gpu::endFrame(app->ctx, app->sc, frame);
+                return SDL_APP_FAILURE;
+            }
+        } else if (!drawMenuOverClear(*app, frame)) {
             gpu::endFrame(app->ctx, app->sc, frame);
             return SDL_APP_FAILURE;
         }

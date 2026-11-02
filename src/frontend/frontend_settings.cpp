@@ -35,6 +35,7 @@ void applyUserSettings(FrontendSettings& settings, const settings::UserSettings&
     settings.netLastHost = document.netLastHost;
     settings.netServer = document.netServer;
     settings.shadowRendering = document.shadowRendering;
+    settings.titleBackdrop = document.titleBackdrop;
 }
 
 settings::UserSettings toUserSettings(const FrontendSettings& settings) {
@@ -45,6 +46,7 @@ settings::UserSettings toUserSettings(const FrontendSettings& settings) {
     document.fullscreen = settings.fullscreen;
     document.toonRendering = settings.toonRendering;
     document.shadowRendering = settings.shadowRendering;
+    document.titleBackdrop = settings.titleBackdrop;
     document.resolution = {settings.resolutionChoice.width, settings.resolutionChoice.height};
     document.installDir = settings.installDir;
     document.language = settings.language;

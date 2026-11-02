@@ -21,6 +21,16 @@ namespace fs = std::filesystem;
 
 namespace {
 
+// The document's own version, never a literal: a schema bump must not turn this test red.
+// The version-dependent checks below mean "current" and "one past current", so v8 nearly
+// shipped with this file still asserting v7 and failing.
+std::string currentVersionLine() {
+    return "version = " + std::to_string(settings::kSchemaVersion) + "\n";
+}
+std::string futureVersionLine() {
+    return "version = " + std::to_string(settings::kSchemaVersion + 1) + "\n";
+}
+
 int g_checks = 0;
 int g_failures = 0;
 
@@ -166,9 +176,10 @@ int main() {
         std::string error;
         check(!parses("[display]\nfullscreen = true\n", out, error), "missing version is rejected");
         check(error.find("version") != std::string::npos, "the reason names the version line");
-        check(!parses("version = 8\n[display]\nfullscreen = true\n", out, error),
+        check(!parses(futureVersionLine() + "[display]\nfullscreen = true\n", out, error),
               "an unsupported version is rejected");
-        check(error.find("unsupported config version 8") != std::string::npos,
+        check(error.find("unsupported config version " +
+                         std::to_string(settings::kSchemaVersion + 1)) != std::string::npos,
               "the reason names the version it found");
         // v1-v5 are previous schemas and are MIGRATED, not rejected: issue #10 removed the
         // port-invented heavy binding, issue #21 added the toon toggle, issue #36 added the
@@ -339,7 +350,7 @@ int main() {
             checkInt("and the rest of the file still applied", 70, out2.volumes.master);
             // Saving after a migration writes the current schema.
             const std::string saved = settings::serialize(out2);
-            check(saved.find("version = 7") != std::string::npos,
+            check(saved.find(currentVersionLine()) != std::string::npos,
                   "a migrated document saves as the current version");
         }
         // Inline comments are not a feature: the value must parse whole.
@@ -410,7 +421,8 @@ int main() {
         check(!migrated.shadowRendering, "and so does the v5 shadow toggle");
         // The next save writes the current schema, and every toggle round-trips from there.
         const std::string saved = settings::serialize(migrated);
-        check(saved.find("version = 7") != std::string::npos, "the next save writes v7");
+        check(saved.find(currentVersionLine()) != std::string::npos,
+              "the next save writes the current version");
         check(saved.find("[render]") != std::string::npos && saved.find("toon = false") != std::string::npos,
               "with the toon toggle written at its value");
         check(saved.find("shadows = false") != std::string::npos,
@@ -474,9 +486,35 @@ int main() {
         // cannot silently accept a future document.
         settings::UserSettings future;
         settings::LoadReport futureReport;
-        check(!settings::parse("version = 8\n[render]\ntoon = true\n", future, error,
-                               futureReport),
-              "a v8 document is refused");
+        check(!settings::parse(futureVersionLine() + "[render]\ntoon = true\n", future,
+                               error, futureReport),
+              "a document one version ahead is refused");
+    }
+
+    // Issue #98 took the schema to v8 with [title] backdrop. A v7 file must keep every
+    // value and mean "the original title art", which is what a v7 build showed.
+    std::printf("\n-- issue #98: a v7 file keeps everything and means the original title art\n");
+    {
+        settings::UserSettings out;
+        settings::LoadReport report;
+        std::string error;
+        check(settings::parse("version = 7\n[render]\ntoon = true\nshadows = true\n"
+                              "[audio]\nmaster = 63\n",
+                              out, error, report),
+              "a v7 document loads: " + error);
+        check(out.toonRendering && out.shadowRendering, "both toggles are kept");
+        checkInt("the rest of the file applied", 63, out.volumes.master);
+        check(out.titleBackdrop.empty(), "and the title backdrop is the original art");
+        checkInt("with no warning", 0, report.warnings);
+        check(!report.messages.empty() && report.messages[0].find("version 7") != std::string::npos,
+              "and the report says which version it migrated from");
+        // The new key survives a save and a reload.
+        out.titleBackdrop = "stage03";
+        settings::UserSettings back;
+        check(parses(settings::serialize(out), back, error),
+              "the title backdrop round-trips: " + error);
+        checkStr("the stage comes back exactly", "stage03", back.titleBackdrop);
+        check(back == out, "and nothing else moves");
     }
 
     std::printf("\n-- issue #36: a v3 file keeps every value and gains the game folder key\n");
@@ -576,7 +614,8 @@ int main() {
         checkInt("it is one warning too", 1, report.warnings);
         // A CURRENT document without the key at all is a hand-edit or a lossy writer: the
         // one thing it costs (the remembered folder) is worth a warning.
-        check(settings::parse("version = 7\n[display]\nfullscreen = true\n", out, error, report),
+        check(settings::parse(currentVersionLine() + "[display]\nfullscreen = true\n", out,
+                              error, report),
               "a current document without the key still loads: " + error);
         check(out.installDir.empty(), "nothing is remembered");
         checkInt("and that is reported", 1, report.warnings);
