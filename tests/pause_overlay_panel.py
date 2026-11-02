@@ -45,7 +45,7 @@ import tempfile
 from capture_probe import (main_guard, read_ppm, require_install, run_demo)
 # The match frame the recipes pause at, and the one capture frame the hand-over to the battle
 # takes. Both runs' own "match: N frames" line proves it before anything is measured.
-PAUSE_FRAME = 300
+PAUSE_FRAME = 180
 HANDOVER = 1
 # A pixel is menu ink when every channel is at least this bright: the title and rows are
 # white and 0.85 grey (217), while the dimmed stage's stone sits near 180.

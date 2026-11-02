@@ -251,7 +251,8 @@ Original-side runs may be audible; muting there is convenience only (above).
 
 ```bash
 ./build.sh deps && ./build.sh linux
-ctest --test-dir build/linux --output-on-failure
+ctest --test-dir build/linux --output-on-failure            # default tier, a few minutes
+ctest --test-dir build/linux -L slow --output-on-failure    # before a release
 ./tools/launch_original.sh            # the original, under Wine
 python3 research/tools/coverage_report.py
 ```

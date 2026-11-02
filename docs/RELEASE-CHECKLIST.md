@@ -68,8 +68,17 @@ extended this suite and `user_settings_test` — no suite was added, which is wh
 ## 2. Host suite (the CI job runs exactly this)
 
 ```bash
-ctest --test-dir build/linux --output-on-failure
+ctest --test-dir build/linux --output-on-failure          # the default tier
+ctest --test-dir build/linux -L slow --output-on-failure  # required before a release
 ```
+
+The suite is split by the wall time a test structurally needs (`slow` labels, set beside
+the tests in `CMakeLists.txt`). The default tier is the per-change set. The `slow` tier is
+`online_flow_check`, `net_play_check`, `rollback_pixels_check`, `animation_pose_test`,
+`effect_catalog_test`, `sim_pose_test` and `npr_experiments`: real games over a network
+(an online capture is throttled to the frame rate, so the flow's own duration is the wall
+time), the full rollback pixel matrix, and the whole-roster / all-models audits. **A release
+gate runs both.** Every test has a hard timeout, so a hang fails rather than holds the run.
 
 * **With the game install present**: `100% tests passed out of 81` (fixture set 23, three of them pilot extras: the two guard-gate fixtures and the charge-spend fixture — **build all targets after editing the shared fixture header**, or the differential runs a stale binary and fails on an unknown directive) (fixture set 22, two of them pilot-gate extras) (2026-10-16, after the P2-5 body tests and differential, the P2-6 resolver test and the P2-7 shot-body and guard-body tests were added; `ctest`'s own summary is authoritative)
   (re-measured 2026-10-09; 63 was the 2026-10-06 measurement: 61 came from issue #4's three

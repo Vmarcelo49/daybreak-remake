@@ -10,7 +10,14 @@ import subprocess
 import sys
 import tempfile
 
-FRAMES = 8000
+# Frames are 60 Hz of REAL time here: the port throttles an online capture to the frame rate,
+# because peers and their timeouts live in real time (frame_loop.inc). The walk needs the
+# lobby, the selection, the versus intro, a 60 s round, the result and the way back, so the
+# budget follows the round: ~1000 frames of screens, 3600 of round, and the rest of the
+# presentation and the return. It is therefore a labelled slow test (issue #98 test-time
+# rework): 8000 frames was 133 s of wall time, and this is ~90 s — the round is the floor
+# while the stage page's shortest finite limit is 60 s.
+FRAMES = 5600
 PLAYERS = 4
 
 
@@ -30,7 +37,8 @@ def host_script():
     lines += [press(460, "DOWN"), press(480, "DOWN")]
     # Pressed again and again, since it waits until the other player has chosen.
     lines += [press(tick, "JUMP") for tick in range(520, 760, 24)]
-    # A random stage skips the variation row: one down to the time limit, and two ups wrap to START.
+    # A random stage skips the variation row: one down to the time limit (one step right is
+    # the page's shortest finite round, 60 s), and two ups wrap to START.
     lines += [press(800, "DOWN"), press(840, "RIGHT"), press(860, "UP"), press(880, "UP")]
     lines += [press(tick, "JUMP") for tick in range(900, 960, 24)]
     lines += ["1000 WAIT result\n"]

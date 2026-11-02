@@ -974,3 +974,42 @@ if(daybreak_tests)
     set_property(TEST ${daybreak_tests} APPEND PROPERTY ENVIRONMENT
         "SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT=0x0000/0x0000")
 endif()
+
+# --- what the suite costs ----------------------------------------------------------
+# A test that hangs must not hold the suite: a test with no timeout of its own gets one
+# here, well above what the slowest of its kind is measured at. (The asset-backed tests
+# already set theirs where they are added; this only fills the gaps.)
+if(daybreak_tests)
+    foreach(daybreak_test ${daybreak_tests})
+        get_test_property(${daybreak_test} TIMEOUT daybreak_timeout)
+        if(daybreak_timeout STREQUAL "NOTFOUND")
+            set_tests_properties(${daybreak_test} PROPERTIES TIMEOUT 120)
+        endif()
+    endforeach()
+endif()
+
+# The `slow` label marks the tests whose cost is structural rather than incidental — they
+# are not slow by accident, so they are not trimmed further:
+#   * online_flow_check and net_play_check run REAL games over a network, and the port
+#     throttles an online capture to the frame rate because peers and their timeouts live
+#     in real time (frame_loop.inc): their wall time is the flow's own duration;
+#   * rollback_pixels_check renders the full frame matrix (three lengths, three rollback
+#     modes) at 640x360;
+#   * animation_pose_test, effect_catalog_test, sim_pose_test and npr_experiments are
+#     exhaustive sweeps over the whole roster or every shipped model, i.e. audits rather
+#     than per-change regressions.
+# The default run is `ctest -LE slow`; before a release, run the full set
+# (docs/RELEASE-CHECKLIST.md §2).
+set(DAYBREAK_SLOW_TESTS
+    online_flow_check
+    net_play_check
+    rollback_pixels_check
+    animation_pose_test
+    effect_catalog_test
+    sim_pose_test
+    npr_experiments)
+foreach(daybreak_slow_test IN LISTS DAYBREAK_SLOW_TESTS)
+    if(TEST ${daybreak_slow_test})
+        set_property(TEST ${daybreak_slow_test} APPEND PROPERTY LABELS slow)
+    endif()
+endforeach()

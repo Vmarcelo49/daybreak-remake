@@ -11,7 +11,11 @@ import time
 SERVER_SOURCE = pathlib.Path(__file__).resolve().parents[1] / "server"
 ROOM_CODE_ROW, ADDRESS_ROW, SERVER_ROW = 1, 2, 6
 DEFAULT_SERVER_LENGTH = 19
-FRAMES = 1400
+# The menu reports a failed join after its first-contact silence (net::Lobby's
+# kFirstContactMs), so the run only has to carry the script to the row and the wait out.
+# 1000 frames covers that with margin; 1400 was 40% more wall time for nothing, and 700 was
+# measured short (the first join had not reported yet).
+FRAMES = 1000
 
 
 def free_port():

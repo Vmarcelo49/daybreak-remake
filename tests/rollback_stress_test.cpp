@@ -61,8 +61,12 @@ void run_match(const std::string& name, const sim::BattleConfig& config) {
         rolled.saveState(ring[tick % kRing]);
         rolled.step(inputs);
 
+        // One rollback every third tick, not every tick: the depth still cycles through
+        // every value (3 steps through a ring of 8), so the property under test — a replayed
+        // history ends exactly where the unreplayed one does — keeps the same coverage at a
+        // third of the cost. A match is thousands of rollbacks either way.
         const unsigned depth = 1 + tick % kMaxRollback;
-        if (tick + 1 >= depth) {
+        if (tick % 3 == 0 && tick + 1 >= depth) {
             const unsigned from = tick + 1 - depth;
             // A wrong prediction runs, and is then replaced by the inputs that really happened.
             rolled.loadState(ring[from % kRing]);

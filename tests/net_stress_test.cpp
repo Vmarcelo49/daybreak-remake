@@ -46,7 +46,9 @@ sim::BattleConfig make_config(const std::string& game, bool humans) {
     return config;
 }
 
-constexpr unsigned kTicks = 30 * 60 + 2400;
+// The round (30 s) plus a short margin past its end. 2400 extra ticks of a match that
+// was already over measured nothing this test asserts (test-time rework).
+constexpr unsigned kTicks = 30 * 60 + 1200;
 // A 60 Hz frame, less what docs/PERFORMANCE.md measured the four-view renderer needing.
 constexpr double kUpdateBudgetMs = 16.7 - 5.3;
 constexpr std::array<const gameplay::CharacterMoves*, 4> kNoMoves{};

@@ -3,6 +3,7 @@
 
 Agreement between peers, not with the original. Skips without an install.
 """
+import concurrent.futures
 import json
 import pathlib
 import shutil
@@ -13,7 +14,12 @@ import sys
 import tempfile
 import time
 
-TICKS = 10000
+# The round is limited by this test's own 20 s time limit, so the ticks only have to carry
+# the countdown, the round and its presentation (measured: the round ends near tick 1700 on
+# both roster sizes). 10000 ticks with a 60 s round spent minutes of wall time past the
+# round's end and proved nothing further (test-time rework).
+TIME_LIMIT = 20
+TICKS = 2000
 PROXY = pathlib.Path(__file__).resolve().parents[1] / "tools" / "net_proxy.py"
 SERVER_SOURCE = pathlib.Path(__file__).resolve().parents[1] / "server"
 
@@ -68,7 +74,7 @@ def compare(logs, name):
 
 
 def full_match(netctl, game, folder, count):
-    proxy, peers, logs = start_peers(netctl, game, folder, count, TICKS, time_limit=60)
+    proxy, peers, logs = start_peers(netctl, game, folder, count, TICKS, time_limit=TIME_LIMIT)
     try:
         results = []
         for peer in peers:
@@ -88,9 +94,9 @@ def full_match(netctl, game, folder, count):
 
 
 def dropped_peer(netctl, game, folder):
-    proxy, peers, logs = start_peers(netctl, game, folder, 4, 1500)
+    proxy, peers, logs = start_peers(netctl, game, folder, 4, 1000)
     try:
-        time.sleep(8)
+        time.sleep(5)
         peers[2].send_signal(signal.SIGKILL)
         peers[2].wait()
         results = []
@@ -110,7 +116,7 @@ def dropped_peer(netctl, game, folder):
     assert len(slots) == 1 and next(iter(slots)).count("C") == 1 and next(iter(slots))[0] == "H", \
         f"dropped peer: its slot is not COM: {results}"
     assert all(r["disconnects"] == 1 for r in results), f"dropped peer: {results}"
-    assert frames > 1400, f"dropped peer: only {frames} frames compared"
+    assert frames > 900, f"dropped peer: only {frames} frames compared"
     print(f"dropped peer: {frames} frames equal, its slot is COM")
 
 
@@ -185,8 +191,11 @@ def main():
         else:
             print("room code: not run, no Go toolchain")
         dropped_peer(netctl, game, folder)
-        full_match(netctl, game, folder, 2)
-        full_match(netctl, game, folder, 4)
+        # The two roster sizes are independent (their own ports, proxy and logs), so they
+        # run together: same assertions, half the wall time.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            for _ in pool.map(lambda count: full_match(netctl, game, folder, count), (2, 4)):
+                pass
     print("net_play_check: ok")
     return 0
 

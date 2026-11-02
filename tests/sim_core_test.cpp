@@ -74,7 +74,11 @@ void test_every_combo_runs(const std::string& game) {
                 std::set<unsigned> states;
                 bool moved = false;
                 const auto start = battle.actor(0).position;
-                for (unsigned t = 0; t < 1200; ++t) {
+                // Ten seconds of a COM opponent is enough to move, hit and knock down an
+                // idle fighter; the sweep's claim is that every combo RUNS, not that it
+                // fights for a minute (test-time rework: 1200 ticks made this the suite's
+                // longest section for no extra coverage).
+                for (unsigned t = 0; t < 600; ++t) {
                     battle.step({});
                     states.insert(battle.actor(0).state);
                     moved |= battle.actor(0).position != start;

@@ -105,8 +105,16 @@ Platform guides: [`docs/BUILD-linux.md`](docs/BUILD-linux.md),
 ### Tests and verification
 
 ```bash
-ctest --test-dir build/linux --output-on-failure
+ctest --test-dir build/linux --output-on-failure              # the default tier
+ctest --test-dir build/linux -L slow --output-on-failure      # before a release
 ```
+
+The suite is split by the wall time a test structurally needs. The default tier is the
+per-change set and takes a few minutes; the `slow` label marks the tests whose cost is
+their subject — the two online walks (an online capture is throttled to the frame rate, so
+the flow's own duration is the wall time), the full rollback pixel matrix, and the
+whole-roster/all-models audits. Every test also has a hard timeout, so a hang fails the run
+instead of holding it. The label list lives in `CMakeLists.txt` beside the tests.
 
 Read CTest's own summary rather than a count in a document. Tests that need the game install
 skip themselves (exit 77) on a checkout without one; the release checklist is

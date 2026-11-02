@@ -58,7 +58,10 @@ std::vector<std::string> describe(const game::BattleFrame& frame) {
     return out;
 }
 
-constexpr unsigned kTicks = 30 * 60 + 2400;  // past the awards, which follow the time limit
+// The round (30 s) plus a short margin past its end: the assertions are that the round
+// ends once and that a stressed run reports exactly what a plain one does, neither of
+// which needs the 2400-tick tail this used to carry (test-time rework).
+constexpr unsigned kTicks = 30 * 60 + 1200;
 
 // A stressed run reports exactly what a plain one does, tick by tick.
 void test_stress_changes_nothing(const std::string& game, bool humans) {
