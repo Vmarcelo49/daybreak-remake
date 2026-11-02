@@ -807,6 +807,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
              COMMAND ${Python3_EXECUTABLE}
                      "${CMAKE_CURRENT_SOURCE_DIR}/tests/package_manifest_test.py")
 
+    # The update manifest the updater downloads (issue #100): built from two synthetic
+    # archives, so the tool proves each archive against the manifest inside it before
+    # publishing hashes, and its output is byte-for-byte reproducible (it gets signed).
+    add_test(NAME update_manifest_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/update_manifest_test.py")
+
     # The battle HUD's sprite table and draw geometry: device-free arithmetic over the
     # transcribed .rdata anchors, so it needs the headers' include path and webgpu.h only.
     add_executable(hud_sprite_table tests/hud_sprite_table.cpp)
@@ -1092,7 +1099,7 @@ set(DAYBREAK_AREA_SETTINGS
 
 set(DAYBREAK_AREA_PLATFORM
     input_backend_test launcher_test controller_scene_lifetime_test bgm_loop_test
-    unicode_path_check check_tools_test package_manifest_test
+    unicode_path_check check_tools_test package_manifest_test update_manifest_test
 )
 
 foreach(daybreak_area frontend hud battle net render data settings platform)
