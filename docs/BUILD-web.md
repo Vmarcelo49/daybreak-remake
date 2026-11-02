@@ -62,6 +62,42 @@ keepRuntimeAlive() is set ... due to an async operation`. It is an ASYNCIFY
 side effect of the main loop, not a failure: the exit status is 0 and the report
 above has already been printed.
 
+## Reading an uncaught C++ exception
+
+`exception thrown: CppException` is a `throw` that nothing caught: the client has no
+top-level handler, and the page shows the object, not the message. Two things are needed to
+get the text, one in the build and one in the page:
+
+```bash
+emcmake cmake -S . -B build/web-diag -GNinja -DCMAKE_BUILD_TYPE=Release \
+  "-DCMAKE_EXE_LINKER_FLAGS=-sASSERTIONS=1 -sEXCEPTION_STACK_TRACES=1 -sEXPORTED_RUNTIME_METHODS=getExceptionMessage --profiling-funcs"
+cmake --build build/web-diag
+```
+
+```js
+// before the module starts, e.g. Page.addScriptToEvaluateOnNewDocument
+window.addEventListener('error', (ev) => console.log('CPP-EXCEPTION',
+    Module.getExceptionMessage(ev.error)));   // [type, message]
+```
+
+`getExceptionMessage` lives in the emscripten glue and is only present when exported, which
+is why a plain Release build reports nothing. The diagnostic build is noticeably slower —
+assertions and stack traces cost time in the asset client's write path — so a full front-end
+run needs a few minutes for its two groups.
+
+Driving the front end from a script is deterministic, and real key events are not:
+`--screen=title` still runs the opening, which eats the first presses, so the title's cursor
+ends up wherever the timing puts it. `web_flow_check.mjs --script-file=<script>` writes the
+port's own `--script=` file into the wasm file system before `main()` runs, and
+`?args=...|--script=/scripts/input.txt` makes the client read it, so the browser takes the
+same path the native harness takes. Measured end to end with
+`tests/scripts/frontend-com-rematch.txt`: title, selection, versus, a four-fighter battle,
+the round's result screen, back to the selection, `RESULT: ok`.
+
+`tests/web_frontend_tree_check.py` is the same flow without a browser: it runs the front end
+inside the asset tree a browser would hold for that match, which is where issue #88 was
+found.
+
 ## Self-hosted delivery (issue #4)
 
 The production shape is the same-origin service in

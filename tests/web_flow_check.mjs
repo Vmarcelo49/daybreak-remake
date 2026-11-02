@@ -4,16 +4,22 @@
 // launches one that does. Needs `python3 -m daybreak_web serve` running.
 //
 //   usage: web_flow_check.mjs <url> <out.png> [timeout seconds] [--match=<regex>]
+//                             [--script-file=<front-end input script>]
+//
+// --script-file writes the script into the wasm file system before main() runs, so the run
+// takes the port's own `--script=` path instead of real key events. The url must then carry
+// `--script=/scripts/input.txt` in its `?args=`: that file is the one this writes.
 //
 // Exit 0 only when the console printed "RESULT: ok" and every --match regex was seen.
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const positional = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const required = process.argv.slice(2).filter((a) => a.startsWith("--match="))
     .map((a) => new RegExp(a.slice("--match=".length)));
+const scriptFile = process.argv.slice(2).find((a) => a.startsWith("--script-file="));
 const [url, outPng, timeoutArg] = positional;
 if (!url || !outPng) {
     console.error("usage: web_flow_check.mjs <url> <out.png> [timeout seconds] [--match=<regex>]");
@@ -77,6 +83,31 @@ ws.addEventListener("message", (event) => {
 
 await send("Runtime.enable");
 await send("Page.enable");
+if (scriptFile) {
+    // The shell builds `var Module = {...}` before the module starts, so intercepting that
+    // assignment is the only place a preRun can be installed from here.
+    const text = readFileSync(scriptFile.slice("--script-file=".length), "utf8");
+    await send("Page.addScriptToEvaluateOnNewDocument", {
+        source: `
+let __module = null;
+Object.defineProperty(window, 'Module', {
+  configurable: true,
+  get() { return __module; },
+  set(value) {
+    __module = value;
+    const text = ${JSON.stringify(text)};
+    value.preRun = (value.preRun || []).concat([() => {
+      try {
+        if (typeof FS === 'undefined') { console.log('script-file: no FS'); return; }
+        FS.mkdirTree('/scripts');
+        FS.writeFile('/scripts/input.txt', text);
+        console.log('script-file: /scripts/input.txt ' + text.length + ' bytes');
+      } catch (err) { console.log('script-file failed: ' + err); }
+    }]);
+  },
+});`,
+    });
+}
 await send("Page.navigate", { url });
 while (!done && Date.now() - started < timeoutMs) await new Promise((r) => setTimeout(r, 500));
 const timedOut = !done;

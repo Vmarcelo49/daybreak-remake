@@ -58,6 +58,9 @@ that exact match:
 - The selected weapons and their attached models.
 - Stage-specific effects and shared battle objects, match music, and required
   battle sounds not already in the startup group.
+- What the round's **end** needs: the victory scripts (`data/scenario/win/`) and the
+  winner art (`data/win/`). The result screen is part of the match; without them a
+  delivered match has nothing to show when it finishes (issue #88).
 - Any resources needed to render the VS screen itself; portraits and shared VS
   art should already be available from startup where practical.
 
@@ -225,6 +228,16 @@ measurement or the code that decided it.
    match group — where the plan's own wording puts them. The grouping rules now
    carry a fingerprint that a prepared catalog records, so changing a rule
    invalidates the catalog instead of silently serving the old grouping.
+   Issue #88 is the second such miss, one screen later: when the round resolves the
+   core reads a victory script (`data/scenario/win/%02u-%02u-%u.txt` with the single
+   `%02u.txt` as its fallback, `battle_victory_script.hpp`) and the result screen
+   uploads the winner art (`data/win/%02da|b.cnv`). Neither was in a group, so a
+   delivered match died on an uncaught `Asset not found` the moment the result screen
+   opened. Both prefixes live in the match group now (measured: 570 scripts / 0.2 MB
+   and 18 sheets / 18.9 MB), and `tests/web_frontend_tree_check.py` runs the whole
+   front end inside the tree a browser would hold, which is the check that catches
+   this class; `web_match_group_check.py` only ever ran `simctl`, which has no result
+   screen.
 
 3. **The startup gate is not the whole startup group.** The plan's Step 4 says to
    "mark only assets required by the first usable screen as the startup gate", but
