@@ -281,8 +281,8 @@ comments — when a decision changes.
   `foundation/docs/RELEASE-CHECKLIST.md` §3.5: a window, a compositor, real
   pacing and real devices are outside what any headless check owns.
 - This implements the fixed-clock/input prerequisite shared by
-  [issue #5](https://github.com/Vmarcelo49/daybreak-decomp/issues/5) and
-  [issue #3](https://github.com/Vmarcelo49/daybreak-decomp/issues/3).
+  [issue #5](https://github.com/Vmarcelo49/daybreak-remake/issues/5) and
+  [issue #3](https://github.com/Vmarcelo49/daybreak-remake/issues/3).
   Save/restore, serializable RNG, authoritative snapshots/state hashes,
   resimulation and cross-platform determinism audits remain open under #3;
   neither rollback nor network transport is implemented by this decision.

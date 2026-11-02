@@ -762,7 +762,7 @@ for char in ("rena","mion","keiichi","satoko","rika","shion","tomitake","takano"
   meshes' own texture names from the `.X` files — uncompressed ones with a
   `TextureFilename` regex, MSZIP ones (`xof 0303bzip0032`) via
   the retired prototype converter archived at
-  [`3fea431:webgpu-mvp/tools/x2txt.py`](https://github.com/Vmarcelo49/daybreak-decomp/blob/3fea431/webgpu-mvp/tools/x2txt.py)
+  [`3fea431:webgpu-mvp/tools/x2txt.py`](https://github.com/Vmarcelo49/daybreak-remake/blob/3fea431/webgpu-mvp/tools/x2txt.py)
   (its `convert()` returns the text form; it is not in the current tree). Do not
   edit `research/recomp/`, and do not run `generate_recomp.py`).
 
@@ -925,7 +925,7 @@ So the next agent can re-run instead of re-deriving:
   `TextureFilename\n\x00\x02\x00` + 4-byte LE length + CP932 bytes —
   a plain regex over the raw file. For MSZIP assets
   (`xof 0303bzip0032`) the archived prototype converter
-  [`3fea431:webgpu-mvp/tools/x2txt.py`](https://github.com/Vmarcelo49/daybreak-decomp/blob/3fea431/webgpu-mvp/tools/x2txt.py)
+  [`3fea431:webgpu-mvp/tools/x2txt.py`](https://github.com/Vmarcelo49/daybreak-remake/blob/3fea431/webgpu-mvp/tools/x2txt.py)
   was used; it is not part of the current tree.
 * **Path literals as an inventory.** `grep -rho '"data/[^"]*"' research/decompiled/*.c`
   gave the authoritative list of asset families (`data/stage` (via

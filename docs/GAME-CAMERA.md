@@ -27,7 +27,7 @@ the camera: holding Back turns the character away while the view remains oriente
 toward the opponent. The asset-backed `controller_scene_lifetime_test` checks
 this separation with Rena 0, including the resulting live camera direction.
 Historical standalone match captures retain their banked actor-yaw orbit.
-This corrects [issue #52](https://github.com/Vmarcelo49/daybreak-decomp/issues/52)
+This corrects [issue #52](https://github.com/Vmarcelo49/daybreak-remake/issues/52)
 acceptance criterion 5: a movement turn must not swing the live camera with the
 body. The target bearing remains the view and control reference.
 
