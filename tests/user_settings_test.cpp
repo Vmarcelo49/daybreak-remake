@@ -504,7 +504,7 @@ int main() {
               "a v7 document loads: " + error);
         check(out.toonRendering && out.shadowRendering, "both toggles are kept");
         checkInt("the rest of the file applied", 63, out.volumes.master);
-        check(out.titleBackdrop.empty(), "and the title backdrop is the original art");
+        checkStr("and the title backdrop is the shipped default", "stage03", out.titleBackdrop);
         checkInt("with no warning", 0, report.warnings);
         check(!report.messages.empty() && report.messages[0].find("version 7") != std::string::npos,
               "and the report says which version it migrated from");

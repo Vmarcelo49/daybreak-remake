@@ -72,10 +72,12 @@ namespace settings {
 // v7 added [network], for online play: name, port, input_delay, last_host and server. A v6 file is MIGRATED
 // additively, and every new key takes its default.
 //
-// v8 (issue #98) added [title] backdrop: which stage, if any, is drawn live behind the
-// title menu instead of data/title/back00. A v7 file is MIGRATED additively — empty is the
-// original art, which is what v7 showed — so a file written before the experiment loads
-// and behaves exactly as it did.
+// v8 (issue #98) added [title] backdrop: which stage is drawn live behind the title menu
+// instead of data/title/back00. A v7 file is MIGRATED additively, and the key takes the
+// shipped default — the shrine by day, which the owner accepted after judging it against
+// the original painting — so an upgraded file opens on the live title; `backdrop = off`
+// restores the painting. This is the one key whose default is not "what the older file
+// meant": the product's default changed, and the owner decided that.
 // The language a player who has not chosen gets, from the system's first language ("ja", "pt"...).
 // The empty sheet language is the game's own Japanese.
 inline std::string languageForLocale(const std::string& systemLanguage) { return systemLanguage == "ja" ? "" : "en"; }
@@ -143,12 +145,13 @@ struct UserSettings {
     // banked capture was made in.
     bool        shadowRendering = false;
     // Which stage is drawn live behind the title menu (issue #98), as a stage directory
-    // name ("stage03"); empty is the original's data/title/back00 art, which is the
-    // default and the state every banked capture was made in. PORT DECISION: the original
-    // has one static title background, so this is an experiment the owner judges, not
-    // recovered behaviour. The Options screen cycles a short list (frontend/title_backdrop.h)
-    // and --title-backdrop= overrides it for one run.
-    std::string titleBackdrop;
+    // name ("stage03"). Default: the composed Furude shrine by day, which the owner kept
+    // after judging it against the original's painting; empty is that painting
+    // (data/title/back00), which --title-backdrop=off and the Options row's ORIGINAL entry
+    // select. PORT DECISION: the original has one static title background, so nothing here
+    // is recovered behaviour. The Options screen cycles the curated list
+    // (frontend/title_backdrop.h).
+    std::string titleBackdrop = "stage03";
     fnd::audio::Volumes volumes;
     std::array<int, fnd::input::ActionCount> keyboard{};
     std::array<std::array<int, fnd::input::ActionCount>, fnd::input::kMaxPlayers> gamepad{};

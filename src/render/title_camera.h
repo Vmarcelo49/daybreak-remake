@@ -29,7 +29,7 @@ struct TitleCamera {
     float height = 250.f;   // eye height relative to the pivot; negative puts the eye below it
     float azimuth0 = 0.f;   // centre of the sweep, radians about +Y (from +X toward +Z)
     float swing = 0.35f;    // half-width of the sweep, radians
-    float period = 44.f;    // seconds for one there-and-back pass
+    float period = 88.f;    // seconds for one there-and-back pass: half speed, by the owner's eye
     float fovY = 45.f;      // vertical field of view, degrees; 45 is viewProj's own
     // Clamp the eye to collision_camera, as the arena camera does. Only a framing seeded
     // from the arena wants it: that mesh bounds the play area, and an authored eye that

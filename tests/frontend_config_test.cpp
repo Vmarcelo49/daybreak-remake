@@ -199,6 +199,10 @@ int main() {
         CHECK(!settings::storableTitleBackdrop("../data"));
         CHECK(!settings::storableTitleBackdrop("/absolute"));
 
+        // The shipped default is the composed shrine by day, so a fresh document and a
+        // migrated one both land on it; ORIGINAL (empty) is a choice, not the default.
+        CHECK(ui::FrontendSettings{}.titleBackdrop == "stage03");
+        CHECK(settings::UserSettings{}.titleBackdrop == "stage03");
         // The Options row cycles the table and wraps; a stage the list does not carry snaps
         // onto it, so one press always reaches a labelled choice.
         CHECK(ui::titleBackdropIndex("stage03") == 1);
@@ -219,7 +223,7 @@ int main() {
         settings::LoadReport rejectedReport98;
         CHECK(settings::parse("version = 8\n[game]\ninstall_dir =\n[title]\nbackdrop = ../../etc\n",
                               rejected98, rejectedError98, rejectedReport98));
-        CHECK(rejectedReport98.warnings == 1 && rejected98.titleBackdrop.empty());
+        CHECK(rejectedReport98.warnings == 1 && rejected98.titleBackdrop == "stage03");   // keeps the default
         settings::UserSettings off98;
         std::string offError98;
         settings::LoadReport offReport98;
@@ -234,7 +238,7 @@ int main() {
         CHECK(settings::parse("version = 7\n[game]\ninstall_dir =\n[render]\ntoon = true\n",
                               fromV7, fromV7Error, fromV7Report));
         CHECK(fromV7Report.warnings == 0);
-        CHECK(fromV7.toonRendering && fromV7.titleBackdrop.empty());
+        CHECK(fromV7.toonRendering && fromV7.titleBackdrop == "stage03");   // the shipped default
     }
     ui::FrontendSettings fresh;
     fresh.resolutions = settings.resolutions;

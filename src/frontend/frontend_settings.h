@@ -34,10 +34,11 @@ struct FrontendSettings {
     // terms as the toon row above.
     bool shadowRendering = false;
     // The Options screen's title-backdrop row (issue #98): which stage, if any, is drawn
-    // live behind the title menu. Empty is the original's static art. Live state on the
-    // same terms as the two rows above — the title is rebuilt when it is next constructed,
-    // so a flip takes effect on returning to it, and toUserSettings() persists it.
-    std::string titleBackdrop;
+    // live behind the title menu. The default is the composed shrine by day; empty is the
+    // original's static art. Live state on the same terms as the two rows above — the title
+    // is rebuilt when it is next constructed, so a flip takes effect on returning to it,
+    // and toUserSettings() persists it.
+    std::string titleBackdrop = "stage03";
     // The user's selection from the Options resolution row; {0,0} is desktop. This is
     // what gets persisted, and it changes ONLY when the row is cycled — the window's
     // actual pixel size lives in currentResolution/resolutionIndex, which the OS changes
