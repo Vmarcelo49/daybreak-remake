@@ -55,6 +55,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: daybreak-linux-x86_64
+          # The archive and its .sha256 (issue #100).
           path: build/package/daybreak-*-linux-x86_64.tar.gz*
           if-no-files-found: error
 
@@ -75,5 +76,35 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: daybreak-windows-x86_64
-          path: build/package/daybreak-*-windows-x86_64.zip
+          # The archive and its .sha256 (issue #100).
+          path: build/package/daybreak-*-windows-x86_64.zip*
+          if-no-files-found: error
+
+  # The release's update manifest (issue #100). This job only builds the file: signing
+  # happens offline with tools/release_sign, because the private key must never be on
+  # GitHub or in CI. The owner downloads this artifact, signs it and publishes it with the
+  # archives (docs/RELEASE-CHECKLIST.md §9).
+  update-manifest:
+    runs-on: ubuntu-24.04
+    needs: [linux, windows]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Build update-manifest.txt
+        run: |
+          version=$(tr -d '[:space:]' < VERSION)
+          linux=$(ls artifacts/daybreak-linux-x86_64/daybreak-"$version"-linux-x86_64.tar.gz)
+          windows=$(ls artifacts/daybreak-windows-x86_64/daybreak-"$version"-*-windows-x86_64.zip)
+          # The manifest publishes these hashes, so check the uploaded archives first.
+          (cd "$(dirname "$linux")" && sha256sum -c "$(basename "$linux").sha256")
+          (cd "$(dirname "$windows")" && sha256sum -c "$(basename "$windows").sha256")
+          python3 -I tools/make_update_manifest.py \
+            --version="$version" --linux="$linux" --windows="$windows" \
+            --out=update-manifest.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: update-manifest
+          path: update-manifest.txt
           if-no-files-found: error
