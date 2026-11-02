@@ -126,7 +126,9 @@ rm -f "$tarball" "$tarball.sha256"
 # timestamp — two runs give the same sha256 (verified in the issue's report).
 tar -C "$out_dir" --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0 \
     -cf - "$name" | gzip -9n > "$tarball"
-sha256sum "$tarball" > "$tarball.sha256"
+# The checksum file names the archive relative to itself, so `sha256sum -c` works wherever
+# the pair is downloaded together (a build-machine path would not).
+(cd "$out_dir" && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
 cat "$tarball.sha256"
 
 echo "== artifact contents =="

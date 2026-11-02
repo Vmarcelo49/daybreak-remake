@@ -71,5 +71,5 @@ python3 -I "$root/tools/package_manifest.py" check "$stage"
 
 (cd "$stage" && zip -q -r "$stage.zip" .)
 mv "$stage.zip" "$out_dir/$name.zip"
-sha256sum "$out_dir/$name.zip" > "$out_dir/$name.zip.sha256"
+(cd "$out_dir" && sha256sum "$name.zip" > "$name.zip.sha256")
 cat "$out_dir/$name.zip.sha256"
