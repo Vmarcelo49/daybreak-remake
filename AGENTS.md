@@ -28,7 +28,7 @@ pre-release for testers.
 | Language | Menus and HUD in English or Japanese. Dialogue is still Japanese | `src/ui/sheet_locale.*`, `assets/locale/en.txt`, `docs/TRANSLATION-INVENTORY.md` |
 | Options and settings | Our own settings file, never the original's | `src/frontend/screen_options.cpp`, `docs/USER-SETTINGS.md` |
 | Texture packs | Read from beside the executable; extractor and verifier exist. Download and prompt wait for a pack | `docs/TEXTURE-PACKS.md`, `tools/asset-tools/texture_pack.py` |
-| Web | Builds and fights, with an open crash (#88). Not in CI since 0.2.1, where its build stalled | `docs/BUILD-web.md`, `webdelivery/` |
+| Web | Builds, fights and finishes a match: the round's end and its result screen are part of the match group since #88. Not in CI since 0.2.1, where its build stalled | `docs/BUILD-web.md`, `webdelivery/` |
 | Online | **The current priority.** Built through step 7: menus, lobby, shared selection, rollback and room codes. Step 8, real play on real networks, is the owner's, and then #3 closes | `docs/ONLINE-PLAN.md`, `src/net/`, `src/frontend/screen_online.cpp`, `server/` |
 | Not built | macOS | |
 
