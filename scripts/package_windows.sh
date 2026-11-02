@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Package the Windows x64 build without original game data.
 # Usage: package_windows.sh [--no-build] [--out=<directory>]
+#
+# The zip is flat (no top-level directory) and carries package-manifest.txt at its root,
+# the list of files the updater may replace (issue #100). A .sha256 file is written
+# beside the zip, as package_linux.sh does for the tarball.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 out_dir="$root/build/package"
@@ -13,6 +17,7 @@ for arg in "$@"; do
     esac
 done
 command -v zip >/dev/null
+command -v python3 >/dev/null
 command -v x86_64-w64-mingw32-objdump >/dev/null
 if [ "$build" = 1 ]; then "$root/build.sh" windows; fi
 version=$(tr -d '[:space:]' < "$root/VERSION")
@@ -60,6 +65,11 @@ for file in "$stage"/*.exe "$stage"/*.dll; do
 done
 test -z "$(find "$stage" -type f \( -iname '*.dat' -o -iname '*.x' -o -iname '*.cnv' -o -iname '*.mpg' \) -print)"
 test -z "$(find "$stage" -type f \( -iname '*.cmd' -o -iname '*.bat' -o -iname '*.ps1' -o -iname '*.sh' \) -print)"
+python3 -I "$root/tools/package_manifest.py" write "$stage" \
+    --version="$version" --target=windows-x86_64 --launch=DaybreakRemake.exe
+python3 -I "$root/tools/package_manifest.py" check "$stage"
+
 (cd "$stage" && zip -q -r "$stage.zip" .)
 mv "$stage.zip" "$out_dir/$name.zip"
-sha256sum "$out_dir/$name.zip"
+sha256sum "$out_dir/$name.zip" > "$out_dir/$name.zip.sha256"
+cat "$out_dir/$name.zip.sha256"
