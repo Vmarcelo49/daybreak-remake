@@ -79,6 +79,12 @@ jobs:
           # The archive and its .sha256 (issue #100).
           path: build/package/daybreak-*-windows-x86_64.zip*
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daybreak-windows-selftest
+          # Not shipped: the owner runs it on a real Windows PC (docs/AUTO-UPDATE.md).
+          path: build/windows/update_selftest.exe
+          if-no-files-found: error
 
   # The release's update manifest (issue #100). This job only builds the file: signing
   # happens offline with tools/release_sign, because the private key must never be on
