@@ -120,6 +120,36 @@ Before writing anything, the tool opens both archives and proves each one agains
 `package-manifest.txt` inside it: same file set, hashes, sizes and Linux exec bits, and no
 symlink, hard link or unsafe path. A mismatch is a failed release, not a warning.
 
+## What the archives may contain
+
+`make_update_manifest.py` refuses anything outside this set, because the game's reader
+(`src/update/archive.cpp`, step 2) implements exactly this set: an archive the tool accepted
+but the game could not read would be an update nobody can apply. Damaged input is a
+one-line `make_update_manifest:` error and exit 1, never a traceback.
+
+**Linux (`daybreak-<version>-linux-x86_64.tar.gz`)**
+
+* one gzip member (no trailing data) holding a POSIX **ustar** archive;
+* members are regular files (type `0` or NUL) and directories (type `5`) only: no symlinks,
+  hard links, devices, GNU long-name records (`L`/`K`), pax headers (`x`/`g`) or sparse
+  files (`S`);
+* header magic `ustar\0` and version `00`, octal size fields, a verified header checksum,
+  and the archive ends with the zero blocks;
+* names are `prefix + "/" + name`, so a path may be up to 255 bytes; `package_linux.sh`
+  passes `--format=ustar` and tar fails loudly on a name ustar cannot hold;
+* exactly one top-level directory, named `daybreak-<version>-linux-x86_64`.
+
+**Windows (`daybreak-<version>-<7–40 lowercase hex>-windows-x86_64.zip`)**
+
+* one disk, compression method 0 (stored) or 8 (deflate) only, no encryption, no zip64
+  (neither the `0x0001` extra field nor the `0xFFFF`/`0xFFFFFFFF` markers);
+* names are UTF-8 (general-purpose flag bit 11) or plain ASCII;
+* the central directory and each local header must agree on the name, and the CRC32 and
+  both sizes are verified.
+
+Both archives are bounded: at most 10,000 entries, 1 GiB uncompressed in total, and a
+200:1 compression ratio per entry, so a zip bomb is refused rather than inflated.
+
 ## `update-manifest.txt.sig`
 
 64 bytes of Ed25519 over the manifest's **exact bytes**, stored as 128 lowercase hex

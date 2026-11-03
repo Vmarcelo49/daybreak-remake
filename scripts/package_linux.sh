@@ -124,8 +124,11 @@ tarball="$out_dir/$name.tar.gz"
 rm -f "$tarball" "$tarball.sha256"
 # Deterministic: sorted entries, fixed ownership and mtime, gzip without its own
 # timestamp — two runs give the same sha256 (verified in the issue's report).
+# POSIX ustar on purpose: it is the only tar dialect the updater's reader accepts
+# (docs/AUTO-UPDATE.md), and GNU/pax long-name records are refused there. ustar splits
+# long paths into its prefix field, so a name it cannot represent fails here, loudly.
 tar -C "$out_dir" --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0 \
-    -cf - "$name" | gzip -9n > "$tarball"
+    --format=ustar -cf - "$name" | gzip -9n > "$tarball"
 # The checksum file names the archive relative to itself, so `sha256sum -c` works wherever
 # the pair is downloaded together (a build-machine path would not).
 (cd "$out_dir" && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")

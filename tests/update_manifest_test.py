@@ -10,12 +10,14 @@ no build output — and expect both the success shape and every refusal.
 
 import hashlib
 import io
+import struct
 import subprocess
 import sys
 import tarfile
 import tempfile
 import unittest
 import zipfile
+import zlib
 from pathlib import Path
 
 TESTS = Path(__file__).resolve().parent
@@ -58,8 +60,10 @@ def write_stage(root, name, files, target, launch, version=VERSION):
     return stage, (stage / "package-manifest.txt").read_text()
 
 
-def write_tar(path, top, files, manifest_text, extra_members=(), top_name=None):
-    with tarfile.open(path, "w:gz") as archive:
+def write_tar(path, top, files, manifest_text, extra_members=(), top_name=None,
+              fmt=tarfile.USTAR_FORMAT):
+    # The release format is POSIX ustar, so the valid fixtures are built in it.
+    with tarfile.open(path, "w:gz", format=fmt) as archive:
         directory = tarfile.TarInfo(top_name or top)
         directory.type = tarfile.DIRTYPE
         directory.mode = 0o755
@@ -94,6 +98,51 @@ def write_zip(path, files, manifest_text):
 
 def sha256_file(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def raw_zip(path, entries):
+    """Build a zip by hand, so tests can set flags, methods and extra fields zipfile hides."""
+    locals_ = []
+    centrals = []
+    offset = 0
+    for entry in entries:
+        name = entry["name"].encode() if isinstance(entry["name"], str) else entry["name"]
+        data = entry.get("data", b"")
+        method = entry.get("method", 0)
+        flags = entry.get("flags", 0)
+        extra_local = entry.get("extra_local", b"")
+        extra_central = entry.get("extra_central", b"")
+        crc = entry.get("crc", zlib.crc32(data) & 0xFFFFFFFF)
+        if method == 8:
+            compressor = zlib.compressobj(9, zlib.DEFLATED, -15)
+            compressed = compressor.compress(data) + compressor.flush()
+        else:
+            compressed = data
+        comp_size = entry.get("comp_size", len(compressed))
+        uncomp_size = entry.get("uncomp_size", len(data))
+        local_name = entry.get("local_name", name)
+        if isinstance(local_name, str):
+            local_name = local_name.encode()
+        local = (
+            struct.pack("<4sHHHHHIIIHH", b"PK\x03\x04", 20, flags, method, 0, 0,
+                        crc, len(compressed), len(data), len(local_name),
+                        len(extra_local))
+            + local_name + extra_local + compressed
+        )
+        central = (
+            struct.pack("<4sHHHHHHIIIHHHHHII", b"PK\x01\x02", 20, 20, flags, method,
+                        0, 0, crc, comp_size, uncomp_size, len(name),
+                        len(extra_central), 0, entry.get("disk", 0), 0,
+                        entry.get("external", 0o100644 << 16), offset)
+            + name + extra_central
+        )
+        locals_.append(local)
+        centrals.append(central)
+        offset += len(local)
+    directory = b"".join(centrals)
+    eocd = struct.pack("<4sHHHHIIH", b"PK\x05\x06", 0, 0, len(entries), len(entries),
+                       len(directory), offset, 0)
+    path.write_bytes(b"".join(locals_) + directory + eocd)
 
 
 class UpdateManifestTest(unittest.TestCase):
@@ -405,6 +454,165 @@ class UpdateManifestTest(unittest.TestCase):
         result, _ = self.run_tool(self.root / "absent.tar.gz", windows)
         self.assertEqual(result.returncode, 1)
         self.assertIn("no such file", result.stderr)
+
+    def test_rejects_a_gnu_long_name_archive(self):
+        linux, windows = self.make_pair()
+        _, manifest = write_stage(self.root, "gnu-stage", LINUX_FILES,
+                                  "linux-x86_64", "run")
+        long_name = "x" * 150
+        extra = tarfile.TarInfo(LINUX_TOP + "/" + long_name)
+        extra.size = 0
+        extra.mode = 0o644
+        write_tar(linux, LINUX_TOP, LINUX_FILES, manifest, extra_members=[extra],
+                  fmt=tarfile.GNU_FORMAT)
+        result, _ = self.run_tool(linux, windows)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("not a POSIX ustar", result.stderr)
+
+    def test_rejects_a_pax_archive(self):
+        linux, windows = self.make_pair()
+        _, manifest = write_stage(self.root, "pax-stage", LINUX_FILES,
+                                  "linux-x86_64", "run")
+        extra = tarfile.TarInfo(LINUX_TOP + "/" + "y" * 150)
+        extra.size = 0
+        extra.mode = 0o644
+        write_tar(linux, LINUX_TOP, LINUX_FILES, manifest, extra_members=[extra],
+                  fmt=tarfile.PAX_FORMAT)
+        result, _ = self.run_tool(linux, windows)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("type", result.stderr)
+
+    def test_rejects_a_sparse_tar_member(self):
+        linux, windows = self.make_pair()
+        _, manifest = write_stage(self.root, "sparse-stage", LINUX_FILES,
+                                  "linux-x86_64", "run")
+        sparse = tarfile.TarInfo(LINUX_TOP + "/sparse")
+        sparse.type = tarfile.GNUTYPE_SPARSE
+        sparse.size = 0
+        write_tar(linux, LINUX_TOP, LINUX_FILES, manifest, extra_members=[sparse])
+        result, _ = self.run_tool(linux, windows)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("type", result.stderr)
+
+    def test_rejects_an_encrypted_zip_entry(self):
+        linux, windows = self.make_pair()
+        _, manifest = write_stage(self.root, "enc-stage", WINDOWS_FILES,
+                                  "windows-x86_64", "DaybreakRemake.exe")
+        entries = [{"name": name, "data": data, "method": 8}
+                   for name, (data, _) in WINDOWS_FILES.items()]
+        entries.append({"name": "package-manifest.txt", "data": manifest.encode(),
+                        "method": 8})
+        entries[0]["flags"] = 0x0001
+        raw_zip(windows, entries)
+        result, _ = self.run_tool(linux, windows)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("encrypted", result.stderr)
+
+    def test_rejects_a_bzip2_zip_entry(self):
+        linux, windows = self.make_pair()
+        _, manifest = write_stage(self.root, "bz-stage", WINDOWS_FILES,
+                                  "windows-x86_64", "DaybreakRemake.exe")
+        with zipfile.ZipFile(windows, "w", zipfile.ZIP_BZIP2) as archive:
+            for name, (data, _) in WINDOWS_FILES.items():
+                archive.writestr(name, data)
+            archive.writestr("package-manifest.txt", manifest)
+        result, _ = self.run_tool(linux, windows)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("compression method 12", result.stderr)
+
+    def test_rejects_a_zip64_extra_field(self):
+        linux, windows = self.make_pair()
+        _, manifest = write_stage(self.root, "z64-stage", WINDOWS_FILES,
+                                  "windows-x86_64", "DaybreakRemake.exe")
+        entries = [{"name": name, "data": data, "method": 0}
+                   for name, (data, _) in WINDOWS_FILES.items()]
+        entries.append({"name": "package-manifest.txt", "data": manifest.encode(),
+                        "method": 0})
+        entries[0]["extra_central"] = struct.pack("<HH", 0x0001, 16) + b"\0" * 16
+        raw_zip(windows, entries)
+        result, _ = self.run_tool(linux, windows)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("zip64", result.stderr)
+
+    def test_rejects_a_truncated_gzip(self):
+        linux, windows = self.make_pair()
+        linux.write_bytes(linux.read_bytes()[:-8])
+        result, _ = self.run_tool(linux, windows)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("gzip", result.stderr)
+
+    def test_rejects_trailing_data_after_the_gzip_member(self):
+        linux, windows = self.make_pair()
+        linux.write_bytes(linux.read_bytes() + b"junk")
+        result, _ = self.run_tool(linux, windows)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("data after the gzip member", result.stderr)
+
+    def test_rejects_a_mismatched_local_zip_name(self):
+        linux, windows = self.make_pair()
+        _, manifest = write_stage(self.root, "local-stage", WINDOWS_FILES,
+                                  "windows-x86_64", "DaybreakRemake.exe")
+        entries = [{"name": name, "data": data, "method": 8}
+                   for name, (data, _) in WINDOWS_FILES.items()]
+        entries.append({"name": "package-manifest.txt", "data": manifest.encode(),
+                        "method": 8})
+        entries[0]["local_name"] = "Other.exe"
+        raw_zip(windows, entries)
+        result, _ = self.run_tool(linux, windows)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("different name", result.stderr)
+
+    def test_rejects_a_bad_crc(self):
+        linux, windows = self.make_pair()
+        _, manifest = write_stage(self.root, "crc-stage", WINDOWS_FILES,
+                                  "windows-x86_64", "DaybreakRemake.exe")
+        entries = [{"name": name, "data": data, "method": 8}
+                   for name, (data, _) in WINDOWS_FILES.items()]
+        entries.append({"name": "package-manifest.txt", "data": manifest.encode(),
+                        "method": 8})
+        entries[0]["crc"] = 0xDEADBEEF
+        raw_zip(windows, entries)
+        result, _ = self.run_tool(linux, windows)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("CRC32", result.stderr)
+
+    def test_rejects_a_zip_bomb_ratio(self):
+        linux, windows = self.make_pair()
+        _, manifest = write_stage(self.root, "bomb-stage", WINDOWS_FILES,
+                                  "windows-x86_64", "DaybreakRemake.exe")
+        entries = [{"name": name, "data": data, "method": 8}
+                   for name, (data, _) in WINDOWS_FILES.items()]
+        entries.append({"name": "package-manifest.txt", "data": manifest.encode(),
+                        "method": 8})
+        entries[0]["uncomp_size"] = 10 * 1024 * 1024
+        raw_zip(windows, entries)
+        result, _ = self.run_tool(linux, windows)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("zip bomb", result.stderr)
+
+    def test_accepts_a_stored_zip(self):
+        linux, windows = self.make_pair()
+        _, manifest = write_stage(self.root, "stored-stage", WINDOWS_FILES,
+                                  "windows-x86_64", "DaybreakRemake.exe")
+        entries = [{"name": name, "data": data, "method": 0}
+                   for name, (data, _) in WINDOWS_FILES.items()]
+        entries.append({"name": "package-manifest.txt", "data": manifest.encode(),
+                        "method": 0})
+        raw_zip(windows, entries)
+        result, _ = self.run_tool(linux, windows)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_accepts_dot_slash_zip_names(self):
+        linux, windows = self.make_pair()
+        _, manifest = write_stage(self.root, "dotzip-stage", WINDOWS_FILES,
+                                  "windows-x86_64", "DaybreakRemake.exe")
+        entries = [{"name": "./" + name, "data": data, "method": 8}
+                   for name, (data, _) in WINDOWS_FILES.items()]
+        entries.append({"name": "./package-manifest.txt", "data": manifest.encode(),
+                        "method": 8})
+        raw_zip(windows, entries)
+        result, _ = self.run_tool(linux, windows)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_accepts_dot_slash_tar_names(self):
         linux, windows = self.make_pair()
