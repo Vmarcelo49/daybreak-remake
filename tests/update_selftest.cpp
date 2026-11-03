@@ -62,5 +62,8 @@ int main(int argc, char** argv) {
     failures += runUpdateLogicTests();
     failures += runUpdateCryptoTests(0, nullptr);
     failures += runUpdateArchiveTests();
+#ifdef _WIN32
+    failures += runUpdateApplyWindowsTests();
+#endif
     return failures == 0 ? 0 : 1;
 }

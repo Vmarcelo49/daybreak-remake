@@ -9,6 +9,9 @@ struct Options {
     // Asset selection. Exactly one of stage/character/weapon/model, or none for the
     // triangle demo; an effect file may ride along with any of them.
     std::string model, stage, character, weapon, effect;
+    // --updated-from=<version>: the build this run replaced (step 3's relaunch). Logged,
+    // and later the hook for one-time migrations.
+    std::string updatedFrom;
     bool        hudTest = false;   // composite a synthetic HUD into --out captures
     bool        hudProbe = false;  // --hud-probe: corner markers for the placement test
     // --pause-overlay=N: enter the battle pause at match frame N and composite the pause

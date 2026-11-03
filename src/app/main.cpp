@@ -1673,6 +1673,12 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
         usage();
         return SDL_APP_FAILURE;
     }
+    if (!app->opts.updatedFrom.empty()) {
+        // Step 3's relaunch says which version this build replaced; migrations will hook
+        // in here. Nothing else reads it yet.
+        std::printf("[update] relaunched after updating from %s\n",
+                    app->opts.updatedFrom.c_str());
+    }
     app->opts.bootOpening = resolveBootOpening(app->opts);
 #if !defined(__EMSCRIPTEN__)
     logToFileWithoutConsole(app->opts);

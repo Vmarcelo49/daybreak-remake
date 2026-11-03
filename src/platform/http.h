@@ -54,6 +54,10 @@ HttpResult httpGet(const HttpRequest& request, const HttpSink& sink,
 // True when DAYBREAK_UPDATE_TEST_HTTP=1 is set: the CTest fixture's plain-HTTP exception.
 bool testHttpAllowed();
 
+// True for http://127.0.0.1:<port>/... or http://localhost:<port>/...: the only plain-HTTP
+// host the test switch permits, and the only base DAYBREAK_UPDATE_URL may point at.
+bool testLoopbackUrl(const std::string& url);
+
 // https:// anywhere; http:// only for 127.0.0.1:<port> or localhost:<port> in test mode.
 bool allowedUrl(const std::string& url, std::string* error);
 

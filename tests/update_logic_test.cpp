@@ -8,6 +8,7 @@
 #include "update/crypto.h"
 #include "update/package_manifest.h"
 #include "update/paths.h"
+#include "update/release_keys.h"
 #include "update/update_manifest.h"
 #include "update/version.h"
 
@@ -94,7 +95,9 @@ void testPaths() {
     for (const char* bad : {"", "/abs", "a\\b", "C:evil", "a/../b", "a/./b", "a//b",
                             "a.", "a ", "a/b.", "a/b ", "CON", "con.txt", "aux/x",
                             "COM1", "LPT9.log", "a<b", "a>b", "a:b", "a\"b", "a|b",
-                            "a?b", "a*b", "a\x01" "b", "caf\xe9/x"}) {
+                            "a?b", "a*b", "a\x01" "b", "caf\xe9/x", "data/x.cnv",
+                            "movie/op.mpg", "daybreak00.dat", "custom-textures/a.png",
+                            "hd-textures/a.dds", "DATA/x.cnv", "sub/daybreak12.dat"}) {
         check(!update::paths::validRelative(bad, &error),
               std::string("rejects '") + bad + "'");
     }
@@ -105,6 +108,15 @@ void testPaths() {
     check(!update::paths::validSet({"a", "a/b"}, &error),
           "rejects a file that is also a directory");
     check(update::paths::validSet({"a/b", "a/c"}, &error), "accepts siblings");
+}
+
+void testReleaseKeyGuard() {
+#ifdef DAYBREAK_RELEASE_BUILD
+    // A release build also has a static_assert for this; the runtime check says it in the
+    // suite's own words when a key is missing.
+    check(!update::releaseKeys().empty(),
+          "a release build carries at least one trusted release key");
+#endif
 }
 
 void testPackageManifest() {
@@ -285,6 +297,7 @@ void testSha256() {
 int runUpdateLogicTests() {
     testVersion();
     testPaths();
+    testReleaseKeyGuard();
     testPackageManifest();
     testUpdateManifest();
     testSha256();

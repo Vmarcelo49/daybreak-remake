@@ -51,3 +51,8 @@ inline int report(const char* suite) {
 int runUpdateLogicTests();
 int runUpdateCryptoTests(int argc, char** argv);
 int runUpdateArchiveTests();
+
+#ifdef _WIN32
+// The step-3 apply cases a real Windows run proves (running exe rename, rollback, recovery).
+int runUpdateApplyWindowsTests();
+#endif

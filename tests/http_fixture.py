@@ -8,6 +8,7 @@ policy allows, and only while DAYBREAK_UPDATE_TEST_HTTP=1.
 """
 import threading
 import time
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BODY = b"hello update"
@@ -19,6 +20,17 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):  # keep CTest output readable
         pass
 
+    def _serve_file(self, path):
+        root = Path(self.server.root).resolve()
+        target = (root / path.lstrip("/")).resolve()
+        if root not in target.parents and target != root:
+            self._send(404)
+            return
+        if not target.is_file():
+            self._send(404)
+            return
+        self._send(200, target.read_bytes())
+
     def _send(self, status, body=b"", headers=()):
         self.send_response(status)
         for name, value in headers:
@@ -29,6 +41,12 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def do_GET(self):  # noqa: N802 - BaseHTTPRequestHandler's name
+        path = self.path.split("?")[0]
+        if getattr(self.server, "root", None) is not None and not path.startswith(
+            ("/ok", "/redirect/", "/missing", "/big", "/chunked", "/slow", "/stall")
+        ):
+            self._serve_file(path)
+            return
         if self.path == "/ok":
             self._send(200, BODY)
         elif self.path.startswith("/redirect/"):
@@ -76,8 +94,10 @@ class Server(ThreadingHTTPServer):
         pass
 
 
-def start(host="127.0.0.1", port=0):
+def start(host="127.0.0.1", port=0, root=None):
+    """Serve the fixed routes, and (with `root`) any other path from that directory."""
     server = Server((host, port), Handler)
+    server.root = root
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server, thread, "http://%s:%d" % (host, server.server_address[1])

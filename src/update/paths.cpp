@@ -87,6 +87,34 @@ bool reservedName(const std::string& component) {
     return false;
 }
 
+// The package never ships the game's own data, so a manifest that lists one of its areas is
+// refused before anything is applied (docs/AUTO-UPDATE.md): data/, movie/, the two texture
+// pack folders, and the daybreakXX.dat bundles.
+bool gameArea(const std::string& path) {
+    const std::size_t slash = path.find('/');
+    const std::string first =
+        foldCase(path.substr(0, slash == std::string::npos ? path.size() : slash));
+    if (first == "data" || first == "movie" || first == "custom-textures" ||
+        first == "hd-textures") {
+        return true;
+    }
+    std::size_t start = 0;
+    for (;;) {
+        const std::size_t end = path.find('/', start);
+        const std::string component =
+            path.substr(start, end == std::string::npos ? std::string::npos : end - start);
+        const std::string folded = foldCase(component);
+        if (folded.size() == 14 && folded.compare(0, 8, "daybreak") == 0 &&
+            folded[8] >= '0' && folded[8] <= '9' && folded[9] >= '0' &&
+            folded[9] <= '9' && folded.compare(10, 4, ".dat") == 0) {
+            return true;
+        }
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return false;
+}
+
 }  // namespace
 
 std::string foldCase(const std::string& path) {
@@ -146,6 +174,11 @@ bool validRelative(const std::string& path, std::string* error) {
         }
         if (slash == std::string::npos) break;
         start = slash + 1;
+    }
+    if (gameArea(path)) {
+        return fail(error, "'" + path +
+                               "' is under a game-data area; a package never ships game "
+                               "data");
     }
     return true;
 }

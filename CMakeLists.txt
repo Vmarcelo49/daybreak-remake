@@ -244,6 +244,7 @@ if(NOT EMSCRIPTEN)
         src/update/package_manifest.cpp
         src/update/paths.cpp
         src/update/update_manifest.cpp
+        src/update/updater.cpp
         src/update/version.cpp
         src/platform/http_policy.cpp)
     target_include_directories(update PUBLIC src PRIVATE src/battle/core/zlib)
@@ -252,11 +253,13 @@ if(NOT EMSCRIPTEN)
     target_link_libraries(update PRIVATE monocypher battle_core_zlib)
     if(WIN32)
         # WinHTTP is in the OS: no shipped bytes and the system certificate store.
-        target_sources(update PRIVATE src/platform/http_winhttp.cpp)
+        target_sources(update PRIVATE src/platform/http_winhttp.cpp
+                                     src/update/apply_win32.cpp)
         target_link_libraries(update PRIVATE winhttp)
     else()
         # libcurl is loaded at run time and never linked (src/platform/http_curl.cpp).
-        target_sources(update PRIVATE src/platform/http_curl.cpp)
+        target_sources(update PRIVATE src/platform/http_curl.cpp
+                                     src/update/apply_posix.cpp)
         target_include_directories(update PRIVATE third_party/curl/include)
         target_link_libraries(update PRIVATE ${CMAKE_DL_LIBS})
     endif()
@@ -440,6 +443,10 @@ if(NOT EMSCRIPTEN)
         tests/update_archive_test.cpp)
     target_compile_definitions(update_selftest PRIVATE DAYBREAK_UPDATE_SELFTEST=1)
     target_link_libraries(update_selftest PRIVATE update)
+    if(WIN32)
+        # The apply cases only a real Windows run proves (issue #100, step 3).
+        target_sources(update_selftest PRIVATE tests/update_apply_win_test.cpp)
+    endif()
 endif()
 
 # Host-side tests. Native-only on purpose: the Windows target is cross-compiled and
@@ -910,6 +917,20 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # The Python release tools and the C++ parsers must accept and refuse the same
     # inputs; this runs both halves on the same fixtures (and on the real tarball when
     # one has been built).
+    # Step 3's engine, driven against the loopback fixture with the real release tools:
+    # check, download, verify, stage, apply, roll back, recover and relaunch.
+    add_executable(update_stub tests/update_stub.cpp)
+    target_link_libraries(update_stub PRIVATE update)
+    add_executable(update_apply_test tests/update_apply_test.cpp)
+    target_link_libraries(update_apply_test PRIVATE update)
+    add_test(NAME update_apply_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_update_apply_test.py"
+                     $<TARGET_FILE:update_apply_test>
+                     $<TARGET_FILE:update_stub>
+                     $<TARGET_FILE:release_sign>)
+    set_tests_properties(update_apply_test PROPERTIES TIMEOUT 300)
+
     add_executable(update_crosscheck tests/update_crosscheck.cpp)
     target_link_libraries(update_crosscheck PRIVATE update)
     add_test(NAME update_crosscheck_test
@@ -1184,6 +1205,7 @@ set(DAYBREAK_AREA_NET
     net_lobby_test net_stress_test net_play_check online_flow_check online_join_feedback
     rollback_stress_test rollback_presentation_test rollback_pixels_check
     rendezvous_server_test cross_build_check math_accuracy_test update_http_test
+    update_apply_test
 )
 
 set(DAYBREAK_AREA_RENDER
@@ -1206,7 +1228,7 @@ set(DAYBREAK_AREA_PLATFORM
     input_backend_test launcher_test controller_scene_lifetime_test bgm_loop_test
     unicode_path_check check_tools_test package_manifest_test update_manifest_test
     release_sign_test update_logic_test update_crypto_test update_archive_test
-    update_http_test update_crosscheck_test
+    update_http_test update_crosscheck_test update_apply_test
 )
 
 foreach(daybreak_area frontend hud battle net render data settings platform)

@@ -40,6 +40,9 @@ _RESERVED_NAMES = frozenset(
     + ["com%d" % number for number in range(1, 10)]
     + ["lpt%d" % number for number in range(1, 10)]
 )
+# The package never ships the game's own data, so these areas are refused in a package path
+# (docs/AUTO-UPDATE.md): the install folder holds them beside the package's own files.
+_GAME_AREAS = frozenset(["data", "movie", "custom-textures", "hd-textures"])
 
 
 class ManifestError(Exception):
@@ -118,6 +121,28 @@ def check_relative_path(path, where="path"):
         path.encode("utf-8")
     except UnicodeEncodeError:
         raise ManifestError("%s: %r is not valid UTF-8" % (where, path))
+    if _game_area(path):
+        raise ManifestError(
+            "%s: %r is under a game-data area; a package never ships game data"
+            % (where, path)
+        )
+
+
+def _game_area(path):
+    """True for data/, movie/, the texture-pack folders and daybreakXX.dat, any case."""
+    components = path.split("/")
+    if components[0].casefold() in _GAME_AREAS:
+        return True
+    for component in components:
+        folded = component.casefold()
+        if (
+            len(folded) == 14
+            and folded.startswith("daybreak")
+            and folded[8:10].isdigit()
+            and folded.endswith(".dat")
+        ):
+            return True
+    return False
 
 
 def check_entry_paths(paths, where="files"):

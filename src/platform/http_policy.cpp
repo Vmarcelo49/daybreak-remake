@@ -61,6 +61,12 @@ bool testHttpAllowed() {
     return value != nullptr && std::strcmp(value, "1") == 0;
 }
 
+bool testLoopbackUrl(const std::string& url) {
+    if (!startsWithIgnoreCase(url, "http://")) return false;
+    const std::size_t schemeEnd = url.find("://");
+    return loopbackAuthority(authority(url, schemeEnd));
+}
+
 std::string userAgent() {
     return std::string("daybreak-remake/") + DAYBREAK_UPDATE_VERSION;
 }

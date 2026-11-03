@@ -410,6 +410,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
                 return false;
             }
         }
+        else if (!(v = val("--updated-from=")).empty()) o.updatedFrom = v;
         else if (a == "--list") o.list = true;
         else if (a == "--hud-test") o.hudTest = true;
         else if (a == "--hud-probe") { o.hudTest = true; o.hudProbe = true; }

@@ -196,6 +196,18 @@ class PackageManifestTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 1, result.stdout)
                 self.assertIn("device name", result.stderr)
 
+    def test_write_rejects_game_data_paths(self):
+        for index, name in enumerate((
+            "data/x.cnv", "movie/op.mpg", "daybreak00.dat", "custom-textures/a.png",
+            "hd-textures/a.dds", "DATA/x.cnv", "sub/daybreak12.dat",
+        )):
+            with self.subTest(name=name):
+                stage = self.make_stage([("run", b"x", 0o755)], name="stage-game-%d" % index)
+                write_file(stage / name, b"z")
+                result = self.write_manifest(stage)
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn("game-data area", result.stderr)
+
     def test_write_rejects_a_case_collision(self):
         stage = self.make_stage([
             ("run", b"x", 0o755),
