@@ -47,7 +47,8 @@ cat > "$stage/LICENSES/README.md" <<'NOTICES'
 
 The port uses the Golden Witch License (daybreak-decomp.txt). SDL3 uses the zlib
 license. wgpu-native and its distribution wrapper, GLM, stb, pl_mpeg, GekkoNet, zpp_bits
-and musl's math use the included MIT, BSD and public-domain notices. Gyrotrope Black and Noto Sans CJK JP use
+and musl's math use the included MIT, BSD and public-domain notices. Monocypher uses
+BSD-2-Clause or CC0-1.0, at your option (Monocypher.txt). Gyrotrope Black and Noto Sans CJK JP use
 SIL-OFL-1.1.txt. Fonts are redistributed without modification.
 
 The MinGW GCC runtime is linked statically under GPL-3.0.txt with the permission
@@ -58,7 +59,7 @@ printf 'Version: %s\nCode revision: %s\nTarget: Windows x64\n' "$version" "$revi
 for file in "$stage"/*.exe "$stage"/*.dll; do
     while IFS= read -r dependency; do
         case "${dependency,,}" in
-            api-ms-*.dll|kernel32.dll|advapi32.dll|gdi32.dll|imm32.dll|msvcrt.dll|ole32.dll|oleaut32.dll|setupapi.dll|shell32.dll|user32.dll|version.dll|winmm.dll|d3dcompiler_47.dll|ntdll.dll|opengl32.dll|propsys.dll|userenv.dll|ws2_32.dll|bcryptprimitives.dll) ;;
+            api-ms-*.dll|kernel32.dll|advapi32.dll|gdi32.dll|imm32.dll|msvcrt.dll|ole32.dll|oleaut32.dll|setupapi.dll|shell32.dll|user32.dll|version.dll|winmm.dll|d3dcompiler_47.dll|ntdll.dll|opengl32.dll|propsys.dll|userenv.dll|ws2_32.dll|bcryptprimitives.dll|winhttp.dll) ;;
             *) test -s "$stage/$dependency" || { echo "Missing runtime DLL: $dependency" >&2; exit 1; } ;;
         esac
     done < <(x86_64-w64-mingw32-objdump -p "$file" | sed -n 's/.*DLL Name: //p')

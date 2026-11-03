@@ -79,7 +79,7 @@ required=(
     lib/libwgpu_native.so lib/libSDL3.so.0
     LICENSES/README.md LICENSES/SDL3.txt LICENSES/wgpu-native-MIT.txt
     LICENSES/SIL-OFL-1.1.txt LICENSES/glm-MIT.txt LICENSES/stb.txt
-    LICENSES/daybreak-decomp.txt
+    LICENSES/Monocypher.txt LICENSES/daybreak-decomp.txt
 )
 for f in "${required[@]}"; do
     [ -e "$stage/$f" ] || fail "the staged package is missing $f"
@@ -116,6 +116,10 @@ printf '%s\n' "$ldd_out" | grep -qF "$stage/lib/libwgpu_native.so" \
     || fail "libwgpu_native.so does not resolve inside the package"
 printf '%s\n' "$ldd_out" | grep -qF "$stage/lib/libSDL3.so.0" \
     || fail "libSDL3.so.0 does not resolve inside the package"
+# The updater loads libcurl with dlopen and never links it (src/platform/http_curl.cpp):
+# a NEEDED entry would make the game depend on a library the package does not ship.
+printf '%s\n' "$ldd_out" | grep -q 'libcurl' \
+    && fail "libcurl is linked into daybreak-bin; it must only be loaded at run time"
 
 python3 -I "$root/tools/package_manifest.py" check "$stage"
 
