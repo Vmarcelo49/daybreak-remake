@@ -235,8 +235,8 @@ if(NOT EMSCRIPTEN)
 endif()
 
 # The updater's building blocks (issue #100, step 2): version, path rules, both manifest
-# parsers, the archive readers and SHA-256/Ed25519. Nothing in the game calls it yet —
-# step 3 wires it into the title screen and the apply path.
+# parsers, the archive readers, SHA-256/Ed25519 and the HTTP seam. Nothing in the game
+# calls it yet — step 3 wires it into the title screen and the apply path.
 if(NOT EMSCRIPTEN)
     add_library(update STATIC
         src/update/archive.cpp
@@ -244,9 +244,22 @@ if(NOT EMSCRIPTEN)
         src/update/package_manifest.cpp
         src/update/paths.cpp
         src/update/update_manifest.cpp
-        src/update/version.cpp)
+        src/update/version.cpp
+        src/platform/http_policy.cpp)
     target_include_directories(update PUBLIC src PRIVATE src/battle/core/zlib)
+    target_compile_definitions(update PRIVATE
+        "DAYBREAK_UPDATE_VERSION=\"${DAYBREAK_VERSION}\"")
     target_link_libraries(update PRIVATE monocypher battle_core_zlib)
+    if(WIN32)
+        # WinHTTP is in the OS: no shipped bytes and the system certificate store.
+        target_sources(update PRIVATE src/platform/http_winhttp.cpp)
+        target_link_libraries(update PRIVATE winhttp)
+    else()
+        # libcurl is loaded at run time and never linked (src/platform/http_curl.cpp).
+        target_sources(update PRIVATE src/platform/http_curl.cpp)
+        target_include_directories(update PRIVATE third_party/curl/include)
+        target_link_libraries(update PRIVATE ${CMAKE_DL_LIBS})
+    endif()
 endif()
 
 add_library(battle_core STATIC
@@ -415,6 +428,18 @@ endif()
 if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_executable(release_sign tools/release_sign/main.cpp)
     target_link_libraries(release_sign PRIVATE monocypher)
+endif()
+
+# The three update suites as one binary, for the Windows build where CTest does not run.
+# `update_selftest --live <url>` is the opt-in live fetch; it is never part of CTest.
+if(NOT EMSCRIPTEN)
+    add_executable(update_selftest
+        tests/update_selftest.cpp
+        tests/update_logic_test.cpp
+        tests/update_crypto_test.cpp
+        tests/update_archive_test.cpp)
+    target_compile_definitions(update_selftest PRIVATE DAYBREAK_UPDATE_SELFTEST=1)
+    target_link_libraries(update_selftest PRIVATE update)
 endif()
 
 # Host-side tests. Native-only on purpose: the Windows target is cross-compiled and
@@ -860,8 +885,8 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                      "${CMAKE_CURRENT_SOURCE_DIR}/tests/release_sign_test.py"
                      $<TARGET_FILE:release_sign>)
 
-    # The updater's building blocks (issue #100, step 2). No game data, no internet, and
-    # no device: the suites parse synthetic manifests and archives.
+    # The updater's building blocks (issue #100, step 2). No game data and no device; the
+    # HTTP suite talks to tests/http_fixture.py on 127.0.0.1 only.
     add_executable(update_logic_test tests/update_logic_test.cpp)
     target_link_libraries(update_logic_test PRIVATE update)
     add_test(NAME update_logic_test COMMAND update_logic_test)
@@ -874,6 +899,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_executable(update_archive_test tests/update_archive_test.cpp)
     target_link_libraries(update_archive_test PRIVATE update)
     add_test(NAME update_archive_test COMMAND update_archive_test)
+
+    add_executable(update_http_test tests/update_http_test.cpp)
+    target_link_libraries(update_http_test PRIVATE update)
+    add_test(NAME update_http_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_update_http_test.py"
+                     $<TARGET_FILE:update_http_test>)
 
 
     # The battle HUD's sprite table and draw geometry: device-free arithmetic over the
@@ -1140,7 +1172,7 @@ set(DAYBREAK_AREA_BATTLE
 set(DAYBREAK_AREA_NET
     net_lobby_test net_stress_test net_play_check online_flow_check online_join_feedback
     rollback_stress_test rollback_presentation_test rollback_pixels_check
-    rendezvous_server_test cross_build_check math_accuracy_test
+    rendezvous_server_test cross_build_check math_accuracy_test update_http_test
 )
 
 set(DAYBREAK_AREA_RENDER
@@ -1163,6 +1195,7 @@ set(DAYBREAK_AREA_PLATFORM
     input_backend_test launcher_test controller_scene_lifetime_test bgm_loop_test
     unicode_path_check check_tools_test package_manifest_test update_manifest_test
     release_sign_test update_logic_test update_crypto_test update_archive_test
+    update_http_test
 )
 
 foreach(daybreak_area frontend hud battle net render data settings platform)

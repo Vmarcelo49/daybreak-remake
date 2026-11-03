@@ -81,6 +81,25 @@ if [ ! -e "$tp/monocypher/monocypher.c" ]; then
     rm -rf "$tmp"
 fi
 
+# curl headers (issue #100): the Linux HTTP client loads libcurl with dlopen and must never
+# link it, but it still compiles against curl's real option names and types. Only the
+# public headers are kept; the release tarball is pinned by hash like Monocypher, because a
+# generated archive is not promised to stay byte-identical.
+CURL_VERSION=8.23.0
+CURL_TAG=curl-8_23_0
+CURL_TARBALL_SHA256=e3de77cfa6367083c776a26647fc9f633b538c06c3baa73d931a252ac8f72b49
+if [ ! -e "$tp/curl/include/curl/curl.h" ]; then
+    echo "  curl $CURL_VERSION headers: fetching"
+    tmp=$(mktemp -d)
+    curl -fsSL --retry 3 -o "$tmp/curl.tar.gz" \
+        "https://github.com/curl/curl/releases/download/${CURL_TAG}/curl-${CURL_VERSION}.tar.gz"
+    verify_sha256 "$tmp/curl.tar.gz" "$CURL_TARBALL_SHA256"
+    tar -xzf "$tmp/curl.tar.gz" -C "$tmp" "curl-${CURL_VERSION}/include/curl"
+    mkdir -p "$tp/curl/include/curl"
+    cp "$tmp/curl-${CURL_VERSION}/include/curl/"*.h "$tp/curl/include/curl/"
+    rm -rf "$tmp"
+fi
+
 fetch_zip "https://github.com/eliemichel/WebGPU-distribution/archive/${WEBGPU_DIST_COMMIT}.zip" "$tp/webgpu" "WebGPU-distribution"
 fetch_zip "https://github.com/eliemichel/sdl3webgpu/archive/${SDL3WEBGPU_COMMIT}.zip" "$tp/sdl3webgpu" "sdl3webgpu"
 
