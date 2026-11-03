@@ -20,10 +20,10 @@ forbids for the port.
 
 Delete the file to reset everything to its defaults; there is no separate reset file.
 
-## What is stored (schema version 8)
+## What is stored (schema version 9)
 
 ```ini
-version = 8
+version = 9
 
 [game]
 install_dir = /home/u/Games/Higurashi-Daybreak   # absolute; empty = none remembered
@@ -47,6 +47,10 @@ shadows = false               # character shadow-map row (issue #21, row 1)
 [title]
 backdrop = stage03            # the stage drawn live behind the title menu (issue #98): stage03 (default) or stage13; empty is the original art
 
+[update]
+check = on                    # ask GitHub once per launch whether a newer release exists (issue #100)
+skip_version =                # a version the player asked not to be offered again; empty skips nothing
+
 [audio]
 master = 100                  # 0..100, one per bus
 music = 100
@@ -67,6 +71,11 @@ pad2_guid =
 …
 ```
 
+* `[update] check` and `[update] skip_version` (issue #100, step 4) are the updater's two
+  settings. `check = off` is the Options screen's UPDATES row, and it also cancels a check
+  already in flight. `skip_version` is written by the title notice's "Skip this version";
+  it is `X.Y.Z` or empty, and a malformed value is a value error (that key defaults, the
+  rest of the file applies). Both are read by the title screen only.
 * `[game] install_dir` (issue #36) is the game folder a run last opened, so **one config
   file owns the install path**: the packaged launcher reads this key and no longer keeps an
   `install.conf` of its own, and a direct binary run honours the remembered folder instead

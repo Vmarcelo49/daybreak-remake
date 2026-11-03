@@ -62,6 +62,18 @@ We'd rather say this plainly than promise too much.
 | Linux players against Windows players | Only the game's calculations on real Windows, and a match under Wine |
 | The whole story, start to finish | **Not yet**, only in parts |
 
+## Updates
+
+The game asks GitHub once when it starts whether a newer release exists, and the title
+screen tells you when one does. You can turn that off in Options → UPDATES.
+
+An update replaces only the remake's own files. Your game files, your settings and your
+texture packs stay where they are. If an update fails, the old version keeps working, and
+you can download the new release from the Releases page by hand.
+
+Players on 0.2.x need to download the first stable release once by hand; after that the
+game can update itself.
+
 ## Playing online
 
 1. Choose **NETWORK** on the title screen.

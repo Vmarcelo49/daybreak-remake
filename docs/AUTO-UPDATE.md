@@ -1,11 +1,11 @@
 # Auto-updates: the release formats and the signing key (issue #100)
 
-The updater is built in steps. **Steps 1–3 are built and tested**: both packages state
+The updater is built in steps. **Steps 1–4 are built and tested**: both packages state
 which files they own, the release manifest is generated from the two archives, the owner
-has an offline signing tool, and the game has the whole engine — check, download, verify,
-stage, apply, roll back, recover and relaunch. **Nothing calls the engine yet** (step 4):
-no menu offers an update, no run makes a network request, and the release key list is
-still empty (the owner supplies the public key).
+has an offline signing tool, the game has the whole engine — check, download, verify,
+stage, apply, roll back, recover and relaunch — and the title screen now offers an update
+and installs it. The release key list is still empty (the owner supplies the public key),
+so a package build refuses to compile until it is filled in.
 
 | Piece | Where | State |
 |---|---|---|
@@ -17,7 +17,7 @@ still empty (the owner supplies the public key).
 | Version, path rules, both parsers, archive readers, SHA-256/Ed25519 | `src/update/` | built, tested |
 | Check, download, verify, stage, apply, roll back, recover, relaunch | `src/update/updater.{h,cpp}`, `apply_posix.cpp` / `apply_win32.cpp` | built, tested on Linux; the Windows cases run in `update_selftest.exe` |
 | Trusted release keys | `src/update/release_keys.h` | **empty until the owner supplies the public key**; a `DAYBREAK_RELEASE_BUILD` refuses to compile without one |
-| Title notice, progress screen, Options, `--no-update-check` | step 4 | **not built** |
+| Title notice, update screen, Options row, `--no-update-check` | `src/frontend/update_notice.*`, `screen_update.*`, `src/app/main.cpp` | built; device-free notice/failure tests and captures, Windows relaunch not run |
 
 ## Why a package manifest
 
@@ -299,7 +299,51 @@ and the end-to-end stub that applies and relaunches into the new version. The Wi
 counterparts (including renaming the running `update_selftest.exe` aside) run in
 `update_selftest.exe` on the owner's machine.
 
-## What is still missing (step 4)
+## What the player sees (step 4)
+
+The check runs **once per launch, on a worker thread**, started when the title screen
+first appears; no frame waits for it. It never runs when:
+
+* `[update] check = off` (the Options screen's UPDATES row), which also cancels a check
+  already in flight;
+* `--no-update-check` is passed;
+* the build is the web build;
+* the install root has no `package-manifest.txt` (a development build: one log line);
+* the launch is a verification, capture or test run — `--frames`, `--out`, `--headless`,
+  `--script`/`--script2`, `--match`, `--versus`, `--hud-test`, `--bench`, `--list`,
+  `--audio-test`, `--input-test`, `--plan`, `--pause-overlay`, `--net-stress`,
+  `--rollback-stress`, `--hud-probe`, `--debug-keys`, `--text-keys` (one helper,
+  `updateCheckSuppressed`, so a new flag is gated once);
+* `DAYBREAK_NO_UPDATE_CHECK=1` is set — CTest sets it for every test and
+  `tools/fingerprints.sh` sets it too.
+
+The result waits until the player is on the title screen; no other screen offers an
+update. The notice sits at the lower left, in the existing panel style:
+
+* **Available** — "Version X.Y.Z is available": **Update**, **Release notes**
+  (`SDL_OpenURL`), **Later** (hidden until the next launch) and **Skip this version**
+  (writes `skip_version`). Down from the last title item moves into the notice; up or
+  cancel moves back, and the title menu keeps its own cursor machine until then.
+* **ManualOnly** — "This update must be downloaded manually" + **Open release page**.
+* **Unavailable** (no libcurl) — "Updates need libcurl" + **Open release page**, once.
+* **Failed**, **UpToDate**, **Skipped**, an untrusted signature — nothing but one log line.
+* After a relaunch, **"Updated to Y"** for that launch, from `--updated-from=`.
+
+The update screen runs the apply on its own worker: **Downloading** (MB done / total and a
+bar), **Verifying**, **Installing**, then **Restarting…**. Back/Esc cancels during
+download and verify and returns to the title with the install untouched; once installing
+starts there is no cancel. A failure shows a plain-language reason (no connection, GitHub
+didn't answer, the download was damaged, not signed by us, the game folder isn't
+writable, a file is in the way, not enough space) with **Back** and **Open release page**;
+the old version keeps running. Success saves the settings, shuts audio, video and the net
+layer down the way a normal quit does, and only then calls `update::relaunch`, so Windows
+never flashes a second window.
+
+`--update-result=available|manual|unavailable|updated|progress` is the test/capture hook
+that feeds the title a fake result instead of a check (no environment variable); it also
+suppresses the real check.
+
+## What is still missing
 
 * The title-screen notice, the progress screen, the Options rows, the settings keys and
   `--no-update-check`, plus the CTest gate that keeps verification runs off the network.
