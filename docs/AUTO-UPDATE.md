@@ -12,7 +12,7 @@ key is compiled in.
 | `package-manifest.txt` in each package | `tools/package_manifest.py`, called by both packaging scripts | built, tested |
 | `update-manifest.txt` for a release | `tools/make_update_manifest.py` | built, tested |
 | `update-manifest.txt.sig` | `tools/release_sign/` (`build/linux/release_sign`) | built, tested against RFC 8032 |
-| CI artifact for the release | `.github/workflows/build.yml`, job `update-manifest` | written, not yet run on CI |
+| CI artifact for the release | `.github/workflows/build.yml`, job `update-manifest` | green on `feat/auto-updater` (run 41558670935): both archives, both `.sha256` files and the manifest |
 | HTTPS GET (redirects, timeouts, cancel) | `src/platform/http.h`, `http_curl.cpp`, `http_winhttp.cpp` | built; Linux tested against a local fixture and the real 0.2.1 asset; Windows compiled only by CI (no toolchain here) |
 | Version, path rules, both parsers, archive readers, SHA-256/Ed25519 | `src/update/` | built, tested |
 | Check, download, verify, apply, roll back, notice and Options | steps 3–4 | **not built** |
