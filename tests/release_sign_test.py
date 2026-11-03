@@ -72,7 +72,8 @@ class ReleaseSignTest(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(secret.stat().st_mode), 0o600)
         secret_text = secret.read_text()
         public_text = public.read_text()
-        self.assertRegex(secret_text, r"\A[0-9a-f]{128}\n\Z")
+        # The secret is the 32-byte seed; the public half is derived, never stored.
+        self.assertRegex(secret_text, r"\A[0-9a-f]{64}\n\Z")
         self.assertRegex(public_text, r"\A[0-9a-f]{64}\n\Z")
 
     def test_sign_verify_round_trip(self):
@@ -94,6 +95,14 @@ class ReleaseSignTest(unittest.TestCase):
             str(signature),
         )
         self.assertEqual(from_hex.returncode, 0, from_hex.stderr)
+
+        # The checklist passes the release's .pub, so a wrong key cannot sign.
+        expected = self.run_tool(
+            "sign", "--secret=" + str(secret), "--expect-public=" + str(public),
+            str(message),
+        )
+        self.assertEqual(expected.returncode, 0, expected.stderr)
+        self.assertIn("public key " + public.read_text().strip(), expected.stdout)
 
     def test_signature_covers_exact_bytes(self):
         secret, public = self.keygen()
@@ -181,11 +190,17 @@ class ReleaseSignTest(unittest.TestCase):
 
     def rfc_vector(self, vector, name):
         secret = self.root / (name + ".release-secret")
-        secret.write_text(vector["seed"] + vector["public"] + "\n")
+        secret.write_text(vector["seed"] + "\n")
         secret.chmod(0o600)
         message = self.write(name + ".bin", vector["message"])
-        result = self.run_tool("sign", "--secret=" + str(secret), str(message))
+        # The seed alone must derive the RFC's public key and signature; --expect-public
+        # makes that derivation part of the run, not just the printed line.
+        result = self.run_tool(
+            "sign", "--secret=" + str(secret), "--expect-public=" + vector["public"],
+            str(message),
+        )
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(vector["public"], result.stdout)
         signature = Path(str(message) + ".sig")
         self.assertEqual(signature.read_text().strip(), vector["signature"])
         check = self.run_tool(
@@ -206,13 +221,35 @@ class ReleaseSignTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 2)
 
+    def test_sign_rejects_the_old_expanded_secret(self):
+        secret, public = self.keygen()
+        message = self.write("manifest.txt", b"x")
+        # The retired format: seed followed by the public half, 128 hex characters.
+        secret.write_text(secret.read_text().strip() + public.read_text().strip() + "\n")
+        result = self.run_tool("sign", "--secret=" + str(secret), str(message))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("64 lowercase hex", result.stderr)
+        self.assertFalse(Path(str(message) + ".sig").exists())
+
+    def test_expect_public_refuses_a_wrong_key(self):
+        secret, _ = self.keygen("first")
+        _, other_public = self.keygen("second")
+        message = self.write("manifest.txt", b"x")
+        result = self.run_tool(
+            "sign", "--secret=" + str(secret), "--expect-public=" + str(other_public),
+            str(message),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--expect-public", result.stderr)
+        self.assertFalse(Path(str(message) + ".sig").exists())
+
     def test_sign_rejects_a_truncated_secret(self):
         secret, _ = self.keygen()
         message = self.write("manifest.txt", b"x")
-        secret.write_text("a" * 126 + "\n")
+        secret.write_text("a" * 62 + "\n")
         result = self.run_tool("sign", "--secret=" + str(secret), str(message))
         self.assertEqual(result.returncode, 2)
-        self.assertIn("128 lowercase hex", result.stderr)
+        self.assertIn("64 lowercase hex", result.stderr)
 
     def test_usage_errors(self):
         self.assertEqual(self.run_tool().returncode, 1)

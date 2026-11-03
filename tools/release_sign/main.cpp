@@ -11,11 +11,13 @@
 //   release_sign sign   --secret=<path> <file>
 //   release_sign verify --public=<hex or path> <file> <sig>
 //
-// Key files are hex so they diff and paste cleanly: the secret is the 64-byte
-// Monocypher secret key (seed || public half) as 128 lowercase hex characters, the
-// public key is 32 bytes as 64. A signature file holds 64 bytes as 128. Ed25519 signs
-// the file's exact bytes — no normalisation, no trimming — so the signed artifact is
-// byte-for-byte what the updater reads.
+// Key files are hex so they diff and paste cleanly: the secret is the 32-byte seed as
+// 64 lowercase hex characters, the public key is the derived 32 bytes as 64, and a
+// signature file holds 64 bytes as 128. The seed is stored alone on purpose: `sign`
+// derives both halves with crypto_ed25519_key_pair, so a hand-edited file cannot carry a
+// public half that does not belong to its seed. Ed25519 signs the file's exact bytes —
+// no normalisation, no trimming — so the signed artifact is byte-for-byte what the
+// updater reads.
 //
 // Exit codes are part of the interface, because the release checklist is a script:
 // 0 success, 1 usage, 2 file or format error, 3 invalid signature.
@@ -57,7 +59,7 @@ enum ExitCode : int {
 void usage(std::FILE* stream) {
     std::fprintf(stream,
                  "usage: release_sign keygen --secret=<path> --public=<path>\n"
-                 "       release_sign sign   --secret=<path> <file>\n"
+                 "       release_sign sign   --secret=<path> [--expect-public=<hex or path>] <file>\n"
                  "       release_sign verify --public=<hex or path> <file> <sig>\n"
                  "\n"
                  "Ed25519-signs a file's exact bytes; sign writes <file>.sig.\n"
@@ -233,6 +235,25 @@ void expect_files(const Args& args, size_t count) {
     }
 }
 
+// A public key is either 64 hex characters or a file holding them. `flag` names the
+// option in the error, because both `verify --public` and `sign --expect-public` use it.
+void read_public_key(const std::string& argument, uint8_t public_key[32], const char* flag) {
+    if (argument.size() == 64) {
+        if (!hex_decode(argument, public_key, 32)) {
+            fail(kFailure, std::string(flag) + " is 64 characters but not lowercase hex");
+        }
+        return;
+    }
+    std::string text = strip_one_newline(read_text(argument));
+    if (!hex_decode(text, public_key, 32)) {
+        crypto_wipe(text.data(), text.size());
+        fail(kFailure, argument +
+                           " does not hold a 32-byte public key as 64 lowercase hex "
+                           "characters");
+    }
+    crypto_wipe(text.data(), text.size());
+}
+
 void keygen(const Args& args) {
     allow_only(args, {"secret", "public"});
     expect_files(args, 0);
@@ -241,17 +262,22 @@ void keygen(const Args& args) {
 
     uint8_t seed[32];
     fill_random(seed, sizeof seed);
+    // The file holds the seed, not Monocypher's expanded 64-byte key: the public half is
+    // derivable, and storing a second copy is what let a hand-edited file sign with a
+    // mismatched half.
+    std::string secret_text = hex_encode(seed, sizeof seed) + "\n";
     uint8_t secret_key[64];
     uint8_t public_key[32];
     crypto_ed25519_key_pair(secret_key, public_key, seed);  // also wipes `seed`
     crypto_wipe(seed, sizeof seed);
+    crypto_wipe(secret_key, sizeof secret_key);
 
     // The secret is written first, and its path is printed before the public key is
     // written: if the public path is unwritable, the output still names the secret file
     // the owner has to delete before re-running. A public key whose secret was never
     // written would be the worse failure.
-    write_file(secret_path, hex_encode(secret_key, sizeof secret_key) + "\n", 0600, true);
-    crypto_wipe(secret_key, sizeof secret_key);
+    write_file(secret_path, secret_text, 0600, true);
+    crypto_wipe(secret_text.data(), secret_text.size());
     std::printf("%s: wrote %s (secret, mode 0600)\n", kTool, secret_path.c_str());
     write_file(public_path, hex_encode(public_key, sizeof public_key) + "\n", 0644, false);
     std::printf("%s: wrote %s\n", kTool, public_path.c_str());
@@ -260,10 +286,14 @@ void keygen(const Args& args) {
 }
 
 void sign(const Args& args) {
-    allow_only(args, {"secret"});
+    allow_only(args, {"secret", "expect-public"});
     expect_files(args, 1);
     const std::string secret_path = require(args, "secret");
     const std::string file_path = args.files[0];
+    const auto expected = args.values.find("expect-public");
+    if (expected != args.values.end() && expected->second.empty()) {
+        fail(kUsage, "--expect-public=<hex or path> needs a value");
+    }
 
     struct stat info {};
     if (::stat(secret_path.c_str(), &info) != 0) {
@@ -283,14 +313,31 @@ void sign(const Args& args) {
     }
 
     std::string text = strip_one_newline(read_text(secret_path));
-    uint8_t secret_key[64];
-    if (!hex_decode(text, secret_key, sizeof secret_key)) {
-        crypto_wipe(secret_key, sizeof secret_key);
+    uint8_t seed[32];
+    if (!hex_decode(text, seed, sizeof seed)) {
+        crypto_wipe(seed, sizeof seed);
         fail(kFailure, secret_path +
-                           " does not hold a 64-byte secret key as 128 lowercase hex "
-                           "characters");
+                           " does not hold the 32-byte seed as 64 lowercase hex "
+                           "characters (a 128-character file is the old, expanded-key "
+                           "format; regenerate the key)");
     }
     crypto_wipe(text.data(), text.size());
+
+    uint8_t secret_key[64];
+    uint8_t public_key[32];
+    crypto_ed25519_key_pair(secret_key, public_key, seed);  // also wipes `seed`
+    crypto_wipe(seed, sizeof seed);
+
+    if (expected != args.values.end()) {
+        uint8_t expected_key[32];
+        read_public_key(expected->second, expected_key, "--expect-public");
+        if (std::memcmp(expected_key, public_key, sizeof expected_key) != 0) {
+            crypto_wipe(secret_key, sizeof secret_key);
+            fail(kFailure, "--expect-public " + hex_encode(expected_key, 32) +
+                               " is not the key of " + secret_path + ", which derives " +
+                               hex_encode(public_key, 32));
+        }
+    }
 
     const std::vector<uint8_t> message = read_bytes(file_path);
     static const uint8_t kEmptyMessage = 0;
@@ -300,10 +347,17 @@ void sign(const Args& args) {
     crypto_ed25519_sign(signature, secret_key, bytes, message.size());
     crypto_wipe(secret_key, sizeof secret_key);
 
+    // A bad key must fail here, not in every player's game: check what was produced
+    // against the public key derived from the same seed before writing anything.
+    if (crypto_ed25519_check(signature, public_key, bytes, message.size()) != 0) {
+        fail(kFailure, "the signature does not verify against the key derived from " +
+                           secret_path + "; refusing to write " + file_path + ".sig");
+    }
+
     const std::string signature_path = file_path + ".sig";
     write_file(signature_path, hex_encode(signature, sizeof signature) + "\n", 0644, false);
-    std::printf("%s: signed %s -> %s\n", kTool, file_path.c_str(),
-                signature_path.c_str());
+    std::printf("%s: signed %s -> %s (public key %s)\n", kTool, file_path.c_str(),
+                signature_path.c_str(), hex_encode(public_key, sizeof public_key).c_str());
 }
 
 void verify(const Args& args) {
@@ -314,18 +368,7 @@ void verify(const Args& args) {
     const std::string signature_path = args.files[1];
 
     uint8_t public_key[32];
-    if (public_argument.size() == 64) {
-        if (!hex_decode(public_argument, public_key, sizeof public_key)) {
-            fail(kFailure, "--public is 64 characters but not lowercase hex");
-        }
-    } else {
-        std::string text = strip_one_newline(read_text(public_argument));
-        if (!hex_decode(text, public_key, sizeof public_key)) {
-            fail(kFailure, public_argument +
-                               " does not hold a 32-byte public key as 64 lowercase hex "
-                               "characters");
-        }
-    }
+    read_public_key(public_argument, public_key, "--public");
 
     std::string signature_text = strip_one_newline(read_text(signature_path));
     uint8_t signature[64];

@@ -117,7 +117,7 @@ checks it; the updater will check it the same way before reading anything else.
 
 ```bash
 build/linux/release_sign keygen --secret=<path> --public=<path>
-build/linux/release_sign sign   --secret=<path> update-manifest.txt
+build/linux/release_sign sign   --secret=<path> [--expect-public=<hex or path>] update-manifest.txt
 build/linux/release_sign verify --public=<hex or path> update-manifest.txt update-manifest.txt.sig
 ```
 
@@ -139,11 +139,16 @@ is what closes that gap.
   the key can be replaced later: a new key is introduced by a release signed with the old
   one, and the game accepts a manifest whose key is in its list. Removing an old key happens
   in a later release, once the new one has been out. The mechanism itself is step 3.
-* **Key files.** The secret is Monocypher's 64-byte secret key (seed followed by the public
-  half) as 128 hex characters, mode `0600`; `release_sign` refuses to use it if group or
-  others can access it, and refuses to overwrite an existing one. The public key is 32 bytes
-  as 64 hex characters and is not secret. `*.release-secret` is in `.gitignore` so a real
-  key cannot be committed by accident.
+* **Key files.** The secret is the 32-byte Ed25519 seed as 64 hex characters, mode `0600`;
+  `release_sign` derives the key pair from it, refuses to use it if group or others can
+  access it, and refuses to overwrite an existing one. Storing the seed alone is deliberate:
+  a file that carried its own copy of the public half could sign with a half that does not
+  belong to the seed, which produces a release nobody can verify (and is the known Ed25519
+  misuse). `sign` verifies its own signature before writing anything, and
+  `--expect-public=<hex or path>` refuses unless the derived key is the one named; the
+  release checklist passes the release's `.pub` there. The public key is 32 bytes as 64 hex
+  characters and is not secret. `*.release-secret` is in `.gitignore` so a real key cannot
+  be committed by accident.
 * **The signature covers the manifest, the manifest covers the archives.** Order of checks
   in the updater (step 3): signature → manifest → archive size → archive hash → each
   extracted file against the new `package-manifest.txt`. Anything failing means nothing is
@@ -168,7 +173,8 @@ python3 -I tools/make_update_manifest.py --version="$(cat VERSION)" \
     --windows=build/package/daybreak-"$(cat VERSION)"-<rev>-windows-x86_64.zip \
     --out=update-manifest.txt
 build/linux/release_sign keygen --secret=/tmp/test.release-secret --public=/tmp/test.pub
-build/linux/release_sign sign   --secret=/tmp/test.release-secret update-manifest.txt
+build/linux/release_sign sign   --secret=/tmp/test.release-secret \
+    --expect-public=/tmp/test.pub update-manifest.txt
 build/linux/release_sign verify --public=/tmp/test.pub update-manifest.txt update-manifest.txt.sig
 ```
 

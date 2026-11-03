@@ -1063,8 +1063,10 @@ build/linux/release_sign keygen \
 sha256sum "$HOME/daybreak-release/release.release-secret"   # record it with the backup
 ```
 
-The tool creates the secret with mode `0600` and refuses to overwrite it; `*.release-secret`
-is gitignored. The public key is not secret and is compiled into the game in step 3.
+The secret file holds the 32-byte seed (64 hex characters), created with mode `0600`; the
+tool refuses to overwrite it, and `sign` derives both key halves from it, so there is no
+stored public half to get out of step. `*.release-secret` is gitignored. The public key is
+not secret and is compiled into the game in step 3.
 
 ### 9.2 Each release
 
@@ -1087,10 +1089,12 @@ is gitignored. The public key is not secret and is compiled into the game in ste
        --windows=daybreak-<ver>-<rev>-windows-x86_64.zip \
        --out=update-manifest.txt
    ```
-4. **Sign it** with the offline key:
+4. **Sign it** with the offline key, naming the release's public key so a wrong key is
+   refused instead of producing an update nobody can verify:
    ```bash
    build/linux/release_sign sign \
-       --secret="$HOME/daybreak-release/release.release-secret" update-manifest.txt
+       --secret="$HOME/daybreak-release/release.release-secret" \
+       --expect-public="$HOME/daybreak-release/release.pub" update-manifest.txt
    ```
 5. **Verify** before publishing — this is the check the game will do:
    ```bash
