@@ -57,6 +57,9 @@ def environment(install, config, base):
         "XDG_CONFIG_HOME": str(config),
         "SDL_AUDIODRIVER": "dummy",
     })
+    # CTest exports DAYBREAK_NO_UPDATE_CHECK=1 for every test; the positive control must
+    # not inherit it, and the one mode that tests it sets it explicitly below.
+    env.pop("DAYBREAK_NO_UPDATE_CHECK", None)
     return env
 
 

@@ -133,12 +133,13 @@ def main():
         config = root / "config"
         script = root / "menu.txt"
         script.write_text(MENU_SCRIPT)
-        env = {"env": dict(os.environ,
-                           DAYBREAK_UPDATE_URL=base + "/",
-                           DAYBREAK_UPDATE_TEST_HTTP="1",
-                           XDG_CONFIG_HOME=str(config),
-                           SDL_AUDIODRIVER="dummy"),
-               "TEST_KEY": public}
+        child = dict(os.environ, DAYBREAK_UPDATE_URL=base + "/",
+                     DAYBREAK_UPDATE_TEST_HTTP="1", XDG_CONFIG_HOME=str(config),
+                     SDL_AUDIODRIVER="dummy")
+        # CTest exports DAYBREAK_NO_UPDATE_CHECK=1 for every test; this one exists to run
+        # the real check.
+        child.pop("DAYBREAK_NO_UPDATE_CHECK", None)
+        env = {"env": child, "TEST_KEY": public}
         try:
             process = start(binary, install, env, script)
             text = wait_for(process, config, "relaunched after updating from " + N)
