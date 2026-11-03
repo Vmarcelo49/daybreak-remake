@@ -750,11 +750,15 @@ ApplyResult apply(const ApplySettings& settings) {
     return result;
 }
 
-void recoverOnStartup(const std::filesystem::path& root) {
-    const std::filesystem::path workspaceRoot = root / kWorkspaceDirectory;
+bool recoverOnStartup(const std::filesystem::path& root) {
     std::error_code code;
-    if (!std::filesystem::exists(workspaceRoot, code) || code) return;
+    // A development tree has no package manifest, so nothing here is an installed package
+    // and no update can be in flight (docs/AUTO-UPDATE.md).
+    if (!std::filesystem::exists(root / kPackageManifestName, code) || code) return false;
+    const std::filesystem::path workspaceRoot = root / kWorkspaceDirectory;
+    if (!std::filesystem::exists(workspaceRoot, code) || code) return false;
 
+    bool acted = false;
     std::vector<std::filesystem::path> workspaces;
     for (std::filesystem::directory_iterator it(workspaceRoot, code), end; !code && it != end;
          it.increment(code)) {
@@ -765,6 +769,7 @@ void recoverOnStartup(const std::filesystem::path& root) {
         if (!readFile(workspace / "journal", &text)) {
             // A workspace without a journal never reached the first rename.
             removeWorkspace(root, workspace);
+            acted = true;
             continue;
         }
         std::string state;
@@ -781,11 +786,12 @@ void recoverOnStartup(const std::filesystem::path& root) {
                         sha256Hex(current.data(), current.size()) == manifestSha;
         }
         if (committed) {
-            finishCommitted(root, workspace, operations, &error);
+            acted = finishCommitted(root, workspace, operations, &error) || acted;
         } else {
-            rollback(root, workspace, operations, &error);
+            acted = rollback(root, workspace, operations, &error) || acted;
         }
     }
+    return acted;
 }
 
 bool relaunch(const std::filesystem::path& root, const std::string& launch,

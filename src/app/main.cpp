@@ -36,6 +36,7 @@
 #include "platform/surface.h"
 #include "platform/web_pack.h"
 #include "update/release_keys.h"
+#include "update/updater.h"
 #include "camera/arena_view.h"
 #include "render/debug_prims.h"
 #include "render/scene_renderer.h"
@@ -1595,6 +1596,20 @@ static void logToFileWithoutConsole(const Options& options) {
 #endif
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
+#if !defined(__EMSCRIPTEN__)
+    // Finish or roll back an update a crash interrupted, before SDL, the window or the
+    // settings are touched (issue #100). One stat when there is no journal, and nothing in
+    // a development tree that has no package manifest.
+    {
+        std::filesystem::path installRoot;
+        std::string recoveryError;
+        if (update::installRoot(&installRoot, &recoveryError) &&
+            update::recoverOnStartup(installRoot)) {
+            std::printf("[update] recovered an interrupted update in %s\n",
+                        installRoot.string().c_str());
+        }
+    }
+#endif
     auto* app = new App();
     *appstate = app;
 

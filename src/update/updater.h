@@ -78,8 +78,10 @@ struct ApplySettings {
 ApplyResult apply(const ApplySettings& settings);
 
 // First thing on startup on native builds: finishes or rolls back an interrupted apply.
-// Does nothing (one stat) when there is no journal, so a normal run is unaffected.
-void recoverOnStartup(const std::filesystem::path& root);
+// Does nothing (one stat) when there is no journal or when the folder is not an installed
+// package, so a normal run and a development tree are unaffected. Returns true when it
+// acted, so the caller can log exactly one line.
+bool recoverOnStartup(const std::filesystem::path& root);
 
 // Starts the new build through its entry point, appending --updated-from=<old> to the
 // original arguments (which exclude argv[0]). On Linux this replaces the process.

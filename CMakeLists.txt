@@ -241,9 +241,9 @@ if(NOT EMSCRIPTEN)
     target_compile_options(monocypher PRIVATE -w)
 endif()
 
-# The updater's building blocks (issue #100, step 2): version, path rules, both manifest
-# parsers, the archive readers, SHA-256/Ed25519 and the HTTP seam. Nothing in the game
-# calls it yet — step 3 wires it into the title screen and the apply path.
+# The updater (issue #100): version, path rules, both manifest parsers, the archive
+# readers, SHA-256/Ed25519, the HTTP seam and the apply engine. The game uses it for the
+# title-screen check and the update screen (step 4).
 if(NOT EMSCRIPTEN)
     add_library(update STATIC
         src/update/archive.cpp
@@ -364,6 +364,7 @@ endif()
 target_link_libraries(daybreak PRIVATE battle_backend)
 if(NOT EMSCRIPTEN)
     target_link_libraries(daybreak PRIVATE net_session)
+    target_link_libraries(daybreak PRIVATE update)
 endif()
 if(WIN32)
     set_target_properties(daybreak PROPERTIES WIN32_EXECUTABLE TRUE)
@@ -939,6 +940,14 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(update_stub PRIVATE update)
     add_executable(update_apply_test tests/update_apply_test.cpp)
     target_link_libraries(update_apply_test PRIVATE update)
+    # The real binary must roll back a planted journal before it touches the install
+    # (issue #100, step 4).
+    add_test(NAME update_recovery_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/update_recovery_test.py"
+                     $<TARGET_FILE:daybreak>)
+    set_tests_properties(update_recovery_test PROPERTIES TIMEOUT 180)
+
     # A release build with no trusted key must not compile (issue #100, step 4).
     add_test(NAME update_release_guard_test
              COMMAND ${Python3_EXECUTABLE}
@@ -1252,6 +1261,7 @@ set(DAYBREAK_AREA_PLATFORM
     unicode_path_check check_tools_test package_manifest_test update_manifest_test
     release_sign_test update_logic_test update_crypto_test update_archive_test
     update_http_test update_crosscheck_test update_apply_test update_release_guard_test
+    update_recovery_test
 )
 
 foreach(daybreak_area frontend hud battle net render data settings platform)
