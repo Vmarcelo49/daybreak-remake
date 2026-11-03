@@ -1,11 +1,11 @@
 # Auto-updates: the release formats and the signing key (issue #100)
 
-The updater is built in steps. **Steps 1 and 2 are built and tested**: both packages state
+The updater is built in steps. **Steps 1–3 are built and tested**: both packages state
 which files they own, the release manifest is generated from the two archives, the owner
-has an offline signing tool, and the game has the code that will read all of it (HTTP,
-crypto, archive readers, both parsers, version comparison). **Nothing calls that code
-yet** (steps 3–4): no menu offers an update, no run makes a network request, and no public
-key is compiled in.
+has an offline signing tool, and the game has the whole engine — check, download, verify,
+stage, apply, roll back, recover and relaunch. **Nothing calls the engine yet** (step 4):
+no menu offers an update, no run makes a network request, and the release key list is
+still empty (the owner supplies the public key).
 
 | Piece | Where | State |
 |---|---|---|
@@ -15,7 +15,9 @@ key is compiled in.
 | CI artifact for the release | `.github/workflows/build.yml`, job `update-manifest` | green on `feat/auto-updater` (run 41558670935): both archives, both `.sha256` files and the manifest |
 | HTTPS GET (redirects, timeouts, cancel) | `src/platform/http.h`, `http_curl.cpp`, `http_winhttp.cpp` | built; Linux tested against a local fixture and the real 0.2.1 asset; Windows compiled only by CI (no toolchain here) |
 | Version, path rules, both parsers, archive readers, SHA-256/Ed25519 | `src/update/` | built, tested |
-| Check, download, verify, apply, roll back, notice and Options | steps 3–4 | **not built** |
+| Check, download, verify, stage, apply, roll back, recover, relaunch | `src/update/updater.{h,cpp}`, `apply_posix.cpp` / `apply_win32.cpp` | built, tested on Linux; the Windows cases run in `update_selftest.exe` |
+| Trusted release keys | `src/update/release_keys.h` | **empty until the owner supplies the public key**; a `DAYBREAK_RELEASE_BUILD` refuses to compile without one |
+| Title notice, progress screen, Options, `--no-update-check` | step 4 | **not built** |
 
 ## Why a package manifest
 
@@ -236,13 +238,72 @@ real release asset through the real redirect chain and prints its size and SHA-2
 on Linux against the 0.2.1 asset (21,514,040 bytes, sha256 `8460d5e6…`); the Windows run is
 pending a machine with the toolchain.
 
-## What is still missing (steps 3–4)
+## Applying an update
 
-* `src/update/`: the check, download-to-disk, signature check, extraction, staged apply,
-  rollback, journal recovery, cleanup and relaunch.
-* The public key list compiled into the game, the title-screen notice, the Options rows,
-  `--no-update-check` and the CTest environment gate that keeps verification runs off the
-  network.
+The engine is `src/update/updater.{h,cpp}`; the file operations it needs (rename aside,
+atomic write, free space, self path, exec/CreateProcess) are `apply_posix.cpp` /
+`apply_win32.cpp`. The rules are what make it safe to write into a folder that also holds
+the copyrighted game data:
+
+* **The install root must be a package.** It is the directory of the running binary, and it
+  must hold a parseable `package-manifest.txt` whose `target` matches this build. A
+  development build tree is refused ("this copy wasn't installed from a release package").
+* **The workspace is `<root>/.daybreak-update/<version>/`**, on the same volume as the
+  install so the renames are atomic.
+* **Before the download** the engine checks free space against the archive size plus twice
+  a conservative unpack (the exact total lives inside the archive).
+* **The download is capped at the manifest's `size`** and hashed as it streams; a wrong
+  size or sha256 deletes the archive and applies nothing.
+* **The staged tree is proven against the archive's own `package-manifest.txt`**: version,
+  target, every size, hash and exec bit, and the file set must match exactly.
+* **Never overwrite a file the old package doesn't own.** If a path in the new manifest
+  exists in the install, is not in the old manifest, and has different bytes, the apply
+  aborts and names the path. With no old manifest (missing or corrupt) the engine only adds
+  and replaces, deletes nothing, and the new manifest's paths are trusted to be the
+  package's own.
+* **A package may not list a game-data path.** `data/`, `movie/`, `custom-textures/`,
+  `hd-textures/` and `daybreak[0-9][0-9].dat` are refused by both manifest parsers, in any
+  case, so a release can never step on the game's files or a texture pack.
+* **Journal.** `<workspace>/journal` is written atomically (temp file, fsync, rename,
+  directory fsync) before the first rename, listing every operation. Its states are
+  `applying` and `committed`; it also records the new manifest's sha256.
+* **Per file:** the existing file is renamed to `<path>.old`, then the staged file is
+  renamed into place (parent directories created). Deletions become `.old` too, so a
+  rollback can restore them. Windows uses `MoveFileExW` without `REPLACE_EXISTING` and
+  retries `ERROR_ACCESS_DENIED`/`ERROR_SHARING_VIOLATION` for up to five seconds, because
+  antivirus scanners and the still-exiting old process hold fresh `.exe`/`.dll` files.
+* **The commit point is the new `package-manifest.txt`**, replaced by an atomic rename;
+  only then is the journal marked `committed`.
+* **Any failure before the commit rolls the journal back**, restoring every `.old` and
+  removing every added file, so the old version is exactly as it was.
+* **Startup recovery** (`update::recoverOnStartup`) runs first thing on native builds. With
+  no journal it is one `stat` and does nothing. `applying` rolls back — unless the installed
+  manifest already matches the journal's hash, in which case the commit happened and the
+  `.old` files are cleaned. `committed` just cleans up. A `.old` that cannot be deleted yet
+  on Windows is retried on the next start.
+* **Relaunch** starts the new entry point with the original arguments plus
+  `--updated-from=<old>`; the game logs that flag and ignores it (migrations hook in later).
+  Linux `execv`s the launcher, Windows `CreateProcessW`s it and lets the caller exit.
+
+The trusted keys are a **parameter**: the game passes `release_keys.h`, the tests pass
+throwaway keys. Nothing on a player's machine can add one. While the list is empty every
+check reports "untrusted"; a build with `DAYBREAK_RELEASE_BUILD` defined fails to compile
+with an empty list (a static assertion) and the logic suite also asserts it at run time.
+
+What is verified today: `update_apply_test` (120 checks) runs the whole chain against the
+step-2 loopback server with archives built by the real release tools — every outcome, the
+collision and game-area refusals, a read-only root, the space hook, cancel at each phase, a
+layout change, a missing old manifest, an injected failure at **every** operation with a
+complete rollback, a child process that `_exit()`s at every operation followed by recovery,
+and the end-to-end stub that applies and relaunches into the new version. The Windows
+counterparts (including renaming the running `update_selftest.exe` aside) run in
+`update_selftest.exe` on the owner's machine.
+
+## What is still missing (step 4)
+
+* The title-screen notice, the progress screen, the Options rows, the settings keys and
+  `--no-update-check`, plus the CTest gate that keeps verification runs off the network.
+* The real public key in `src/update/release_keys.h`.
 * `package/LICENSES/` already carries Monocypher's notice: the game links it from step 2.
 
 ## Reproducing steps 1 and 2
