@@ -275,8 +275,16 @@ struct Battle::Impl {
     void resolve_victory() {
         const auto& match = combat.match;
         if (victoryResolved || !match.ready || match.presentation_phase != 1) return;
-        combat.victory_line([&](const std::string& p) { return assets.contains(p); },
-                            [&](const std::string& p) { return assets.read(p).bytes; });
+        // The core's asset read throws for a file it does not have, and the victory script is
+        // optional content (a delivery client can hold a match group without one, issue #88).
+        // An uncaught throw here ended a delivered match at the round's end; only the
+        // quotation is lost, so report it and let the result screen open.
+        try {
+            combat.victory_line([&](const std::string& p) { return assets.contains(p); },
+                                [&](const std::string& p) { return assets.read(p).bytes; });
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "[battle] victory line unavailable: %s\n", e.what());
+        }
         combat.finalize_awards();
         victoryResolved = true;
     }

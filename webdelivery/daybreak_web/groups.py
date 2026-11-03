@@ -61,7 +61,14 @@ STARTUP_NAMES: tuple[str, ...] = ("movie/op.mpg",)
 #: The core adds ``data/camera/01.x`` and every projectile set: it preloads six of them for
 #: any roster (local_normal_projectiles.hpp) and opens others in mid-battle, when a missing
 #: file would end the match, so the whole directory arrives up front.
-MATCH_SHARED_PREFIXES: tuple[str, ...] = ("data/effect/", "data/aura/", "data/bullet/", "data/camera/")
+#: The round's END is part of the match too (issue #88): when the winner is resolved the core
+#: reads a victory script — ``data/scenario/win/%02u-%02u-%u.txt`` with the single
+#: ``%02u.txt`` as its fallback (battle_victory_script.hpp) — and the result screen uploads the
+#: winner art ``data/win/%02da|%02db.cnv`` (screen_result.cpp, battle_victory_identity.hpp).
+#: Neither was in any group, so a delivered match threw ``Asset not found`` at the round's end.
+#: Measured on the 2026-10 install: 570 scripts / 0.2 MB and 18 sheets / 18.9 MB.
+MATCH_SHARED_PREFIXES: tuple[str, ...] = ("data/effect/", "data/aura/", "data/bullet/", "data/camera/",
+                                          "data/scenario/win/", "data/win/")
 
 
 def rules_fingerprint() -> str:

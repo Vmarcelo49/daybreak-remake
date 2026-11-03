@@ -804,6 +804,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak ${CMAKE_CURRENT_SOURCE_DIR}/local-data/harness/web-data)
     set_tests_properties(web_match_group_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 LABELS asset)
 
+    # The same download against what the *front end* reads to finish a match, result screen
+    # included (issue #88). Skips without a prepared tree.
+    add_test(NAME web_frontend_tree_check COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/web_frontend_tree_check.py $<TARGET_FILE:daybreak>
+        ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak ${CMAKE_CURRENT_SOURCE_DIR}/local-data/harness/web-data)
+    set_tests_properties(web_frontend_tree_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300 LABELS asset)
+
 
     add_test(NAME texture_fallback_check COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/texture_fallback_check.py $<TARGET_FILE:daybreak>
@@ -1285,8 +1292,8 @@ set(DAYBREAK_AREA_RENDER
 
 set(DAYBREAK_AREA_DATA
     dat_bundle_bytes web_catalog_order web_assets_test web_delivery_test
-    web_match_group_check texture_fallback_check texture_pack_check env_spawn_test
-    unicode_path_check
+    web_match_group_check web_frontend_tree_check texture_fallback_check texture_pack_check
+    env_spawn_test unicode_path_check
 )
 
 set(DAYBREAK_AREA_SETTINGS
