@@ -102,25 +102,4 @@ bool allowedUrl(const std::string& url, std::string* error) {
     return fail(error, "the URL must start with https://");
 }
 
-std::string resolveRedirect(const std::string& base, const std::string& location) {
-    if (location.empty()) return std::string();
-    if (startsWithIgnoreCase(location, "http://") ||
-        startsWithIgnoreCase(location, "https://")) {
-        return location;
-    }
-    const std::size_t schemeEnd = base.find("://");
-    if (schemeEnd == std::string::npos) return std::string();
-    const std::string scheme = base.substr(0, schemeEnd + 3);
-    if (location.compare(0, 2, "//") == 0) return scheme + location.substr(2);
-    const std::size_t authorityEnd = base.find('/', schemeEnd + 3);
-    const std::string origin =
-        authorityEnd == std::string::npos ? base : base.substr(0, authorityEnd);
-    if (location.front() == '/') return origin + location;
-    const std::size_t lastSlash = base.rfind('/');
-    if (lastSlash == std::string::npos || lastSlash < schemeEnd + 3) {
-        return origin + "/" + location;
-    }
-    return base.substr(0, lastSlash + 1) + location;
-}
-
 }  // namespace plat

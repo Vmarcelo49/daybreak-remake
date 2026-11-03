@@ -26,6 +26,7 @@ struct CurlApi {
     void (*easy_cleanup)(CURL*) = nullptr;
     CURLcode (*easy_setopt)(CURL*, CURLoption, ...) = nullptr;
     CURLcode (*easy_perform)(CURL*) = nullptr;
+    CURLcode (*easy_getinfo)(CURL*, CURLINFO, ...) = nullptr;
     const char* (*easy_strerror)(CURLcode) = nullptr;
 };
 
@@ -49,11 +50,14 @@ CurlApi loadCurl() {
     api.easy_setopt =
         reinterpret_cast<CURLcode (*)(CURL*, CURLoption, ...)>(load("curl_easy_setopt"));
     api.easy_perform = reinterpret_cast<CURLcode (*)(CURL*)>(load("curl_easy_perform"));
+    api.easy_getinfo =
+        reinterpret_cast<CURLcode (*)(CURL*, CURLINFO, ...)>(load("curl_easy_getinfo"));
     api.easy_strerror =
         reinterpret_cast<const char* (*)(CURLcode)>(load("curl_easy_strerror"));
     if (api.global_init == nullptr || api.easy_init == nullptr ||
         api.easy_cleanup == nullptr || api.easy_setopt == nullptr ||
-        api.easy_perform == nullptr || api.easy_strerror == nullptr) {
+        api.easy_perform == nullptr || api.easy_getinfo == nullptr ||
+        api.easy_strerror == nullptr) {
         return CurlApi();
     }
     if (api.global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) return CurlApi();
@@ -86,7 +90,6 @@ struct TransferState {
     HttpError error = HttpError::None;
     std::string message;
     int status = 0;
-    std::string location;
     bool forwarding = true;  // false while the response is a redirect or an error
 };
 
@@ -119,16 +122,7 @@ size_t onHeader(char* data, size_t size, size_t count, void* userdata) {
         if (space != std::string::npos) {
             state->status = std::atoi(line.c_str() + space + 1);
             state->forwarding = state->status == 200;
-            state->location.clear();
         }
-    } else if (startsWithIgnoreCase(line, "location:")) {
-        std::string value = line.substr(9);
-        while (!value.empty() &&
-               (value.back() == '\r' || value.back() == '\n' || value.back() == ' ')) {
-            value.pop_back();
-        }
-        while (!value.empty() && value.front() == ' ') value.erase(value.begin());
-        state->location = value;
     } else if (startsWithIgnoreCase(line, "content-length:")) {
         const std::uint64_t length =
             std::strtoull(line.c_str() + 15, nullptr, 10);
@@ -289,19 +283,26 @@ HttpResult httpGet(const HttpRequest& request, const HttpSink& sink,
             result.message = curl.easy_strerror(code);
             return result;
         }
-        if (state.status >= 300 && state.status < 400 && !state.location.empty()) {
+        if (state.status >= 300 && state.status < 400) {
             if (redirects >= 5) {
                 result.error = HttpError::Refused;
                 result.message = "too many redirects";
                 return result;
             }
-            const std::string next = resolveRedirect(url, state.location);
-            std::string redirectError;
-            if (next.empty() || !allowedUrl(next, &redirectError)) {
+            // curl resolved the Location header against the request URL for us; the
+            // policy check below is still ours, on every hop.
+            char* target = nullptr;
+            if (curl.easy_getinfo(handle, CURLINFO_REDIRECT_URL, &target) != CURLE_OK ||
+                target == nullptr) {
                 result.error = HttpError::Refused;
-                result.message = "redirect refused: " +
-                                 (redirectError.empty() ? std::string("bad location")
-                                                        : redirectError);
+                result.message = "the redirect has no target";
+                return result;
+            }
+            const std::string next = target;
+            std::string redirectError;
+            if (!allowedUrl(next, &redirectError)) {
+                result.error = HttpError::Refused;
+                result.message = "redirect refused: " + redirectError;
                 return result;
             }
             url = next;

@@ -44,16 +44,6 @@ void testUrlPolicy() {
     check(!plat::allowedUrl("http://127.0.0.1:8080/x", &error),
           "loopback http is refused without the test switch");
     setTestMode(true);
-
-    expect(plat::resolveRedirect("https://a.example/dir/file", "/x"),
-           "https://a.example/x", "absolute-path redirect");
-    expect(plat::resolveRedirect("https://a.example/dir/file", "other"),
-           "https://a.example/dir/other", "relative redirect");
-    expect(plat::resolveRedirect("https://a.example/dir/file", "//b.example/x"),
-           "https://b.example/x", "scheme-relative redirect");
-    expect(plat::resolveRedirect("https://a.example/dir/file",
-                                 "https://c.example/y"),
-           "https://c.example/y", "absolute redirect");
 }
 
 void testMissingCurl() {

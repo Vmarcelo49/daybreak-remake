@@ -57,10 +57,6 @@ bool testHttpAllowed();
 // https:// anywhere; http:// only for 127.0.0.1:<port> or localhost:<port> in test mode.
 bool allowedUrl(const std::string& url, std::string* error);
 
-// Resolves a Location header against the request URL (the Linux client follows redirects
-// itself so every hop goes through allowedUrl; WinHTTP applies its own policy).
-std::string resolveRedirect(const std::string& base, const std::string& location);
-
 // "daybreak-remake/<VERSION>", the one header the server sees.
 std::string userAgent();
 
