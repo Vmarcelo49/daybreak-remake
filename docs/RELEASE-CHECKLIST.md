@@ -1040,3 +1040,79 @@ A run is green when it ends in `RESULT: ok`, every expected
 roster matches the scenario. A missing `[menu] scene: result`, a panic, or a
 `RESULT:` other than `ok` is a gate failure — record the exact command and the
 transcript rather than re-running until it passes.
+
+## 9. Publishing a release with the updater (issue #100)
+
+From the release that first ships the updater, every release is a **stable** release: no
+pre-releases, because the updater reads
+`releases/latest/download/update-manifest.txt`, and GitHub's `latest` ignores pre-releases.
+The formats and the trust model are in [`AUTO-UPDATE.md`](AUTO-UPDATE.md).
+
+### 9.1 One-time: generate the signing key (owner only)
+
+The private key must never reach GitHub, the repository or CI. Generate it on the machine
+that publishes, keep the secret offline (password manager or USB stick) and back it up:
+losing it means a release signed with a new key is not trusted by builds that only know the
+old one.
+
+```bash
+./build.sh linux
+build/linux/release_sign keygen \
+    --secret="$HOME/daybreak-release/release.release-secret" \
+    --public="$HOME/daybreak-release/release.pub"
+sha256sum "$HOME/daybreak-release/release.release-secret"   # record it with the backup
+```
+
+The tool creates the secret with mode `0600` and refuses to overwrite it; `*.release-secret`
+is gitignored. The public key is not secret and is compiled into the game in step 3.
+
+### 9.2 Each release
+
+1. **Download the CI artifacts** from the run that built this version (a `VERSION` change on
+   `main` starts it; `gh run download` works too). You need:
+   `daybreak-<ver>-linux-x86_64.tar.gz` and its `.sha256`,
+   `daybreak-<ver>-<rev>-windows-x86_64.zip` and its `.sha256`, and the `update-manifest.txt`
+   artifact from the `update-manifest` job.
+2. **Check the archives** against the recorded hashes (the files name the archive
+   relative to themselves, so `-c` works in the download folder):
+   ```bash
+   sha256sum -c daybreak-<ver>-linux-x86_64.tar.gz.sha256
+   sha256sum -c daybreak-<ver>-<rev>-windows-x86_64.zip.sha256
+   ```
+3. **Rebuild the manifest locally** (or use the CI one; rebuilding proves the artifacts are
+   the ones it describes):
+   ```bash
+   python3 -I tools/make_update_manifest.py --version=<ver> \
+       --linux=daybreak-<ver>-linux-x86_64.tar.gz \
+       --windows=daybreak-<ver>-<rev>-windows-x86_64.zip \
+       --out=update-manifest.txt
+   ```
+4. **Sign it** with the offline key:
+   ```bash
+   build/linux/release_sign sign \
+       --secret="$HOME/daybreak-release/release.release-secret" update-manifest.txt
+   ```
+5. **Verify** before publishing — this is the check the game will do:
+   ```bash
+   build/linux/release_sign verify --public="$HOME/daybreak-release/release.pub" \
+       update-manifest.txt update-manifest.txt.sig
+   ```
+6. **Publish a non-pre-release** with both archives, both `.sha256` files, `update-manifest.txt`
+   and `update-manifest.txt.sig`. Never pass `--prerelease`:
+   ```bash
+   gh release create "v<ver>" --title "Daybreak <ver>" --notes-file notes.md \
+       daybreak-<ver>-linux-x86_64.tar.gz daybreak-<ver>-linux-x86_64.tar.gz.sha256 \
+       daybreak-<ver>-<rev>-windows-x86_64.zip daybreak-<ver>-<rev>-windows-x86_64.zip.sha256 \
+       update-manifest.txt update-manifest.txt.sig
+   ```
+7. **Confirm the permanent link** resolves to this release:
+   ```bash
+   curl -fsSL https://github.com/Vmarcelo49/daybreak-remake/releases/latest/download/update-manifest.txt | head -3
+   ```
+
+The signature is what stops a stolen GitHub token from publishing an update, so skipping
+steps 4–5 turns that protection off silently. If `release_sign` exits `2` it says why
+(usually the key's mode is not `0600`); if `verify` exits `3`, do not publish.
+
+Builds before the first updater release cannot update themselves: their players download
+that release by hand once, and every release after it updates itself.
