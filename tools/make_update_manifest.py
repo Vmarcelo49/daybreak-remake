@@ -461,6 +461,29 @@ def take_manifest(files, where):
     return files.pop(pm.MANIFEST_NAME)
 
 
+UNSIGNED_MARKER = b"unsigned-test-build"
+
+
+def check_signed(files, label):
+    """Refuse an archive whose BUILD-INFO.txt says it is an unsigned test build.
+
+    The escape is the same temporary switch the build uses (DAYBREAK_ALLOW_UNSIGNED_PACKAGE);
+    it exists only until the owner supplies the release key, and the branch's CI needs it to
+    exercise this tool on real archives.
+    """
+    info = files.get("BUILD-INFO.txt")
+    if info is None or UNSIGNED_MARKER not in info:
+        return
+    if os.environ.get("DAYBREAK_ALLOW_UNSIGNED_PACKAGE") == "1":
+        print("make_update_manifest: WARNING: %s is an unsigned test build; this manifest "
+              "must not be published" % label, file=sys.stderr)
+        return
+    raise ArchiveError(
+        "%s: BUILD-INFO.txt says unsigned-test-build; an unsigned package must not be "
+        "published (set DAYBREAK_ALLOW_UNSIGNED_PACKAGE=1 only for CI)" % label
+    )
+
+
 def check_against_manifest(files, exec_bits, manifest_text, target, version, where):
     try:
         manifest = pm.parse_manifest(manifest_text.decode("utf-8"))
@@ -593,6 +616,7 @@ def build(version, linux_path, windows_path):
         )
 
     linux_top, linux_files, linux_modes, linux_manifest = read_linux_archive(linux_path)
+    check_signed(linux_files, archive_name(linux_path))
     if linux_top != linux_top_directory(version):
         raise ArchiveError(
             "%s: top-level directory is %r, expected %r"
@@ -603,6 +627,7 @@ def build(version, linux_path, windows_path):
         archive_name(linux_path),
     )
     windows_files, windows_modes, windows_manifest = read_windows_archive(windows_path)
+    check_signed(windows_files, windows_name)
     check_against_manifest(
         windows_files, windows_modes, windows_manifest, "windows-x86_64", version,
         windows_name,

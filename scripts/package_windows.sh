@@ -19,7 +19,13 @@ done
 command -v zip >/dev/null
 command -v python3 >/dev/null
 command -v x86_64-w64-mingw32-objdump >/dev/null
-if [ "$build" = 1 ]; then "$root/build.sh" windows; fi
+if [ "$build" = 1 ]; then
+    # A package is a release by definition, so it must carry a trusted key
+    # (src/update/release_keys.h); the escape only exists until the owner supplies it.
+    "$root/build.sh" windows -DDAYBREAK_RELEASE_BUILD=ON
+fi
+grep -q '^DAYBREAK_RELEASE_BUILD:BOOL=ON' "$root/build/windows/CMakeCache.txt" \
+    || { echo "the build tree was not configured with DAYBREAK_RELEASE_BUILD=ON — run ./build.sh windows -DDAYBREAK_RELEASE_BUILD=ON first" >&2; exit 1; }
 version=$(tr -d '[:space:]' < "$root/VERSION")
 revision=$(git -C "$root" rev-parse --short HEAD)
 if ! git -C "$root" diff --quiet || ! git -C "$root" diff --cached --quiet; then
@@ -55,7 +61,12 @@ The MinGW GCC runtime is linked statically under GPL-3.0.txt with the permission
 in GCC-Runtime-Library-Exception.txt. Windows system libraries are not bundled.
 Original game data is not included.
 NOTICES
-printf 'Version: %s\nCode revision: %s\nTarget: Windows x64\n' "$version" "$revision" > "$stage/BUILD-INFO.txt"
+{
+    printf 'Version: %s\nCode revision: %s\nTarget: Windows x64\n' "$version" "$revision"
+    if [ "${DAYBREAK_ALLOW_UNSIGNED_PACKAGE:-}" = "1" ]; then
+        printf 'Signed: unsigned-test-build\n'
+    fi
+} > "$stage/BUILD-INFO.txt"
 for file in "$stage"/*.exe "$stage"/*.dll; do
     while IFS= read -r dependency; do
         case "${dependency,,}" in

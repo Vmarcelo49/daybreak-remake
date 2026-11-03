@@ -52,10 +52,14 @@ tar --version | grep -q GNU || fail "GNU tar is required (--sort/--mtime/--owner
 
 if [ "$build" = 1 ]; then
     echo "== building =="
-    "$root/build.sh" linux
+    # A package is a release by definition, so it must carry a trusted key
+    # (src/update/release_keys.h); the escape only exists until the owner supplies it.
+    "$root/build.sh" linux -DDAYBREAK_RELEASE_BUILD=ON
 fi
 [ -f "$root/build/linux/daybreak" ] \
     || fail "no build in $root/build/linux — run ./build.sh linux first (or drop --no-build)"
+grep -q '^DAYBREAK_RELEASE_BUILD:BOOL=ON' "$root/build/linux/CMakeCache.txt" \
+    || fail "the build tree was not configured with DAYBREAK_RELEASE_BUILD=ON — run ./build.sh linux -DDAYBREAK_RELEASE_BUILD=ON first"
 [ -f "$root/third_party/fonts/NotoSansCJKjp-Regular.otf" ] \
     || fail "third_party/fonts/NotoSansCJKjp-Regular.otf is missing — run ./build.sh deps (D7 needs the Japanese fallback in the package)"
 
@@ -64,6 +68,19 @@ echo "== staging $stage =="
 rm -rf "$stage"
 mkdir -p "$out_dir"
 cmake --install "$root/build/linux" --prefix "$stage" >/dev/null
+
+# What this package is, and whether it is signed. An unsigned test build is marked so
+# make_update_manifest.py refuses its archives and nobody publishes it by mistake.
+revision=$(git -C "$root" rev-parse --short HEAD)
+if ! git -C "$root" diff --quiet || ! git -C "$root" diff --cached --quiet; then
+    revision="$revision-dirty"
+fi
+{
+    printf 'Version: %s\nCode revision: %s\nTarget: Linux x86_64\n' "$version" "$revision"
+    if [ "${DAYBREAK_ALLOW_UNSIGNED_PACKAGE:-}" = "1" ]; then
+        printf 'Signed: unsigned-test-build\n'
+    fi
+} > "$stage/BUILD-INFO.txt"
 
 # The updater may only replace files the package owns, so the package states which ones
 # those are (issue #100). Generated before the checks below so the required-files list
@@ -74,7 +91,7 @@ python3 -I "$root/tools/package_manifest.py" write "$stage" \
 
 echo "== required files =="
 required=(
-    daybreak-bin daybreak package-manifest.txt README-LINUX.md VERSION
+    daybreak-bin daybreak package-manifest.txt BUILD-INFO.txt README-LINUX.md VERSION
     assets/fonts/gyrotrope-black.otf assets/fonts/NotoSansCJKjp-Regular.otf
     lib/libwgpu_native.so lib/libSDL3.so.0
     LICENSES/README.md LICENSES/SDL3.txt LICENSES/wgpu-native-MIT.txt

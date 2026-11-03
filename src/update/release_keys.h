@@ -20,7 +20,7 @@ inline constexpr std::array<std::array<std::uint8_t, 32>, 0> kReleaseKeys = {
     // {0x00, 0x00, ...},
 };
 
-#if defined(DAYBREAK_RELEASE_BUILD)
+#if defined(DAYBREAK_RELEASE_BUILD) && !defined(DAYBREAK_ALLOW_UNSIGNED_PACKAGE)
 static_assert(kReleaseKeys.size() > 0,
               "a release build needs at least one trusted release key in "
               "src/update/release_keys.h (docs/RELEASE-CHECKLIST.md §9.1)");

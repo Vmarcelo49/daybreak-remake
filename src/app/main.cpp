@@ -35,6 +35,7 @@
 #include "platform/platform.h"
 #include "platform/surface.h"
 #include "platform/web_pack.h"
+#include "update/release_keys.h"
 #include "camera/arena_view.h"
 #include "render/debug_prims.h"
 #include "render/scene_renderer.h"

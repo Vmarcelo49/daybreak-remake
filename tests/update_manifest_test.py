@@ -10,6 +10,7 @@ no build output — and expect both the success shape and every refusal.
 
 import hashlib
 import io
+import os
 import struct
 import subprocess
 import sys
@@ -177,15 +178,42 @@ class UpdateManifestTest(unittest.TestCase):
         write_zip(windows, WINDOWS_FILES, windows_manifest)
         return linux, windows
 
-    def run_tool(self, linux, windows, version=VERSION, out=None):
+    def run_tool(self, linux, windows, version=VERSION, out=None, env=None):
         out = out or (self.root / "update-manifest.txt")
+        environment = dict(os.environ)
+        if env:
+            environment.update(env)
         result = subprocess.run(
             [sys.executable, "-I", UPDATE_TOOL,
              "--version=" + version, "--linux=" + str(linux),
              "--windows=" + str(windows), "--out=" + str(out)],
-            capture_output=True, text=True,
+            capture_output=True, text=True, env=environment,
         )
         return result, out
+
+    def test_rejects_an_unsigned_test_build(self):
+        marker = {"BUILD-INFO.txt": (b"Version: 1.2.3\nSigned: unsigned-test-build\n",
+                                     0o644)}
+        linux_files = dict(LINUX_FILES, **marker)
+        windows_files = dict(WINDOWS_FILES, **marker)
+        _, linux_manifest = write_stage(
+            self.root, "unsigned-linux", linux_files, "linux-x86_64", "run")
+        _, windows_manifest = write_stage(
+            self.root, "unsigned-windows", windows_files, "windows-x86_64",
+            "DaybreakRemake.exe")
+        linux = self.root / LINUX_ARCHIVE
+        write_tar(linux, LINUX_TOP, linux_files, linux_manifest)
+        windows = self.root / WINDOWS_ARCHIVE
+        write_zip(windows, windows_files, windows_manifest)
+        # The CI job exports the escape; this test owns the environment it checks.
+        refused, _ = self.run_tool(
+            linux, windows, env={"DAYBREAK_ALLOW_UNSIGNED_PACKAGE": ""})
+        self.assertEqual(refused.returncode, 1, refused.stderr)
+        self.assertIn("unsigned-test-build", refused.stderr)
+        allowed, _ = self.run_tool(
+            linux, windows, env={"DAYBREAK_ALLOW_UNSIGNED_PACKAGE": "1"})
+        self.assertEqual(allowed.returncode, 0, allowed.stderr)
+        self.assertIn("unsigned test build", allowed.stderr)
 
     def test_success_writes_the_exact_format(self):
         linux, windows = self.make_pair()

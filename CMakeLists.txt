@@ -6,6 +6,13 @@ file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" DAYBREAK_VERSION)
 string(STRIP "${DAYBREAK_VERSION}" DAYBREAK_VERSION)
 project(daybreak VERSION ${DAYBREAK_VERSION} LANGUAGES C CXX)
 
+# A release package must carry a trusted release key (src/update/release_keys.h); the
+# packaging scripts always configure with this ON. DAYBREAK_ALLOW_UNSIGNED_PACKAGE=1 is a
+# temporary escape for the branch's CI until the owner supplies the key: it prints a
+# warning, marks the package in BUILD-INFO.txt, and make_update_manifest.py refuses the
+# archives. Remove it with the commit that adds the real key.
+option(DAYBREAK_RELEASE_BUILD "Build a release package (needs a trusted release key)" OFF)
+
 # Multi-platform product: SDL3 + WebGPU (webgpu.h), built for Linux, Windows
 # (MinGW cross-compile) and the web (Emscripten) from this one file.
 #
@@ -345,6 +352,15 @@ if(NOT CMAKE_CROSSCOMPILING)
 endif()
 
 add_executable(daybreak src/app/main.cpp)
+if(DAYBREAK_RELEASE_BUILD)
+    target_compile_definitions(daybreak PRIVATE DAYBREAK_RELEASE_BUILD=1)
+    if(DEFINED ENV{DAYBREAK_ALLOW_UNSIGNED_PACKAGE} AND
+       "$ENV{DAYBREAK_ALLOW_UNSIGNED_PACKAGE}" STREQUAL "1")
+        message(WARNING "DAYBREAK_ALLOW_UNSIGNED_PACKAGE=1: this package carries no trusted "
+                        "release key and must not be published")
+        target_compile_definitions(daybreak PRIVATE DAYBREAK_ALLOW_UNSIGNED_PACKAGE=1)
+    endif()
+endif()
 target_link_libraries(daybreak PRIVATE battle_backend)
 if(NOT EMSCRIPTEN)
     target_link_libraries(daybreak PRIVATE net_session)
@@ -923,6 +939,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(update_stub PRIVATE update)
     add_executable(update_apply_test tests/update_apply_test.cpp)
     target_link_libraries(update_apply_test PRIVATE update)
+    # A release build with no trusted key must not compile (issue #100, step 4).
+    add_test(NAME update_release_guard_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/release_guard_test.py"
+                     ${CMAKE_CXX_COMPILER})
+    set_tests_properties(update_release_guard_test PROPERTIES TIMEOUT 120)
+
     add_test(NAME update_apply_test
              COMMAND ${Python3_EXECUTABLE}
                      "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_update_apply_test.py"
@@ -1228,7 +1251,7 @@ set(DAYBREAK_AREA_PLATFORM
     input_backend_test launcher_test controller_scene_lifetime_test bgm_loop_test
     unicode_path_check check_tools_test package_manifest_test update_manifest_test
     release_sign_test update_logic_test update_crypto_test update_archive_test
-    update_http_test update_crosscheck_test update_apply_test
+    update_http_test update_crosscheck_test update_apply_test update_release_guard_test
 )
 
 foreach(daybreak_area frontend hud battle net render data settings platform)
