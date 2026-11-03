@@ -907,6 +907,17 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                      "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_update_http_test.py"
                      $<TARGET_FILE:update_http_test>)
 
+    # The Python release tools and the C++ parsers must accept and refuse the same
+    # inputs; this runs both halves on the same fixtures (and on the real tarball when
+    # one has been built).
+    add_executable(update_crosscheck tests/update_crosscheck.cpp)
+    target_link_libraries(update_crosscheck PRIVATE update)
+    add_test(NAME update_crosscheck_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/update_crosscheck_test.py"
+                     $<TARGET_FILE:update_crosscheck>
+                     "${CMAKE_CURRENT_SOURCE_DIR}")
+
 
     # The battle HUD's sprite table and draw geometry: device-free arithmetic over the
     # transcribed .rdata anchors, so it needs the headers' include path and webgpu.h only.
@@ -1195,7 +1206,7 @@ set(DAYBREAK_AREA_PLATFORM
     input_backend_test launcher_test controller_scene_lifetime_test bgm_loop_test
     unicode_path_check check_tools_test package_manifest_test update_manifest_test
     release_sign_test update_logic_test update_crypto_test update_archive_test
-    update_http_test
+    update_http_test update_crosscheck_test
 )
 
 foreach(daybreak_area frontend hud battle net render data settings platform)

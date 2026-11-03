@@ -100,6 +100,16 @@ def sha256_file(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def tarfile_member(name, size=0, mode=0o644, type=tarfile.REGTYPE, linkname=""):
+    """One tar member with full control, for the hostile fixtures."""
+    member = tarfile.TarInfo(name)
+    member.size = size
+    member.mode = mode
+    member.type = type
+    member.linkname = linkname
+    return member
+
+
 def raw_zip(path, entries):
     """Build a zip by hand, so tests can set flags, methods and extra fields zipfile hides."""
     locals_ = []
