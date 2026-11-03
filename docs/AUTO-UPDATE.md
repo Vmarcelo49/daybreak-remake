@@ -1,9 +1,11 @@
 # Auto-updates: the release formats and the signing key (issue #100)
 
-The updater is built in steps. **Step 1 is built and tested**: both packages state which
-files they own, the release manifest is generated from the two archives, and the owner has
-an offline signing tool. **The runtime side is not built yet** (steps 2–4): nothing in
-`src/` reads these files, no menu offers an update, and no run makes a network request.
+The updater is built in steps. **Steps 1 and 2 are built and tested**: both packages state
+which files they own, the release manifest is generated from the two archives, the owner
+has an offline signing tool, and the game has the code that will read all of it (HTTP,
+crypto, archive readers, both parsers, version comparison). **Nothing calls that code
+yet** (steps 3–4): no menu offers an update, no run makes a network request, and no public
+key is compiled in.
 
 | Piece | Where | State |
 |---|---|---|
@@ -11,7 +13,9 @@ an offline signing tool. **The runtime side is not built yet** (steps 2–4): no
 | `update-manifest.txt` for a release | `tools/make_update_manifest.py` | built, tested |
 | `update-manifest.txt.sig` | `tools/release_sign/` (`build/linux/release_sign`) | built, tested against RFC 8032 |
 | CI artifact for the release | `.github/workflows/build.yml`, job `update-manifest` | written, not yet run on CI |
-| Check, download, verify, apply, roll back | `src/update/` | **not built** (steps 2–4) |
+| HTTPS GET (redirects, timeouts, cancel) | `src/platform/http.h`, `http_curl.cpp`, `http_winhttp.cpp` | built; Linux tested against a local fixture and the real 0.2.1 asset; Windows compiled only by CI (no toolchain here) |
+| Version, path rules, both parsers, archive readers, SHA-256/Ed25519 | `src/update/` | built, tested |
+| Check, download, verify, apply, roll back, notice and Options | steps 3–4 | **not built** |
 
 ## Why a package manifest
 
@@ -150,6 +154,13 @@ one-line `make_update_manifest:` error and exit 1, never a traceback.
 Both archives are bounded: at most 10,000 entries, 1 GiB uncompressed in total, and a
 200:1 compression ratio per entry, so a zip bomb is refused rather than inflated.
 
+The game's readers (`src/update/archive.cpp`) implement exactly this set. They inflate
+through the **vendored zlib** that the reference core already carries
+(`battle_core_zlib`, unpatched — `src/battle/core/PATCHES.md`), not through
+`xm::detail::Inflater`: it is faster, it provides `crc32`, and linking it costs nothing
+because it is already in the tree. The "one shared Inflater" line in issue #100 is
+superseded; `src/assets/xmodel.h` is unchanged.
+
 ## `update-manifest.txt.sig`
 
 64 bytes of Ed25519 over the manifest's **exact bytes**, stored as 128 lowercase hex
@@ -195,17 +206,46 @@ is what closes that gap.
   extracted file against the new `package-manifest.txt`. Anything failing means nothing is
   applied.
 
-## What is still missing (steps 2–4)
+## The HTTP client
 
-* `src/platform/http`: HTTPS GET (WinHTTP on Windows, `dlopen`'d libcurl on Linux).
-* `src/update/`: version comparison, download, signature check, extraction, staged apply,
-  rollback, journal recovery, cleanup, and the title-screen notice and Options rows.
-* The public key list compiled into the game, and `--no-update-check` plus the CTest
-  environment gate that keeps verification runs off the network.
-* `package/LICENSES/` gains Monocypher's notice **when the game links it** (step 2). The
-  signing tool does not ship, so step 1 adds nothing there.
+`src/platform/http.h` is one blocking GET, safe to call from a worker thread (step 4 runs
+the check off the main thread) and cancellable through its progress callback. Two
+implementations sit behind it:
 
-## Reproducing step 1
+* **Linux** (`http_curl.cpp`) loads `libcurl.so.4` (or `libcurl-gnutls.so.4`) with
+  `dlopen` and never links it: every desktop has libcurl, no player has its development
+  package, and a linked dependency would need a version we ship. Missing libcurl is
+  `Unavailable`, whose message tells the player to download the release manually. The
+  client compiles against pinned curl headers (8.23.0, sha256-verified by
+  `scripts/fetch_deps.sh`), so the option names and types are curl's own.
+* **Windows** (`http_winhttp.cpp`) uses WinHTTP from the OS: system certificate store,
+  system proxy settings, no shipped bytes. Automatic proxy falls back to the default on
+  systems older than Windows 8.1.
+
+The URL policy is shared and enforced on every hop: **https only**, at most five
+redirects, and an https → http redirect is `Refused` (the Linux client follows redirects
+itself precisely so each hop can be checked; WinHTTP is configured to refuse the downgrade
+and bound the chain). The one exception is plain HTTP to `127.0.0.1:<port>` or
+`localhost:<port>` while `DAYBREAK_UPDATE_TEST_HTTP=1` is set — that is the CTest fixture,
+and a release build has no other way to reach it. Any status other than 200 is `Status`
+with the code; a body over `maxBytes` is `TooLarge`; no bytes for the stall timeout is
+`Timeout`; cancelling returns `Cancelled`.
+
+`update_selftest --live <url>` is the opt-in live check (never part of CTest): it fetches a
+real release asset through the real redirect chain and prints its size and SHA-256. It ran
+on Linux against the 0.2.1 asset (21,514,040 bytes, sha256 `8460d5e6…`); the Windows run is
+pending a machine with the toolchain.
+
+## What is still missing (steps 3–4)
+
+* `src/update/`: the check, download-to-disk, signature check, extraction, staged apply,
+  rollback, journal recovery, cleanup and relaunch.
+* The public key list compiled into the game, the title-screen notice, the Options rows,
+  `--no-update-check` and the CTest environment gate that keeps verification runs off the
+  network.
+* `package/LICENSES/` already carries Monocypher's notice: the game links it from step 2.
+
+## Reproducing steps 1 and 2
 
 ```bash
 ./scripts/package_linux.sh --no-build          # run twice: same sha256
@@ -219,6 +259,17 @@ build/linux/release_sign sign   --secret=/tmp/test.release-secret \
 build/linux/release_sign verify --public=/tmp/test.pub update-manifest.txt update-manifest.txt.sig
 ```
 
-`ctest -L platform` includes `package_manifest_test`, `update_manifest_test` and
-`release_sign_test`; the last one covers RFC 8032 §7.1 TEST 1 and TEST 2, so a change that
-turned the tool into a non-standard Ed25519 variant fails there.
+The updater's own suites run without game data or the internet:
+
+```bash
+ctest -L platform --output-on-failure     # includes the update suites
+ctest -L net --output-on-failure          # the HTTP fixture on 127.0.0.1
+build/linux/update_selftest               # the same three suites as one binary (Windows)
+build/linux/update_selftest --live https://github.com/Vmarcelo49/daybreak-remake/releases/download/v0.2.1/daybreak-0.2.1-linux-x86_64.tar.gz
+```
+
+`ctest -L platform` includes `package_manifest_test`, `update_manifest_test`,
+`release_sign_test`, `update_logic_test`, `update_crypto_test`, `update_archive_test` and
+`update_http_test`; `ctest -L net` includes the HTTP one as well. `release_sign_test` and
+`update_crypto_test` cover RFC 8032 §7.1 TEST 1 and TEST 2, so a change that turned either
+side into a non-standard Ed25519 variant fails there.

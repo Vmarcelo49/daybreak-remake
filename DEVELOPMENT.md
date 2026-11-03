@@ -43,7 +43,8 @@ src/            the product (C++17, SDL3 + WebGPU)
   camera/       the stateful arena camera and its pure view-projection math
   render/       scene rendering, debug primitives and the effect/shadow tables
   gpu/          webgpu.h only: instance, adapter, device, swapchain, buffers
-  platform/     SDL3 only, plus the one surface seam between SDL and WebGPU
+  platform/     SDL3 only, the one surface seam, and the updater's HTTP client
+  update/       the updater's building blocks: version, manifests, archive readers, crypto
   assets/       .X / .cnv / .dat decoding and scene assembly
   audio/ input/ movie/ physics/ settings/ shaders/   as named
 tests/          the host test suite (CTest), scripts and fixtures
