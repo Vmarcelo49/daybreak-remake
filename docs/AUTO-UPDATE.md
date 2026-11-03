@@ -101,6 +101,11 @@ sha256 = <64 lowercase hex characters>
   `releases/download/v<version>/<archive>`.
 * `size` and `sha256` describe the **archive file**; the archive contains the per-file
   manifest, so one signature covers everything the package ships.
+* The archive names are the release's own: `daybreak-<version>-linux-x86_64.tar.gz`, whose
+  single top-level directory is `daybreak-<version>-linux-x86_64`, and
+  `daybreak-<version>-<7 to 40 lowercase hex>-windows-x86_64.zip`. A renamed, stale or
+  `-dirty` archive is refused, so the manifest cannot describe something that was not the
+  release build.
 * The file is byte-for-byte reproducible from the same inputs — LF line endings, no trailing
   whitespace, fixed order — because it is signed.
 

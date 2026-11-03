@@ -293,10 +293,70 @@ class UpdateManifestTest(unittest.TestCase):
         self.assertIn("top-level directory", result.stderr)
 
     def test_rejects_a_version_mismatch(self):
-        linux, windows = self.make_pair()
+        # Archives named for 1.2.4 whose package manifests still say 1.2.3: the name
+        # checks pass, so this exercises the manifest-version comparison.
+        _, linux_manifest = write_stage(
+            self.root, "mismatch-linux", LINUX_FILES, "linux-x86_64", "run"
+        )
+        _, windows_manifest = write_stage(
+            self.root, "mismatch-windows", WINDOWS_FILES, "windows-x86_64",
+            "DaybreakRemake.exe",
+        )
+        linux = self.root / "daybreak-1.2.4-linux-x86_64.tar.gz"
+        write_tar(linux, "daybreak-1.2.4-linux-x86_64", LINUX_FILES, linux_manifest)
+        windows = self.root / "daybreak-1.2.4-abc1234-windows-x86_64.zip"
+        write_zip(windows, WINDOWS_FILES, windows_manifest)
         result, _ = self.run_tool(linux, windows, version="1.2.4")
         self.assertEqual(result.returncode, 1)
         self.assertIn("says version", result.stderr)
+
+    def test_rejects_a_renamed_linux_archive(self):
+        linux, windows = self.make_pair()
+        renamed = self.root / "daybreak-1.2.3-linux-x86_64-copy.tar.gz"
+        linux.rename(renamed)
+        result, _ = self.run_tool(renamed, windows)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("the release's Linux archive is", result.stderr)
+
+    def test_rejects_a_wrong_linux_top_directory(self):
+        linux, windows = self.make_pair()
+        _, manifest = write_stage(self.root, "top-stage", LINUX_FILES,
+                                  "linux-x86_64", "run")
+        write_tar(linux, LINUX_TOP, LINUX_FILES, manifest,
+                  top_name="daybreak-9.9.9-linux-x86_64")
+        result, _ = self.run_tool(linux, windows)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("top-level directory", result.stderr)
+
+    def test_rejects_a_windows_archive_without_a_revision(self):
+        linux, windows = self.make_pair()
+        _, manifest = write_stage(self.root, "norev-stage", WINDOWS_FILES,
+                                  "windows-x86_64", "DaybreakRemake.exe")
+        renamed = self.root / "daybreak-1.2.3-windows-x86_64.zip"
+        write_zip(renamed, WINDOWS_FILES, manifest)
+        result, _ = self.run_tool(linux, renamed)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("must not be released", result.stderr)
+
+    def test_rejects_a_dirty_windows_archive(self):
+        linux, windows = self.make_pair()
+        _, manifest = write_stage(self.root, "dirty-stage", WINDOWS_FILES,
+                                  "windows-x86_64", "DaybreakRemake.exe")
+        renamed = self.root / "daybreak-1.2.3-abc1234-dirty-windows-x86_64.zip"
+        write_zip(renamed, WINDOWS_FILES, manifest)
+        result, _ = self.run_tool(linux, renamed)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("must not be released", result.stderr)
+
+    def test_rejects_a_short_windows_revision(self):
+        linux, windows = self.make_pair()
+        _, manifest = write_stage(self.root, "shortrev-stage", WINDOWS_FILES,
+                                  "windows-x86_64", "DaybreakRemake.exe")
+        renamed = self.root / "daybreak-1.2.3-abc12-windows-x86_64.zip"
+        write_zip(renamed, WINDOWS_FILES, manifest)
+        result, _ = self.run_tool(linux, renamed)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("must not be released", result.stderr)
 
     def test_rejects_a_bad_semver(self):
         linux, windows = self.make_pair()

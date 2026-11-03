@@ -40,6 +40,20 @@ NOTES_PREFIX = REPOSITORY + "/releases/tag/v"
 SEMVER_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 # The archive name ends up in a URL and on a `key = value` line, so keep it boring.
 ARCHIVE_NAME_RE = re.compile(r"^[A-Za-z0-9._+-]+$")
+# The release's own names, so a stale or renamed artifact cannot be published. The
+# revision is lowercase hex only: a dirty tree's "-dirty" suffix must never be released.
+WINDOWS_ARCHIVE_RE = re.compile(
+    r"^daybreak-(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-(?P<revision>[0-9a-f]{7,40})"
+    r"-windows-x86_64\.zip$"
+)
+
+
+def linux_archive_name(version):
+    return "daybreak-%s-linux-x86_64.tar.gz" % version
+
+
+def linux_top_directory(version):
+    return "daybreak-%s-linux-x86_64" % version
 
 
 class ArchiveError(pm.ManifestError):
@@ -104,7 +118,8 @@ def read_linux_archive(path):
             "%s: expected one top-level directory, found %d (%s)"
             % (label, len(top), ", ".join(sorted(top)))
         )
-    prefix = top.pop() + "/"
+    top_directory = top.pop()
+    prefix = top_directory + "/"
     relative = {}
     exec_bits = {}
     for name, data in files.items():
@@ -117,7 +132,7 @@ def read_linux_archive(path):
         exec_bits[name[len(prefix):]] = modes[name]
     manifest = take_manifest(relative, label)
     exec_bits.pop(pm.MANIFEST_NAME, None)
-    return relative, exec_bits, manifest
+    return top_directory, relative, exec_bits, manifest
 
 
 def read_windows_archive(path):
@@ -274,7 +289,31 @@ def build(version, linux_path, windows_path):
         if not os.path.isfile(path):
             raise ArchiveError("%s: no such file" % path)
 
-    linux_files, linux_modes, linux_manifest = read_linux_archive(linux_path)
+    if archive_name(linux_path) != linux_archive_name(version):
+        raise ArchiveError(
+            "--linux is %r; the release's Linux archive is %r"
+            % (os.path.basename(linux_path), linux_archive_name(version))
+        )
+    windows_name = archive_name(windows_path)
+    windows_match = WINDOWS_ARCHIVE_RE.match(windows_name)
+    if not windows_match:
+        raise ArchiveError(
+            "--windows is %r; the release's Windows archive is "
+            "daybreak-<version>-<7 to 40 lowercase hex>-windows-x86_64.zip "
+            "(a '-dirty' build must not be released)" % windows_name
+        )
+    if windows_match.group("version") != version:
+        raise ArchiveError(
+            "--windows is %r, which names version %r, --version is %r"
+            % (windows_name, windows_match.group("version"), version)
+        )
+
+    linux_top, linux_files, linux_modes, linux_manifest = read_linux_archive(linux_path)
+    if linux_top != linux_top_directory(version):
+        raise ArchiveError(
+            "%s: top-level directory is %r, expected %r"
+            % (archive_name(linux_path), linux_top, linux_top_directory(version))
+        )
     check_against_manifest(
         linux_files, linux_modes, linux_manifest, "linux-x86_64", version,
         archive_name(linux_path),
@@ -282,15 +321,15 @@ def build(version, linux_path, windows_path):
     windows_files, windows_modes, windows_manifest = read_windows_archive(windows_path)
     check_against_manifest(
         windows_files, windows_modes, windows_manifest, "windows-x86_64", version,
-        archive_name(windows_path),
+        windows_name,
     )
 
     linux_sha256, linux_size = archive_facts(linux_path)
     windows_sha256, windows_size = archive_facts(windows_path)
     return render(
         version,
-        archive_name(linux_path), linux_size, linux_sha256,
-        archive_name(windows_path), windows_size, windows_sha256,
+        linux_archive_name(version), linux_size, linux_sha256,
+        windows_name, windows_size, windows_sha256,
     )
 
 
