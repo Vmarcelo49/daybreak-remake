@@ -178,6 +178,10 @@ def check_against_manifest(files, exec_bits, manifest_text, target, version, whe
             % (where, pm.MANIFEST_NAME, manifest.version, version)
         )
 
+    # The archive's own paths get the same NTFS rules as the manifest's: a case
+    # collision or a file/directory clash is refused before anything else is compared.
+    pm.check_entry_paths(sorted(files), where)
+
     listed = {entry.path: entry for entry in manifest.entries}
     missing = sorted(set(listed) - set(files))
     if missing:

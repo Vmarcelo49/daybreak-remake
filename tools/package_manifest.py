@@ -32,6 +32,14 @@ TARGETS = ("linux-x86_64", "windows-x86_64")
 _ENTRY_RE = re.compile(r"^([0-9a-f]{64})  ([0-9]+)  ([x-])  (.+)$")
 _VERSION_RE = re.compile(r"^[0-9A-Za-z][0-9A-Za-z.+~-]*$")
 _DRIVE_RE = re.compile(r"^[A-Za-z]:")
+# NTFS rules. A manifest drives updates on both platforms and a layout change may move
+# files between them, so a path that only works on Linux is refused for both targets.
+_WINDOWS_FORBIDDEN = set('<>:"|?*')
+_RESERVED_NAMES = frozenset(
+    ["con", "prn", "aux", "nul"]
+    + ["com%d" % number for number in range(1, 10)]
+    + ["lpt%d" % number for number in range(1, 10)]
+)
 
 
 class ManifestError(Exception):
@@ -83,14 +91,60 @@ def check_relative_path(path, where="path"):
         raise ManifestError("%s: %r is an absolute path" % (where, path))
     if _DRIVE_RE.match(path):
         raise ManifestError("%s: %r starts with a drive letter" % (where, path))
-    if any(part in ("", ".", "..") for part in path.split("/")):
+    components = path.split("/")
+    if any(part in ("", ".", "..") for part in components):
         raise ManifestError(
             "%s: %r has an empty, '.' or '..' path component" % (where, path)
         )
+    forbidden = sorted(set(path) & _WINDOWS_FORBIDDEN)
+    if forbidden:
+        raise ManifestError(
+            "%s: %r contains %s, which NTFS does not allow"
+            % (where, path, " ".join(repr(char) for char in forbidden))
+        )
+    for component in components:
+        if component.endswith((".", " ")):
+            raise ManifestError(
+                "%s: %r has a component ending in '.' or a space, which Windows "
+                "silently drops" % (where, path)
+            )
+        # "CON", "con.txt" and "aux.tar.gz" all name a device on Windows.
+        stem = component.split(".")[0]
+        if stem.lower() in _RESERVED_NAMES:
+            raise ManifestError(
+                "%s: %r has the Windows device name %r" % (where, path, stem)
+            )
     try:
         path.encode("utf-8")
     except UnicodeEncodeError:
         raise ManifestError("%s: %r is not valid UTF-8" % (where, path))
+
+
+def check_entry_paths(paths, where="files"):
+    """Cross-entry rules a single path cannot see: case collisions and file/dir clashes.
+
+    Both platforms end up holding these paths, and NTFS is case-insensitive: two entries
+    that differ only in case would overwrite each other, and a file `a` beside `a/b` is
+    not representable at all.
+    """
+    seen = {}
+    for path in paths:
+        folded = path.casefold()
+        if folded in seen:
+            raise ManifestError(
+                "%s: %r and %r differ only in case" % (where, path, seen[folded])
+            )
+        seen[folded] = path
+    files = set(paths)
+    for path in paths:
+        parts = path.split("/")
+        for index in range(1, len(parts)):
+            prefix = "/".join(parts[:index])
+            if prefix in files:
+                raise ManifestError(
+                    "%s: %r is a file and also a directory of %r"
+                    % (where, prefix, path)
+                )
 
 
 def hash_file(path):
@@ -170,6 +224,7 @@ def build_manifest(stage, version, target, launch):
                   entry_mode(target, info))
         )
 
+    check_entry_paths([entry.path for entry in entries])
     by_path = {entry.path: entry for entry in entries}
     if launch not in by_path:
         raise ManifestError(
@@ -266,6 +321,7 @@ def parse_manifest(text):
 
     if not entries:
         raise ManifestError("the manifest lists no files")
+    check_entry_paths([entry.path for entry in entries])
     if [entry.path for entry in entries] != sorted(
         (entry.path for entry in entries), key=lambda path: path.encode("utf-8")
     ):

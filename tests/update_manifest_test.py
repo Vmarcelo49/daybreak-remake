@@ -223,6 +223,51 @@ class UpdateManifestTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("hard link", result.stderr)
 
+    def test_rejects_a_case_collision_in_the_archive(self):
+        linux, windows = self.make_pair()
+        _, manifest = write_stage(self.root, "case-stage", LINUX_FILES,
+                                  "linux-x86_64", "run")
+        extra = tarfile.TarInfo(LINUX_TOP + "/RUN")
+        extra.size = 0
+        extra.mode = 0o644
+        write_tar(linux, LINUX_TOP, LINUX_FILES, manifest, extra_members=[extra])
+        result, _ = self.run_tool(linux, windows)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("differ only in case", result.stderr)
+
+    def test_rejects_a_file_that_is_also_a_directory(self):
+        linux, windows = self.make_pair()
+        _, manifest = write_stage(self.root, "prefix-stage", LINUX_FILES,
+                                  "linux-x86_64", "run")
+        extra = tarfile.TarInfo(LINUX_TOP + "/run/child")
+        extra.size = 0
+        extra.mode = 0o644
+        write_tar(linux, LINUX_TOP, LINUX_FILES, manifest, extra_members=[extra])
+        result, _ = self.run_tool(linux, windows)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("also a directory", result.stderr)
+
+    def test_rejects_a_windows_device_name_in_the_archive(self):
+        linux, windows = self.make_pair()
+        _, windows_manifest = write_stage(
+            self.root, "device-stage", WINDOWS_FILES, "windows-x86_64",
+            "DaybreakRemake.exe",
+        )
+        with zipfile.ZipFile(windows, "w") as archive:
+            for relative, (data, mode) in WINDOWS_FILES.items():
+                info = zipfile.ZipInfo(relative)
+                info.external_attr = (0o100000 | mode) << 16
+                archive.writestr(info, data)
+            info = zipfile.ZipInfo("package-manifest.txt")
+            info.external_attr = 0o100644 << 16
+            archive.writestr(info, windows_manifest)
+            info = zipfile.ZipInfo("CON")
+            info.external_attr = 0o100644 << 16
+            archive.writestr(info, b"x")
+        result, _ = self.run_tool(linux, windows)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("device name", result.stderr)
+
     def test_rejects_an_unsafe_member_path(self):
         linux, windows = self.make_pair()
         _, manifest = write_stage(self.root, "unsafe-stage", LINUX_FILES,

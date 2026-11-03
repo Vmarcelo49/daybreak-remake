@@ -159,6 +159,71 @@ class PackageManifestTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 1, result.stdout)
                 self.assertIn("package_manifest:", result.stderr)
 
+    def test_write_rejects_windows_forbidden_characters(self):
+        for index, character in enumerate('<>:"|?*'):
+            with self.subTest(character=character):
+                stage = self.make_stage([("run", b"x", 0o755)], name="stage-char-%d" % index)
+                write_file(stage / ("bad" + character + "name"), b"z")
+                result = self.write_manifest(stage)
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn("NTFS", result.stderr)
+
+    def test_write_rejects_a_component_ending_in_dot_or_space(self):
+        # A whole-path trailing space is caught by the whitespace rule; the component rule
+        # is what catches the ones Windows would silently drop inside the path.
+        cases = {
+            "trailing.": "ending in '.' or a space",
+            "trailing ": "whitespace",
+            "dir./inner": "ending in '.' or a space",
+            "dir /inner": "ending in '.' or a space",
+        }
+        for index, (name, message) in enumerate(cases.items()):
+            with self.subTest(name=name):
+                stage = self.make_stage([("run", b"x", 0o755)], name="stage-dot-%d" % index)
+                write_file(stage / name, b"z")
+                result = self.write_manifest(stage)
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn(message, result.stderr)
+
+    def test_write_rejects_windows_device_names(self):
+        for index, name in enumerate(
+            ("CON", "con.txt", "aux", "COM1", "LPT9", "nul.dat", "dir/PRN")
+        ):
+            with self.subTest(name=name):
+                stage = self.make_stage([("run", b"x", 0o755)], name="stage-dev-%d" % index)
+                write_file(stage / name, b"z")
+                result = self.write_manifest(stage)
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn("device name", result.stderr)
+
+    def test_write_rejects_a_case_collision(self):
+        stage = self.make_stage([
+            ("run", b"x", 0o755),
+            ("A.txt", b"upper", 0o644),
+            ("a.txt", b"lower", 0o644),
+        ])
+        result = self.write_manifest(stage)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("differ only in case", result.stderr)
+
+    def test_parse_rejects_a_file_that_is_also_a_directory(self):
+        text = (
+            "format = 1\nversion = 1.2.3\ntarget = linux-x86_64\nlaunch = a\n[files]\n"
+            "%s  1  x  a\n%s  1  -  a/b\n" % (sha256(b"a"), sha256(b"b"))
+        )
+        with self.assertRaises(pm.ManifestError) as caught:
+            pm.parse_manifest(text)
+        self.assertIn("also a directory", str(caught.exception))
+
+    def test_parse_rejects_a_case_collision(self):
+        text = (
+            "format = 1\nversion = 1.2.3\ntarget = linux-x86_64\nlaunch = A.txt\n[files]\n"
+            "%s  1  x  A.txt\n%s  1  -  a.txt\n" % (sha256(b"a"), sha256(b"b"))
+        )
+        with self.assertRaises(pm.ManifestError) as caught:
+            pm.parse_manifest(text)
+        self.assertIn("differ only in case", str(caught.exception))
+
     def test_write_rejects_a_launch_that_is_not_shipped(self):
         stage = self.make_stage([("run", b"x", 0o755)])
         result = self.write_manifest(stage, launch="daybreak")

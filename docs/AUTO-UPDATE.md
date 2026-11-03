@@ -53,7 +53,13 @@ launch = daybreak
 * `mode` is `x` for a file that must be executable and `-` otherwise. On Linux it comes from
   the staged file's exec bit; on Windows every file is `-`.
 * Paths are relative to the package root, use `/`, are sorted bytewise, and never contain
-  `..`, a leading `/`, a drive letter, `\` or a control character.
+  `..`, a leading `/`, a drive letter, `\`, a control character, or one of `< > : " | ? *`.
+  The rules are the intersection of both platforms, because the same manifest drives an
+  update on Windows and on Linux and a layout change may move files between them: no
+  component may end in `.` or a space, no component may be a Windows device name (`CON`,
+  `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`, any case, with or without an
+  extension), two entries may not differ only in case, and a file path may not be a
+  directory of another entry (`a` beside `a/b`).
 * Only regular files are listed. A symlink, device, fifo or socket fails the packaging
   rather than being skipped. Directories are implied by the files in them.
 * The manifest does not list itself.
