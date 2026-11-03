@@ -219,6 +219,36 @@ add_library(battle_core_zlib STATIC
     src/battle/core/zlib/zutil.c)
 target_compile_options(battle_core_zlib PRIVATE -w)
 
+# Monocypher (issue #100): Ed25519 for the offline signing tool and, from step 2, for the
+# updater's signature check. One library, linked by both, so the C sources are compiled
+# once; the web build has no updater and compiles none of this.
+if(NOT EMSCRIPTEN)
+    set(MONOCYPHER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/monocypher")
+    if(NOT EXISTS "${MONOCYPHER_DIR}/monocypher.c")
+        message(FATAL_ERROR "third_party/monocypher is missing — run ./build.sh deps")
+    endif()
+    add_library(monocypher STATIC
+        "${MONOCYPHER_DIR}/monocypher.c"
+        "${MONOCYPHER_DIR}/monocypher-ed25519.c")
+    target_include_directories(monocypher PUBLIC "${MONOCYPHER_DIR}")
+    target_compile_options(monocypher PRIVATE -w)
+endif()
+
+# The updater's building blocks (issue #100, step 2): version, path rules, both manifest
+# parsers, the archive readers and SHA-256/Ed25519. Nothing in the game calls it yet —
+# step 3 wires it into the title screen and the apply path.
+if(NOT EMSCRIPTEN)
+    add_library(update STATIC
+        src/update/archive.cpp
+        src/update/crypto.cpp
+        src/update/package_manifest.cpp
+        src/update/paths.cpp
+        src/update/update_manifest.cpp
+        src/update/version.cpp)
+    target_include_directories(update PUBLIC src PRIVATE src/battle/core/zlib)
+    target_link_libraries(update PRIVATE monocypher battle_core_zlib)
+endif()
+
 add_library(battle_core STATIC
     src/battle/battle.cpp
     src/battle/core/compiled_native_bodies/dash.cpp
@@ -381,18 +411,10 @@ endif()
 
 # The release signing tool (issue #100). Host-only and never shipped: the owner signs
 # update-manifest.txt on their own machine, so the Windows and web builds have no use
-# for it, and the game only ever carries the public key. It links the pinned Monocypher
-# that scripts/fetch_deps.sh fetches.
+# for it, and the game only ever carries the public key.
 if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
-    set(MONOCYPHER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/monocypher")
-    if(NOT EXISTS "${MONOCYPHER_DIR}/monocypher.c")
-        message(FATAL_ERROR "third_party/monocypher is missing — run ./build.sh deps")
-    endif()
-    add_executable(release_sign
-        tools/release_sign/main.cpp
-        "${MONOCYPHER_DIR}/monocypher.c"
-        "${MONOCYPHER_DIR}/monocypher-ed25519.c")
-    target_include_directories(release_sign PRIVATE "${MONOCYPHER_DIR}")
+    add_executable(release_sign tools/release_sign/main.cpp)
+    target_link_libraries(release_sign PRIVATE monocypher)
 endif()
 
 # Host-side tests. Native-only on purpose: the Windows target is cross-compiled and
@@ -838,6 +860,22 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                      "${CMAKE_CURRENT_SOURCE_DIR}/tests/release_sign_test.py"
                      $<TARGET_FILE:release_sign>)
 
+    # The updater's building blocks (issue #100, step 2). No game data, no internet, and
+    # no device: the suites parse synthetic manifests and archives.
+    add_executable(update_logic_test tests/update_logic_test.cpp)
+    target_link_libraries(update_logic_test PRIVATE update)
+    add_test(NAME update_logic_test COMMAND update_logic_test)
+
+    add_executable(update_crypto_test tests/update_crypto_test.cpp)
+    target_link_libraries(update_crypto_test PRIVATE update)
+    add_test(NAME update_crypto_test
+             COMMAND update_crypto_test $<TARGET_FILE:release_sign>)
+
+    add_executable(update_archive_test tests/update_archive_test.cpp)
+    target_link_libraries(update_archive_test PRIVATE update)
+    add_test(NAME update_archive_test COMMAND update_archive_test)
+
+
     # The battle HUD's sprite table and draw geometry: device-free arithmetic over the
     # transcribed .rdata anchors, so it needs the headers' include path and webgpu.h only.
     add_executable(hud_sprite_table tests/hud_sprite_table.cpp)
@@ -1124,7 +1162,7 @@ set(DAYBREAK_AREA_SETTINGS
 set(DAYBREAK_AREA_PLATFORM
     input_backend_test launcher_test controller_scene_lifetime_test bgm_loop_test
     unicode_path_check check_tools_test package_manifest_test update_manifest_test
-    release_sign_test
+    release_sign_test update_logic_test update_crypto_test update_archive_test
 )
 
 foreach(daybreak_area frontend hud battle net render data settings platform)
