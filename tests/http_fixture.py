@@ -41,6 +41,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def do_GET(self):  # noqa: N802 - BaseHTTPRequestHandler's name
+        self.server.requests.append(self.path)
         path = self.path.split("?")[0]
         if getattr(self.server, "root", None) is not None and not path.startswith(
             ("/ok", "/redirect/", "/missing", "/big", "/chunked", "/slow", "/stall")
@@ -98,6 +99,7 @@ def start(host="127.0.0.1", port=0, root=None):
     """Serve the fixed routes, and (with `root`) any other path from that directory."""
     server = Server((host, port), Handler)
     server.root = root
+    server.requests = []
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server, thread, "http://%s:%d" % (host, server.server_address[1])

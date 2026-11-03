@@ -80,11 +80,23 @@ const char* updateFailureReasonText(UpdateFailureReason reason) {
 UpdateScreen::UpdateScreen(SpriteRenderer& batch, const UpdateLaunch& launch,
                            std::string& error) {
     if (!loadFace(batch, error)) return;
-    if (launch.preview) {
-        // The progress-screen capture: a plausible download with no engine behind it.
-        phase_.store(static_cast<int>(update::ApplyPhase::Downloading));
+    if (!launch.preview.empty()) {
+        // The capture's phase, with no engine behind it.
         received_.store(12 * 1024 * 1024);
         total_.store(27 * 1024 * 1024);
+        if (launch.preview == "verifying") {
+            phase_.store(static_cast<int>(update::ApplyPhase::Verifying));
+        } else if (launch.preview == "installing") {
+            phase_.store(static_cast<int>(update::ApplyPhase::Installing));
+        } else if (launch.preview == "restarting") {
+            phase_.store(static_cast<int>(update::ApplyPhase::Installing));
+            previewRestarting_ = true;
+        } else if (launch.preview == "failed") {
+            failed_ = true;
+            failure_ = UpdateFailureReason::DamagedDownload;
+        } else {
+            phase_.store(static_cast<int>(update::ApplyPhase::Downloading));
+        }
         return;
     }
     notes_ = launch.manifest.notes;
@@ -127,6 +139,9 @@ ScreenId UpdateScreen::update(const ScreenInput& in) {
         } else {
             failed_ = true;
             failure_ = updateFailureReason(result_.error);
+            // One line for the player's log and for the end-to-end test.
+            std::printf("[update] failed: %s (%s)\n", updateFailureReasonText(failure_),
+                        result_.error.c_str());
         }
     }
     if (failed_) {
@@ -137,7 +152,7 @@ ScreenId UpdateScreen::update(const ScreenInput& in) {
         if (in.cancel) return ScreenId::Title;
         if (in.confirm) {
             if (choice_ == 0) return ScreenId::Title;
-            if (!notes_.empty()) SDL_OpenURL(notes_.c_str());
+            openUrl(notes_.c_str());
         }
         return ScreenId::Update;
     }
@@ -168,9 +183,9 @@ void UpdateScreen::draw(SpriteRenderer& batch) const {
 }
 
 void UpdateScreen::drawProgress(SpriteRenderer& batch) const {
-    frame(batch, {"アップデート", "UPDATE"}, 120, 480);
+    frame(batch, {"アップデート", "UPDATE"}, 180, 420);
     const int phase = phase_.load();
-    const bool restarting = relaunchReady_;
+    const bool restarting = relaunchReady_ || previewRestarting_;
     const char* phaseText = restarting
         ? say({"再起動しています…", "Restarting…"})
         : phase == static_cast<int>(update::ApplyPhase::Downloading)
@@ -178,7 +193,7 @@ void UpdateScreen::drawProgress(SpriteRenderer& batch) const {
             : phase == static_cast<int>(update::ApplyPhase::Verifying)
                 ? say({"確認中", "Verifying"})
                 : say({"インストール中", "Installing"});
-    centred(batch, phaseText, 400, 190, 24.f, kWhite);
+    centred(batch, phaseText, 400, 238, 24.f, kWhite);
     if (phase == static_cast<int>(update::ApplyPhase::Downloading) ||
         phase == static_cast<int>(update::ApplyPhase::Verifying)) {
         const std::uint64_t done = received_.load();
@@ -190,12 +205,12 @@ void UpdateScreen::drawProgress(SpriteRenderer& batch) const {
         } else {
             std::snprintf(line, sizeof line, "%s", "");
         }
-        centred(batch, line, 400, 240, 18.f, kPale);
+        centred(batch, line, 400, 282, 18.f, kPale);
         const float fraction = total > 0
             ? std::clamp(float(done) / float(total), 0.f, 1.f)
             : 0.f;
-        batch.pushSolid({250, 290, 300, 10}, kTrack);
-        batch.pushSolid({250, 290, 300.f * fraction, 10}, kGold);
+        batch.pushSolid({250, 318, 300, 10}, kTrack);
+        batch.pushSolid({250, 318, 300.f * fraction, 10}, kGold);
     }
     const bool cancellable = !restarting &&
         phase != static_cast<int>(update::ApplyPhase::Installing);
@@ -206,17 +221,17 @@ void UpdateScreen::drawProgress(SpriteRenderer& batch) const {
 }
 
 void UpdateScreen::drawFailure(SpriteRenderer& batch) const {
-    frame(batch, {"アップデート", "UPDATE"}, 120, 480);
+    frame(batch, {"アップデート", "UPDATE"}, 180, 480);
     centred(batch, say({"更新できませんでした", "The update could not be installed"}), 400,
-            180, 24.f, kWhite);
-    centred(batch, updateFailureReasonText(failure_), 400, 230, 20.f, kGold);
+            230, 24.f, kWhite);
+    centred(batch, updateFailureReasonText(failure_), 400, 278, 20.f, kGold);
     centred(batch, say({"以前のバージョンはそのまま動きます",
                         "The old version keeps working"}),
-            400, 280, 17.f, kPale);
+            400, 320, 17.f, kPale);
     const char* choices[] = {say({"戻る", "Back"}),
                              say({"公開ページを開く", "Open release page"})};
     for (int i = 0; i < 2; ++i) {
-        const float y = 360.f + 36.f * i;
+        const float y = 392.f + 36.f * i;
         centred(batch, choices[i], 400, y, 18.f, choice_ == i ? kGold : kPale);
         if (choice_ == i) {
             const float width = widthOf(choices[i], 18.f);

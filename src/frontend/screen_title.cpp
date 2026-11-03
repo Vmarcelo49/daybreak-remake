@@ -69,9 +69,7 @@ ScreenId TitleScreen::update(const ScreenInput& in) {
                     notice_.hide();
                     return ScreenId::Update;
                 case UpdateNoticeAction::Notes:
-                    if (!notice_.notice().notes.empty()) {
-                        SDL_OpenURL(notice_.notice().notes.c_str());
-                    }
+                    openUrl(notice_.notice().notes.c_str());
                     sound_ = 0;
                     break;
                 case UpdateNoticeAction::Later:
@@ -138,26 +136,34 @@ void TitleScreen::draw(SpriteRenderer& batch) const {
 void TitleScreen::drawNotice(SpriteRenderer& batch) const {
     const UpdateNotice& notice = notice_.notice();
     const int choices = updateNoticeChoiceCount(notice);
-    const float top = choices > 0 ? 470.f : 486.f;
-    const float height = choices > 0 ? 116.f : 44.f;
-    batch.pushSolid({16, top, 372, height}, kPanel);
+    // The title item cells are drawn with pivot 96 at x=400, so they start at x=304; the
+    // panel stays clear of them, and its height fits the two text rows (owner review).
+    constexpr float kLeft = 8.f, kRight = 296.f, kPad = 12.f;
+    constexpr float kLineHeight = 20.f, kRowHeight = 24.f, kGap = 6.f;
+    const float rows = choices > 0 ? 2.f : 0.f;
+    const float height = kPad + kLineHeight + (choices > 0 ? kGap + rows * kRowHeight : 0.f) +
+                         kPad;
+    const float top = 592.f - height;
+    batch.pushSolid({kLeft, top, kRight - kLeft, height}, kPanel);
     if (!faceLoaded_) return;
     const std::string line = updateNoticeLine(notice);
-    face_.draw(batch, line.c_str(), 30.f, top + 12.f, 17.f / 64.f, kWhite, 1.1f);
+    face_.draw(batch, line.c_str(), kLeft + kPad, top + kPad - 2.f, 14.f / 64.f, kWhite,
+               1.1f);
     if (choices == 0) return;
-    const float y = top + 58.f;
-    float x = 30.f;
+    // Two rows of two, so "Release notes" and "Skip this version" fit the free column.
+    float x = kLeft + kPad;
+    float y = top + kPad + kLineHeight + kGap;
     for (int i = 0; i < choices; ++i) {
+        if (i == 2) {
+            x = kLeft + kPad;
+            y += kRowHeight;
+        }
         const char* label = updateNoticeChoiceLabel(notice, i);
+        const float width = face_.width(label) * 13.f / 64.f;
         const bool selected = noticeFocus_ && notice_.selected() == i;
-        face_.draw(batch, label, x, y, 15.f / 64.f, selected ? kGold : kPale, 1.1f);
-        const float width = face_.width(label) * 15.f / 64.f;
-        if (selected) batch.pushSolid({x, y + 24.f, width, 2.f}, kGold);
+        if (selected) batch.pushSolid({x - 5.f, y - 4.f, width + 10.f, 21.f}, kHighlight);
+        face_.draw(batch, label, x, y, 13.f / 64.f, selected ? kWhite : kPale, 1.1f);
         x += width + 16.f;
-    }
-    if (!noticeFocus_) {
-        // Not focused yet: the hint says the menu continues downwards.
-        face_.draw(batch, "v", 360.f, top + 12.f, 14.f / 64.f, kGold, 1.f);
     }
 }
 

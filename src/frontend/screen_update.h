@@ -39,8 +39,10 @@ struct UpdateLaunch {
     update::UpdateManifest manifest;
     std::string manifestUrl;
     update::Version currentVersion;
-    // A capture/test-only mode: no worker, no network, a fixed download in progress.
-    bool preview = false;
+    // A capture/test-only mode: no worker, no network, a fixed phase for a screenshot.
+    // Empty is a real attempt; otherwise downloading, verifying, installing, restarting
+    // or failed.
+    std::string preview;
 };
 
 // One update attempt. A failed attempt leaves the old version running and the screen on
@@ -77,6 +79,7 @@ private:
     std::mutex mutex_;
     update::ApplyResult result_;
     bool failed_ = false;
+    bool previewRestarting_ = false;
     UpdateFailureReason failure_ = UpdateFailureReason::None;
     bool relaunchReady_ = false;
     std::string launchPath_;

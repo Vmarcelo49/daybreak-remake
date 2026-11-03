@@ -391,12 +391,19 @@ if(EMSCRIPTEN)
         set_property(TARGET daybreak APPEND PROPERTY LINK_DEPENDS "${CAPTION_CJK_FONT}")
     endif()
 else()
+    # The loopback end-to-end's build (issue #100): the same game plus the test-only
+    # --test-update-key path. A DAYBREAK_RELEASE_BUILD refuses to compile it.
+    add_executable(daybreak_e2e src/app/main.cpp)
+    target_compile_definitions(daybreak_e2e PRIVATE DAYBREAK_UPDATE_TEST_BUILD=1)
+    target_link_libraries(daybreak_e2e PRIVATE battle_backend net_session update
+        render ui media game_interfaces physics gameplay movie)
     add_custom_target(caption_fonts
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts" "$<TARGET_FILE_DIR:daybreak>/assets/fonts"
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/locale" "$<TARGET_FILE_DIR:daybreak>/assets/locale")
     add_dependencies(daybreak caption_fonts)
+    add_dependencies(daybreak_e2e caption_fonts)
     if(EXISTS "${CAPTION_CJK_FONT}")
         add_custom_command(TARGET caption_fonts POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -950,6 +957,26 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                      $<TARGET_FILE:daybreak>)
     set_tests_properties(update_recovery_test PROPERTIES TIMEOUT 180)
 
+    # The update acceptance tests (issue #100): no gated launch may touch the network, the
+    # whole loopback update through the real binary, and the notice driven with real input.
+    # They skip (77) without the local title art or a display.
+    add_test(NAME update_no_network_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/update_no_network_test.py"
+                     $<TARGET_FILE:daybreak_e2e> "${CMAKE_CURRENT_SOURCE_DIR}")
+    set_tests_properties(update_no_network_test PROPERTIES TIMEOUT 400 SKIP_RETURN_CODE 77)
+    add_test(NAME update_e2e_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/update_e2e_test.py"
+                     $<TARGET_FILE:daybreak_e2e> "${CMAKE_CURRENT_SOURCE_DIR}"
+                     $<TARGET_FILE:release_sign>)
+    set_tests_properties(update_e2e_test PROPERTIES TIMEOUT 400 SKIP_RETURN_CODE 77)
+    add_test(NAME update_screens_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/update_screens_test.py"
+                     $<TARGET_FILE:daybreak_e2e> "${CMAKE_CURRENT_SOURCE_DIR}")
+    set_tests_properties(update_screens_test PROPERTIES TIMEOUT 400 SKIP_RETURN_CODE 77)
+
     # A release build with no trusted key must not compile (issue #100, step 4).
     add_test(NAME update_release_guard_test
              COMMAND ${Python3_EXECUTABLE}
@@ -1223,7 +1250,7 @@ set(DAYBREAK_AREA_FRONTEND
     english_captions_test locale_screen_check locale_coverage_test locale_sheets_test
     title_camera_test screen_stack_test frontend_config_test frontend_lifecycle_test
     result_title_test result_screen_test participant_layout_test select_menu_test
-    update_notice_test
+    update_notice_test update_screens_test
     select_cursor_test select_row_slidein_test stage_vs_test story_dialogue_test
     story_script_test sim_frontend_flow online_flow_check online_join_feedback
     pause_overlay_panel pause_overlay_layout_test
@@ -1247,7 +1274,7 @@ set(DAYBREAK_AREA_NET
     net_lobby_test net_stress_test net_play_check online_flow_check online_join_feedback
     rollback_stress_test rollback_presentation_test rollback_pixels_check
     rendezvous_server_test cross_build_check math_accuracy_test update_http_test
-    update_apply_test
+    update_apply_test update_no_network_test update_e2e_test
 )
 
 set(DAYBREAK_AREA_RENDER
@@ -1271,7 +1298,7 @@ set(DAYBREAK_AREA_PLATFORM
     unicode_path_check check_tools_test package_manifest_test update_manifest_test
     release_sign_test update_logic_test update_crypto_test update_archive_test
     update_http_test update_crosscheck_test update_apply_test update_release_guard_test
-    update_recovery_test
+    update_recovery_test update_no_network_test update_e2e_test update_screens_test
 )
 
 foreach(daybreak_area frontend hud battle net render data settings platform)

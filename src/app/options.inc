@@ -414,6 +414,10 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--updated-from=")).empty()) o.updatedFrom = v;
         else if (a == "--no-update-check") o.noUpdateCheck = true;
         else if (!(v = val("--update-result=")).empty()) o.updateResult = v;
+        else if (!(v = val("--menu-script=")).empty()) o.menuScript = v;
+#ifdef DAYBREAK_UPDATE_TEST_BUILD
+        else if (!(v = val("--test-update-key=")).empty()) o.testUpdateKey = v;
+#endif
         else if (a == "--list") o.list = true;
         else if (a == "--hud-test") o.hudTest = true;
         else if (a == "--hud-probe") { o.hudTest = true; o.hudProbe = true; }

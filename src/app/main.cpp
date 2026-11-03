@@ -1237,7 +1237,20 @@ static bool updateCheckAllowed(const App& app, std::string* why) {
         return false;
     }
     if (updateCheckSuppressed(app.opts)) {
-        if (why) *why = "a verification or test run";
+        if (why) {
+            *why = "a verification or test run (";
+            *why += verificationRun(app.opts) ? "verificationRun " : "";
+            if (app.opts.frames > 0) *why += "frames ";
+            if (!app.opts.plan.empty()) *why += "plan ";
+            if (app.opts.pauseOverlay > 0) *why += "pause-overlay ";
+            if (app.opts.netStress > 0) *why += "net-stress ";
+            if (app.opts.rollbackStress > 0) *why += "rollback-stress ";
+            if (app.opts.hudProbe) *why += "hud-probe ";
+            if (!app.opts.debugKeys.empty()) *why += "debug-keys ";
+            if (!app.opts.textKeys.empty()) *why += "text-keys ";
+            if (!app.opts.updateResult.empty()) *why += "update-result ";
+            *why += ")";
+        }
         return false;
     }
     if (!ui::frontendSettings().updateCheck) {
@@ -1300,6 +1313,17 @@ static void startUpdateCheck(App& app) {
     }
     settings.skipVersion = ui::frontendSettings().updateSkipVersion;
     settings.keys = update::releaseKeys();
+#ifdef DAYBREAK_UPDATE_TEST_BUILD
+    if (!app.opts.testUpdateKey.empty()) {
+        // The loopback end-to-end's throwaway key: this test build only.
+        std::array<std::uint8_t, 32> key{};
+        for (std::size_t index = 0; index < key.size(); ++index) {
+            key[index] = static_cast<std::uint8_t>(
+                std::stoi(app.opts.testUpdateKey.substr(index * 2, 2), nullptr, 16));
+        }
+        settings.keys.push_back(key);
+    }
+#endif
     settings.cancelled = [state = app.updateHost.get()]() { return state->cancel.load(); };
     app.updateHost->running = true;
     app.updateHost->worker = std::thread([&app, settings]() {
@@ -1384,6 +1408,60 @@ static void stopUpdateCheck(App& app) {
     if (app.updateHost->worker.joinable()) app.updateHost->worker.join();
 }
 #endif  // !__EMSCRIPTEN__
+
+// --menu-script: one step per line, `WAIT <frames>` or one of UP/DOWN/LEFT/RIGHT/
+// CONFIRM/CANCEL, held for one front-end frame. Test/capture only (issue #100).
+static bool loadMenuScript(App& app, std::string& error) {
+    if (app.opts.menuScript.empty()) return true;
+    std::ifstream input(app.opts.menuScript);
+    if (!input) {
+        error = "cannot read menu script " + app.opts.menuScript;
+        return false;
+    }
+    std::string line;
+    while (std::getline(input, line)) {
+        const std::size_t comment = line.find('#');
+        if (comment != std::string::npos) line.resize(comment);
+        std::istringstream stream(line);
+        std::string word;
+        if (!(stream >> word)) continue;
+        App::MenuScriptStep step;
+        if (word == "WAIT") {
+            if (!(stream >> step.wait) || step.wait < 0) {
+                error = "--menu-script: WAIT needs a frame count";
+                return false;
+            }
+        } else if (word == "UP") step.up = true;
+        else if (word == "DOWN") step.down = true;
+        else if (word == "LEFT") step.left = true;
+        else if (word == "RIGHT") step.right = true;
+        else if (word == "CONFIRM") step.confirm = true;
+        else if (word == "CANCEL") step.cancel = true;
+        else {
+            error = "--menu-script: unknown step '" + word + "'";
+            return false;
+        }
+        app.menuScript.push_back(step);
+    }
+    return true;
+}
+
+// One script step per frame, ORed into the frame's edges so the real input still works.
+static void applyMenuScript(App& app, ui::ScreenInput& in) {
+    if (app.menuScriptIndex >= app.menuScript.size()) return;
+    if (app.menuScriptWait > 0) {
+        --app.menuScriptWait;
+        return;
+    }
+    const App::MenuScriptStep& step = app.menuScript[app.menuScriptIndex++];
+    in.up = in.up || step.up;
+    in.down = in.down || step.down;
+    in.left = in.left || step.left;
+    in.right = in.right || step.right;
+    in.confirm = in.confirm || step.confirm;
+    in.cancel = in.cancel || step.cancel;
+    app.menuScriptWait = step.wait;
+}
 
 // --screen: the front end's entry point. The stack is built with the app's own
 // makeScreen factory, so an id the port has not implemented is the factory's `default`
@@ -1560,8 +1638,11 @@ bool initScreens(App& app) {
         if (sid == ui::ScreenId::Update) {
             ui::UpdateLaunch launch;
             launch.root = app.installRoot.string();
-            if (app.opts.updateResult == "progress") {
-                launch.preview = true;
+            if (app.opts.updateResult == "progress" || app.opts.updateResult == "verifying" ||
+                app.opts.updateResult == "installing" ||
+                app.opts.updateResult == "restarting" ||
+                app.opts.updateResult == "failed") {
+                launch.preview = app.opts.updateResult;
                 return ui::makeUpdateScreen(app.uiRenderer, launch, app.error);
             }
             launch.manifest = app.updateHost->result.manifest;
@@ -1625,6 +1706,7 @@ bool initScreens(App& app) {
         app.frontend.story.fight = fight;
         app.frontend.story.part = part;
     }
+    if (!loadMenuScript(app, app.error)) return false;
     if (!app.screens.begin(id, factory, app.error)) return false;
     auto& settings = ui::frontendSettings();
     settings.applyVolumes = [&app](const fnd::audio::Volumes& v) {
@@ -1903,6 +1985,10 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
         return SDL_APP_FAILURE;
     }
 #if !defined(__EMSCRIPTEN__)
+#ifdef DAYBREAK_UPDATE_TEST_BUILD
+    // Never open a browser from a test run (issue #100); openUrl only logs.
+    ui::setUrlOpenForTest(true);
+#endif
     app->updateHost = std::make_unique<UpdateHostState>();
     {
         std::string rootError;

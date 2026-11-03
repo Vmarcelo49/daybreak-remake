@@ -27,6 +27,7 @@ static SDL_AppResult tickOnlineSelection(App& state) {
         [&](const net::MenuLockstep::Held& held) {
             ui::ScreenInput in;
             in.separatePlayers = true;
+    applyMenuScript(*app, in);
             for (size_t p = 0; p < held.size(); ++p) {
                 const std::uint8_t now = held[p], pressed = static_cast<std::uint8_t>(now & ~app->netMenuHeld[p]);
                 auto& buttons = in.players[p];
@@ -166,6 +167,7 @@ static SDL_AppResult tickFrontend(App& state) {
     in.leftHeld  = anyDown(fnd::input::Left);
     in.rightHeld = anyDown(fnd::input::Right);
     in.separatePlayers = true;
+    applyMenuScript(*app, in);
     for (int p = 0; p < 4; ++p) {
         const auto& input = app->tickInput[p];
         auto& buttons = in.players[p];

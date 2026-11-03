@@ -119,4 +119,6 @@ static bool verificationRun(const Options& o);
 static void pollUpdateCheck(App& app);
 static void stopUpdateCheck(App& app);
 #endif
+// --menu-script's per-frame driver (defined in main.cpp, used by frame_loop.inc).
+static void applyMenuScript(App& app, ui::ScreenInput& in);
 static bool resolveBootOpening(const Options& o);

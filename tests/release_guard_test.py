@@ -45,6 +45,17 @@ def main():
             print("release_guard_test: the failure does not name the key:\n"
                   + guarded.stderr, file=sys.stderr)
             return 1
+        test_build = compile_with(
+            compiler, ["-DDAYBREAK_RELEASE_BUILD=1", "-DDAYBREAK_UPDATE_TEST_BUILD=1"],
+            output)
+        if test_build.returncode == 0:
+            print("release_guard_test: a release build accepted the test-key path",
+                  file=sys.stderr)
+            return 1
+        if "must never be a release build" not in test_build.stderr:
+            print("release_guard_test: the test-key refusal does not say why:\n"
+                  + test_build.stderr, file=sys.stderr)
+            return 1
         escaped = compile_with(
             compiler,
             ["-DDAYBREAK_RELEASE_BUILD=1", "-DDAYBREAK_ALLOW_UNSIGNED_PACKAGE=1"],

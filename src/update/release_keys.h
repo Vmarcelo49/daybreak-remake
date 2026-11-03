@@ -20,6 +20,10 @@ inline constexpr std::array<std::array<std::uint8_t, 32>, 0> kReleaseKeys = {
     // {0x00, 0x00, ...},
 };
 
+#if defined(DAYBREAK_RELEASE_BUILD) && defined(DAYBREAK_UPDATE_TEST_BUILD)
+#error "DAYBREAK_UPDATE_TEST_BUILD trusts a throwaway key and must never be a release build"
+#endif
+
 #if defined(DAYBREAK_RELEASE_BUILD) && !defined(DAYBREAK_ALLOW_UNSIGNED_PACKAGE)
 static_assert(kReleaseKeys.size() > 0,
               "a release build needs at least one trusted release key in "

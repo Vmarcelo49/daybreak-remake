@@ -17,6 +17,11 @@ struct Options {
     // --update-result=available|manual|unavailable|updated|progress: a test/capture hook
     // that feeds the title a fake result instead of a check (no new environment variable).
     std::string updateResult;
+    // --menu-script=<file>: drive the front end from a script (tests/captures only).
+    std::string menuScript;
+#ifdef DAYBREAK_UPDATE_TEST_BUILD
+    std::string testUpdateKey;  // --test-update-key=<hex>
+#endif
     bool        hudTest = false;   // composite a synthetic HUD into --out captures
     bool        hudProbe = false;  // --hud-probe: corner markers for the placement test
     // --pause-overlay=N: enter the battle pause at match frame N and composite the pause
@@ -243,6 +248,17 @@ struct App {
     std::vector<std::string>     launchArgs;
     std::string                  relaunchLaunch;
     std::string                  relaunchFrom;
+    // --menu-script=: a test/capture driver for the front end (issue #100, step 4). Each
+    // step waits a number of front-end frames, then holds one button for one frame.
+    struct MenuScriptStep { int wait = 0; bool up = false, down = false, left = false, right = false, confirm = false, cancel = false; };
+    std::vector<MenuScriptStep> menuScript;
+    size_t menuScriptIndex = 0;
+    int menuScriptWait = 0;
+#ifdef DAYBREAK_UPDATE_TEST_BUILD
+    // --test-update-key=<hex>: the throwaway key the loopback end-to-end signs with. Only
+    // this test build parses it; a DAYBREAK_RELEASE_BUILD cannot take this path.
+    std::string testUpdateKey;
+#endif
 #endif
     fnd::audio::Sdl3Engine        menuAudio;
     // The opening movie's own output stream (issue #40): the original plays its audio

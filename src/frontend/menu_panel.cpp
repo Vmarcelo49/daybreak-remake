@@ -1,5 +1,9 @@
 #include "frontend/menu_panel.h"
 
+#include <SDL3/SDL.h>
+
+#include <cstdio>
+
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -8,6 +12,19 @@
 #include "assets/cnv.h"
 
 namespace ui {
+
+namespace {
+bool gUrlOpenForTest = false;
+}
+
+void setUrlOpenForTest(bool enabled) { gUrlOpenForTest = enabled; }
+
+void openUrl(const char* url) {
+    if (url == nullptr || *url == '\0') return;
+    // Always one line: it is the support log and the end-to-end test's assertion.
+    std::printf("[update] open %s\n", url);
+    if (!gUrlOpenForTest) SDL_OpenURL(url);
+}
 
 bool uploadBackground(SpriteRenderer& batch, const char* stem, std::initializer_list<UiRect> holes, int& slot, std::string& error) {
     std::vector<uint8_t> bytes;
