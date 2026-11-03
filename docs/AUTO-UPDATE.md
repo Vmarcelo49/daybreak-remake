@@ -339,9 +339,42 @@ the old version keeps running. Success saves the settings, shuts audio, video an
 layer down the way a normal quit does, and only then calls `update::relaunch`, so Windows
 never flashes a second window.
 
-`--update-result=available|manual|unavailable|updated|progress` is the test/capture hook
-that feeds the title a fake result instead of a check (no environment variable); it also
-suppresses the real check.
+`--update-result=available|manual|unavailable|updated|progress|verifying|installing|restarting|failed`
+is the test/capture hook that feeds the title or the update screen a fake state instead of
+a check (no environment variable); it also suppresses the real check.
+
+### Testing it without a release
+
+`daybreak_e2e` is the same game built with `DAYBREAK_UPDATE_TEST_BUILD`, which adds
+`--test-update-key=<hex>` to the trusted list for that run. It is the only build that
+accepts the flag: `release_keys.h` fails to compile when `DAYBREAK_RELEASE_BUILD` and
+`DAYBREAK_UPDATE_TEST_BUILD` are both defined, and `update_release_guard_test` proves that
+compile fails. A package can never take the path.
+
+`--menu-script=<file>` drives the front end with the same edges the pad and keyboard
+produce (`WAIT <frames>`, `UP`, `DOWN`, `LEFT`, `RIGHT`, `CONFIRM`, `CANCEL`), so the
+title, the notice and the update screen can be exercised without a person at the keyboard.
+`openUrl` logs `[update] open <url>` and, in the test build, does not open a browser.
+
+Three CTest suites use them, and skip (77) without the local title art or a display:
+
+* `update_no_network_test` — the loopback fixture counts requests; a synthetic packaged
+  install is launched in every gated mode (each carrying only its own flag) and must make
+  **0** requests. The positive control, a normal title launch, must make exactly one
+  manifest and one `.sig` request.
+* `update_e2e_test` — a 0.2.1 install, a signed 0.2.2 release built with the real tools,
+  title → notice → Update → progress → relaunch; the 0.2.2 manifest, the changed package
+  file, the untouched game files by hash and a clean workspace are asserted, then a
+  corrupted archive must fail as "damaged" and leave 0.2.1 intact.
+* `update_screens_test` — real input through the notice (all four choices, back to the
+  menu), Later, Skip writing `skip_version`, Release notes logging instead of opening a
+  browser, and the captures of every notice state and every update-screen phase in English
+  and Japanese under `build/captures/update-*` (not fingerprinted).
+
+They need a display and the local game install; on a machine without either they skip, and
+the same checks are then the documented manual run: build `daybreak_e2e`, run it with
+`--install=`, `--test-update-key=`, `DAYBREAK_UPDATE_URL` and `--menu-script=`, and watch
+the title. Nothing else in the suite needs a display.
 
 ## What is still missing
 
