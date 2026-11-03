@@ -56,6 +56,7 @@ enum class ScreenId : int {
     GameOver     = 0x14,   // FUN_00403d70
     StaffRoll    = 0x15,   // FUN_0040e0b0
     Result       = 0x17,   // Port presentation id; original results are owned by the battle module.
+    Update       = 0x18,   // Port presentation id: the update screen (issue #100, step 4).
     Quit         = 0x16,   // the factory's default: no scene, the loop tears down
 };
 
@@ -94,6 +95,8 @@ struct ScreenInput {
     std::array<ScreenButtons,4> players{};
 };
 
+struct UpdateNotice;
+
 // One front-end screen. update is the original's vtable slot 3: the return value is the
 // next screen id, and the screen's own id means "stay".
 class Screen {
@@ -110,6 +113,15 @@ public:
     virtual std::string takeMusic() { return {}; }
     virtual bool takeMusicStop() { return false; }
     virtual bool wantsText() const { return false; }
+    // The title's update notice (issue #100). The host calls it when the worker's result
+    // arrives and when a title screen is rebuilt; every other screen ignores it.
+    virtual void setUpdateNotice(const UpdateNotice&) {}
+    // Whether the title is still showing its notice; the host uses it to remember that
+    // Later/Skip hid it for the rest of the launch (issue #100, step 4).
+    virtual bool updateNoticeVisible() const { return false; }
+    // True once the update screen has installed a release and the host should save,
+    // shut down and relaunch into it. Fills the entry point and the version replaced.
+    virtual bool wantsRelaunch(std::string*, std::string*) { return false; }
 };
 
 // FUN_004020a0's switch as a predicate: true for the ids the port can construct. The

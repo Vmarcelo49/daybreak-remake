@@ -55,6 +55,7 @@
 #include "frontend/screen_opening.h"
 #include "frontend/screen_story.h"
 #include "frontend/screen_title.h"
+#include "frontend/screen_update.h"
 #include "ui/sheet_locale.h"
 #include "frontend/frontend_state.h"
 #include "frontend/frontend_launch.h"
@@ -100,6 +101,13 @@
 #include "input/synthetic_pad.h"
 #include "shaders/demo_wgsl.h"
 #include <unordered_map>
+
+#if !defined(__EMSCRIPTEN__)
+#include <atomic>
+#include <mutex>
+#include <thread>
+#include "update/updater.h"
+#endif
 
 namespace {
 #include "app.h"
@@ -1195,6 +1203,188 @@ static bool enterFrontendBattle(App& app) {
     return true;
 }
 
+#if !defined(__EMSCRIPTEN__)
+// --- the update check (issue #100, step 4) -------------------------------------------
+// One worker per launch, started when the title first appears and joined on quit. The
+// frame loop only reads its atomics; the result becomes the title's notice.
+static bool installedVersion(const std::filesystem::path& root, update::Version* version) {
+    std::ifstream input(root / update::kPackageManifestName, std::ios::binary);
+    if (!input) return false;
+    const std::string text((std::istreambuf_iterator<char>(input)),
+                           std::istreambuf_iterator<char>());
+    update::PackageManifest manifest;
+    std::string error;
+    if (update::PackageManifest::parse(text, &manifest, &error) != update::ParseStatus::Ok) {
+        return false;
+    }
+    return update::Version::parse(manifest.version, version, &error);
+}
+
+static const char* checkStatusName(update::CheckStatus status) {
+    switch (status) {
+        case update::CheckStatus::UpToDate: return "up to date";
+        case update::CheckStatus::Available: return "available";
+        case update::CheckStatus::Skipped: return "skipped";
+        case update::CheckStatus::ManualOnly: return "manual only";
+        case update::CheckStatus::Failed: return "failed";
+    }
+    return "?";
+}
+
+static bool updateCheckAllowed(const App& app, std::string* why) {
+    if (app.opts.noUpdateCheck) {
+        if (why) *why = "--no-update-check";
+        return false;
+    }
+    if (updateCheckSuppressed(app.opts)) {
+        if (why) *why = "a verification or test run";
+        return false;
+    }
+    if (!ui::frontendSettings().updateCheck) {
+        if (why) *why = "[update] check = off";
+        return false;
+    }
+    const char* flag = std::getenv("DAYBREAK_NO_UPDATE_CHECK");
+    if (flag != nullptr && std::strcmp(flag, "1") == 0) {
+        if (why) *why = "DAYBREAK_NO_UPDATE_CHECK=1";
+        return false;
+    }
+    if (app.installRoot.empty() ||
+        !std::filesystem::exists(app.installRoot / update::kPackageManifestName)) {
+        if (why) *why = "not an installed package";
+        return false;
+    }
+    return true;
+}
+
+static void applyInjectedNotice(App& app) {
+    if (app.opts.updateResult.empty() || app.updateHost->notice.active()) return;
+    ui::UpdateNotice notice;
+    const std::string& value = app.opts.updateResult;
+    if (value == "available") {
+        notice.kind = ui::UpdateNoticeKind::Available;
+        notice.version = "9.9.9";
+        notice.notes = "https://github.com/Vmarcelo49/daybreak-remake/releases";
+    } else if (value == "manual") {
+        notice.kind = ui::UpdateNoticeKind::ManualOnly;
+        notice.notes = "https://github.com/Vmarcelo49/daybreak-remake/releases";
+    } else if (value == "unavailable") {
+        notice.kind = ui::UpdateNoticeKind::Unavailable;
+    } else if (value == "updated") {
+        notice.kind = ui::UpdateNoticeKind::Updated;
+        notice.version = "9.9.9";
+        notice.updatedFrom = "9.9.8";
+    }
+    app.updateHost->notice = notice;
+}
+
+static void startUpdateCheck(App& app) {
+    if (!app.updateHost || app.updateHost->started) return;
+    app.updateHost->started = true;
+    if (!app.opts.updatedFrom.empty()) {
+        // The relaunch that follows an update already says so on the title; asking again
+        // on the same launch would be redundant.
+        std::printf("[update] check skipped: this launch updated from %s\n",
+                    app.opts.updatedFrom.c_str());
+        return;
+    }
+    std::string why;
+    if (!updateCheckAllowed(app, &why)) {
+        std::printf("[update] check skipped: %s\n", why.c_str());
+        return;
+    }
+    update::CheckSettings settings;
+    if (!installedVersion(app.installRoot, &settings.currentVersion)) {
+        std::printf("[update] check skipped: the installed package manifest has no version\n");
+        return;
+    }
+    settings.skipVersion = ui::frontendSettings().updateSkipVersion;
+    settings.keys = update::releaseKeys();
+    settings.cancelled = [state = app.updateHost.get()]() { return state->cancel.load(); };
+    app.updateHost->running = true;
+    app.updateHost->worker = std::thread([&app, settings]() {
+        update::CheckResult result = update::check(settings);
+        UpdateHostState* state = app.updateHost.get();
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            state->result = std::move(result);
+        }
+        state->finished.store(true);
+    });
+}
+
+static void deliverNotice(App& app, ui::Screen* screen) {
+    if (!app.updateHost || screen == nullptr) return;
+    if (app.updateHost->notice.active() && !app.updateHost->dismissed) {
+        screen->setUpdateNotice(app.updateHost->notice);
+        app.updateHost->deliveredToTitle = true;
+    }
+}
+
+static void pollUpdateCheck(App& app) {
+    UpdateHostState* state = app.updateHost.get();
+    if (state == nullptr) return;
+    // Turning the Options row off while the check runs cancels it.
+    if (state->running && !ui::frontendSettings().updateCheck && !state->cancel.load()) {
+        state->cancel.store(true);
+    }
+    // Later and Skip hide the notice in the screen; remember it so returning to the title
+    // does not offer the same release again this launch.
+    if (state->deliveredToTitle && !state->dismissed && state->notice.active() &&
+        app.screens.current() == ui::ScreenId::Title && app.screens.screen() != nullptr &&
+        !app.screens.screen()->updateNoticeVisible()) {
+        state->dismissed = true;
+    }
+    if (!state->finished.load() || state->delivered) return;
+    state->delivered = true;
+    state->running = false;
+    update::CheckResult result;
+    {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        result = state->result;
+    }
+    ui::UpdateNotice notice;
+    switch (result.status) {
+        case update::CheckStatus::Available:
+            notice.kind = ui::UpdateNoticeKind::Available;
+            notice.version = result.version.toString();
+            notice.notes = result.notes;
+            break;
+        case update::CheckStatus::ManualOnly:
+            notice.kind = ui::UpdateNoticeKind::ManualOnly;
+            notice.notes = result.notes;
+            break;
+        case update::CheckStatus::Failed:
+            // No libcurl in this build is the one failure worth a notice: it is fixable by
+            // the player's package, not a passing network problem.
+            if (result.error.find("libcurl") != std::string::npos ||
+                result.error.find("HTTP client") != std::string::npos) {
+                notice.kind = ui::UpdateNoticeKind::Unavailable;
+            }
+            break;
+        default:
+            break;
+    }
+    if (notice.kind == ui::UpdateNoticeKind::None) {
+        std::printf("[update] nothing to show: %s%s%s\n", checkStatusName(result.status),
+                    result.error.empty() ? "" : " (",
+                    result.error.empty() ? "" : (result.error + ")").c_str());
+        return;
+    }
+    state->notice = notice;
+    if (state->dismissed) return;
+    if (app.screens.current() == ui::ScreenId::Title && app.screens.screen() != nullptr) {
+        app.screens.mutableScreen()->setUpdateNotice(notice);
+    }
+}
+
+static void stopUpdateCheck(App& app) {
+    if (!app.updateHost) return;
+    app.updateHost->cancel.store(true);
+    if (app.updateHost->worker.joinable()) app.updateHost->worker.join();
+}
+#endif  // !__EMSCRIPTEN__
+
 // --screen: the front end's entry point. The stack is built with the app's own
 // makeScreen factory, so an id the port has not implemented is the factory's `default`
 // — no scene, no fake transition (frontend/screen.h) — and the input backend is the same one
@@ -1366,6 +1556,22 @@ bool initScreens(App& app) {
                           app.frontend.stage + app.frontend.variation * 10);
             requestWebMatchGroup(stage, slots, weaponIds);
         }
+#if !defined(__EMSCRIPTEN__)
+        if (sid == ui::ScreenId::Update) {
+            ui::UpdateLaunch launch;
+            launch.root = app.installRoot.string();
+            if (app.opts.updateResult == "progress") {
+                launch.preview = true;
+                return ui::makeUpdateScreen(app.uiRenderer, launch, app.error);
+            }
+            launch.manifest = app.updateHost->result.manifest;
+            if (!installedVersion(app.installRoot, &launch.currentVersion)) {
+                app.error = "the installed package manifest has no version";
+                return nullptr;
+            }
+            return ui::makeUpdateScreen(app.uiRenderer, launch, app.error);
+        }
+#endif
         if (sid == ui::ScreenId::Battle) {
             // The VS intro has ended and enterFrontendBattle built the match. Nothing holds the
             // round back: this screen only hands over.
@@ -1386,6 +1592,13 @@ bool initScreens(App& app) {
         auto screen = sid == ui::ScreenId::VsIntro
             ? ui::makeVsScreen(app.uiRenderer, app.frontend, app.error, vsTicks)
             : ui::makeScreen(sid, app.uiRenderer, app.frontend, app.error);
+#if !defined(__EMSCRIPTEN__)
+        if (screen && sid == ui::ScreenId::Title) {
+            applyInjectedNotice(app);
+            startUpdateCheck(app);
+            deliverNotice(app, screen.get());
+        }
+#endif
         if (screen) std::printf("[menu] scene: %s (tick %llu)\n", screen->name(), (unsigned long long)app.logicTicks);
         return screen;
     };
@@ -1689,6 +1902,28 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
         usage();
         return SDL_APP_FAILURE;
     }
+#if !defined(__EMSCRIPTEN__)
+    app->updateHost = std::make_unique<UpdateHostState>();
+    {
+        std::string rootError;
+        if (!update::installRoot(&app->installRoot, &rootError)) app->installRoot.clear();
+    }
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument = argv[index];
+        // The relaunch appends a fresh --updated-from=; forwarding the old one would let
+        // them pile up across updates.
+        if (argument.rfind("--updated-from=", 0) == 0) continue;
+        app->launchArgs.push_back(argument);
+    }
+    if (!app->opts.updatedFrom.empty()) {
+        ui::UpdateNotice notice;
+        notice.kind = ui::UpdateNoticeKind::Updated;
+        notice.updatedFrom = app->opts.updatedFrom;
+        update::Version version;
+        if (installedVersion(app->installRoot, &version)) notice.version = version.toString();
+        app->updateHost->notice = notice;
+    }
+#endif
     if (!app->opts.updatedFrom.empty()) {
         // Step 3's relaunch says which version this build replaced; migrations will hook
         // in here. Nothing else reads it yet.

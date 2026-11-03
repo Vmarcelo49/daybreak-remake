@@ -12,6 +12,11 @@ struct Options {
     // --updated-from=<version>: the build this run replaced (step 3's relaunch). Logged,
     // and later the hook for one-time migrations.
     std::string updatedFrom;
+    // --no-update-check: this launch must not ask GitHub (issue #100, step 4).
+    bool noUpdateCheck = false;
+    // --update-result=available|manual|unavailable|updated|progress: a test/capture hook
+    // that feeds the title a fake result instead of a check (no new environment variable).
+    std::string updateResult;
     bool        hudTest = false;   // composite a synthetic HUD into --out captures
     bool        hudProbe = false;  // --hud-probe: corner markers for the placement test
     // --pause-overlay=N: enter the battle pause at match frame N and composite the pause
@@ -174,6 +179,25 @@ struct TitleBackdropState {
     float                          seconds = 0.f; // the sweep's clock
 };
 
+#if !defined(__EMSCRIPTEN__)
+// The update check's lifetime in the running game (issue #100, step 4). One worker,
+// started when the title first appears and joined on quit; the frame loop only reads
+// its atomics.
+struct UpdateHostState {
+    std::thread worker;
+    std::atomic<bool> cancel{false};
+    std::atomic<bool> finished{false};
+    std::atomic<bool> running{false};
+    std::mutex mutex;
+    update::CheckResult result;
+    ui::UpdateNotice notice;
+    bool started = false;
+    bool delivered = false;
+    bool dismissed = false;
+    bool deliveredToTitle = false;
+};
+#endif
+
 struct App {
     Options      opts;
     SDL_Window*  window = nullptr;
@@ -210,6 +234,16 @@ struct App {
     bool                         frontendBattleReady = false;
     bool                         rendererReady = false;
     ui::FrontendState            frontend;
+#if !defined(__EMSCRIPTEN__)
+    // The update check and the relaunch it can lead to (issue #100, step 4). The
+    // install root is the running binary's folder; launchArgs is argv without argv[0],
+    // handed back to the new build after an update.
+    std::unique_ptr<UpdateHostState> updateHost;
+    std::filesystem::path        installRoot;
+    std::vector<std::string>     launchArgs;
+    std::string                  relaunchLaunch;
+    std::string                  relaunchFrom;
+#endif
     fnd::audio::Sdl3Engine        menuAudio;
     // The opening movie's own output stream (issue #40): the original plays its audio
     // beside the front end's BGM, and one engine has one music stream, so the movie gets

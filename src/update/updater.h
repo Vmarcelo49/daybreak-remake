@@ -30,6 +30,9 @@ enum class CheckStatus { UpToDate, Available, Skipped, ManualOnly, Failed };
 
 struct CheckResult {
     CheckStatus status = CheckStatus::Failed;
+    // The parsed manifest the check accepted, so the update screen can apply it without
+    // fetching and verifying it a second time.
+    UpdateManifest manifest;
     Version version;
     std::string notes;
     std::string archive;
@@ -54,6 +57,10 @@ CheckResult check(const CheckSettings& settings);
 
 enum class ApplyStatus { Ok, Failed, Cancelled };
 
+// What the apply is doing, for the update screen's progress text. The engine reports it;
+// the screen only draws it.
+enum class ApplyPhase { Downloading, Verifying, Installing };
+
 struct ApplyResult {
     ApplyStatus status = ApplyStatus::Failed;
     std::string error;
@@ -68,6 +75,7 @@ struct ApplySettings {
     std::string manifestUrl;  // where the manifest came from; empty = the default
     std::function<bool(std::uint64_t received, std::uint64_t total)> progress;
     std::function<bool()> cancelled;
+    std::function<void(ApplyPhase)> phase;
     // Test-only seams. The game leaves all three empty.
     std::function<bool(const UpdateArchive&, std::vector<std::uint8_t>*, std::string*)>
         fetchArchive;

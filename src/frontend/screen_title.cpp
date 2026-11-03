@@ -4,6 +4,9 @@
 
 #include <cstdio>
 
+#include <SDL3/SDL.h>
+
+#include "frontend/menu_panel.h"
 #include "hud/hud_atlas.h"
 
 namespace ui {
@@ -26,6 +29,15 @@ TitleAction TitleMenu::update(const ScreenInput& in) {
 }
 
 TitleScreen::TitleScreen(SpriteRenderer& batch, std::string& error) {
+    // The notice is text, which the original title has none of; the face is best-effort so
+    // a missing font never costs the player the menu.
+    std::string faceError;
+    faceLoaded_ = face_.load(batch, 64.f, faceError, "Goldman-Bold.ttf",
+                             kCaptionFallbackFile);
+    if (!faceLoaded_) {
+        std::fprintf(stderr, "[title] update notice text unavailable: %s\n",
+                     faceError.c_str());
+    }
     // All three loads are attempted, like FUN_00410d60.c:28-33: the first failure is
     // kept so the caller's message names a real asset.
     for (const TitleAsset& asset : kTitleAssets) {
@@ -43,6 +55,51 @@ bool TitleScreen::loaded() const {
 }
 
 ScreenId TitleScreen::update(const ScreenInput& in) {
+    if (notice_.visible()) {
+        if (noticeFocus_) {
+            if (in.up || in.cancel) {
+                noticeFocus_ = false;
+                notice_.focus(false);
+                sound_ = 1;
+                return ScreenId::Title;
+            }
+            const UpdateNoticeAction chosen = notice_.update(in);
+            switch (chosen) {
+                case UpdateNoticeAction::Update:
+                    notice_.hide();
+                    return ScreenId::Update;
+                case UpdateNoticeAction::Notes:
+                    if (!notice_.notice().notes.empty()) {
+                        SDL_OpenURL(notice_.notice().notes.c_str());
+                    }
+                    sound_ = 0;
+                    break;
+                case UpdateNoticeAction::Later:
+                    notice_.hide();
+                    noticeFocus_ = false;
+                    notice_.focus(false);
+                    sound_ = 1;
+                    break;
+                case UpdateNoticeAction::Skip:
+                    noticeFocus_ = false;
+                    notice_.focus(false);
+                    sound_ = 0;
+                    break;
+                case UpdateNoticeAction::None:
+                    break;
+            }
+            return ScreenId::Title;
+        }
+        // Down from the last title item moves into the notice; the title menu keeps its
+        // own machine until then (the task's "does not steal input").
+        if (in.down && menu_.selected() == kTitleItemCount - 1 &&
+            updateNoticeChoiceCount(notice_.notice()) > 0) {
+            noticeFocus_ = true;
+            notice_.focus(true);
+            sound_ = 2;
+            return ScreenId::Title;
+        }
+    }
     const TitleAction action = menu_.update(in);
     sound_ = action == TitleAction::Moved ? 2 : (action == TitleAction::Activated ? 0 : -1);
     if (action != TitleAction::Activated) return ScreenId::Title;
@@ -74,6 +131,33 @@ void TitleScreen::draw(SpriteRenderer& batch) const {
                          kTitleItemSrc.h};
         batch.pushSprite(sheets_[(int)TitleSheet::Items], src, kTitleItemPivotX, kTitleItemPivotY,
                          kTitleItemX, kTitleItemStride * (float)i + kTitleItemY0);
+    }
+    if (notice_.visible()) drawNotice(batch);
+}
+
+void TitleScreen::drawNotice(SpriteRenderer& batch) const {
+    const UpdateNotice& notice = notice_.notice();
+    const int choices = updateNoticeChoiceCount(notice);
+    const float top = choices > 0 ? 470.f : 486.f;
+    const float height = choices > 0 ? 116.f : 44.f;
+    batch.pushSolid({16, top, 372, height}, kPanel);
+    if (!faceLoaded_) return;
+    const std::string line = updateNoticeLine(notice);
+    face_.draw(batch, line.c_str(), 30.f, top + 12.f, 17.f / 64.f, kWhite, 1.1f);
+    if (choices == 0) return;
+    const float y = top + 58.f;
+    float x = 30.f;
+    for (int i = 0; i < choices; ++i) {
+        const char* label = updateNoticeChoiceLabel(notice, i);
+        const bool selected = noticeFocus_ && notice_.selected() == i;
+        face_.draw(batch, label, x, y, 15.f / 64.f, selected ? kGold : kPale, 1.1f);
+        const float width = face_.width(label) * 15.f / 64.f;
+        if (selected) batch.pushSolid({x, y + 24.f, width, 2.f}, kGold);
+        x += width + 16.f;
+    }
+    if (!noticeFocus_) {
+        // Not focused yet: the hint says the menu continues downwards.
+        face_.draw(batch, "v", 360.f, top + 12.f, 14.f / 64.f, kGold, 1.f);
     }
 }
 

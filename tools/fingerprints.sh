@@ -10,6 +10,8 @@
 # slot from the synthetic pad, which changes how the round plays.
 set -u
 export SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT=0x0000/0x0000
+# A capture is not a launch: the update check must never run here (issue #100, step 4).
+export DAYBREAK_NO_UPDATE_CHECK=1
 
 simctl=${1:?simctl path}
 demo=${2:?daybreak path}

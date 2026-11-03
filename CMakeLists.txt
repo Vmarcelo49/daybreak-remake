@@ -129,6 +129,8 @@ add_library(ui STATIC
     src/frontend/screen.cpp
     src/frontend/screen_opening.cpp
     src/frontend/screen_title.cpp
+    src/frontend/screen_update.cpp
+    src/frontend/update_notice.cpp
     src/frontend/screen_select.cpp
     src/frontend/screen_stage_select.cpp
     src/frontend/screen_vs.cpp
@@ -858,7 +860,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(controller_scene_lifetime_test PRIVATE render
         ui media game_interfaces physics
         battle_backend gameplay)
-    target_link_libraries(controller_scene_lifetime_test PRIVATE net_session)
+    target_link_libraries(controller_scene_lifetime_test PRIVATE net_session update)
     add_test(NAME controller_scene_lifetime_test COMMAND controller_scene_lifetime_test
              "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak")
     set_tests_properties(controller_scene_lifetime_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
@@ -1105,6 +1107,12 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(frontend_lifecycle_test PRIVATE ui gameplay glm)
     add_test(NAME frontend_lifecycle_test COMMAND frontend_lifecycle_test)
 
+    # The title's update notice and the update screen's failure reasons (issue #100).
+    # update: the engine's error strings the mapping is tested against.
+    add_executable(update_notice_test tests/update_notice_test.cpp)
+    target_link_libraries(update_notice_test PRIVATE ui update)
+    add_test(NAME update_notice_test COMMAND update_notice_test)
+
 
     # Issue #15's pause semantics: the match gate, the menu and the stale-edge rule.
     # Device-free (no SDL, no assets), like the other gameplay tests.
@@ -1131,7 +1139,8 @@ endif()
 # output policy. Keep those tests, and their child processes, off real speakers.
 get_property(host_tests DIRECTORY PROPERTY TESTS)
 if(host_tests)
-    set_property(TEST ${host_tests} APPEND PROPERTY ENVIRONMENT "SDL_AUDIO_DRIVER=dummy")
+    set_property(TEST ${host_tests} APPEND PROPERTY ENVIRONMENT
+        "SDL_AUDIO_DRIVER=dummy" "DAYBREAK_NO_UPDATE_CHECK=1")
 endif()
 
 if(EMSCRIPTEN)
@@ -1214,6 +1223,7 @@ set(DAYBREAK_AREA_FRONTEND
     english_captions_test locale_screen_check locale_coverage_test locale_sheets_test
     title_camera_test screen_stack_test frontend_config_test frontend_lifecycle_test
     result_title_test result_screen_test participant_layout_test select_menu_test
+    update_notice_test
     select_cursor_test select_row_slidein_test stage_vs_test story_dialogue_test
     story_script_test sim_frontend_flow online_flow_check online_join_feedback
     pause_overlay_panel pause_overlay_layout_test

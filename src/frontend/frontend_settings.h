@@ -39,6 +39,10 @@ struct FrontendSettings {
     // is rebuilt when it is next constructed, so a flip takes effect on returning to it,
     // and toUserSettings() persists it.
     std::string titleBackdrop = "stage03";
+    // The updater's two settings (issue #100): the Options row and the version the player
+    // asked to skip. Live state; the title reads them when it builds the check.
+    bool updateCheck = true;
+    std::string updateSkipVersion;
     // The user's selection from the Options resolution row; {0,0} is desktop. This is
     // what gets persisted, and it changes ONLY when the row is cycled — the window's
     // actual pixel size lives in currentResolution/resolutionIndex, which the OS changes

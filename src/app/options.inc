@@ -42,6 +42,7 @@ void usage() {
         "                     non-square frame, e.g. 800x600 to match a banked\n"
         "                     DX9 reference frame)\n"
         "  --frames=N         stop after N frames (0 = until the window closes)\n"
+        "  --no-update-check  do not ask GitHub for a newer release this launch\n"
         "  --camera=MODE      auto|player|front|top|bounds|arena\n"
         "                     (default auto: the stage's spawn point when env.dat\n"
         "                     has one, else framed bounds)\n"
@@ -411,6 +412,8 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
             }
         }
         else if (!(v = val("--updated-from=")).empty()) o.updatedFrom = v;
+        else if (a == "--no-update-check") o.noUpdateCheck = true;
+        else if (!(v = val("--update-result=")).empty()) o.updateResult = v;
         else if (a == "--list") o.list = true;
         else if (a == "--hud-test") o.hudTest = true;
         else if (a == "--hud-probe") { o.hudTest = true; o.hudProbe = true; }
@@ -572,6 +575,16 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
 static bool verificationRun(const Options& o) {
     return o.headless || !o.out.empty() || !o.script.empty() || !o.script2.empty() ||
            o.match || o.versus || o.hudTest || o.bench > 0 || o.list;
+}
+
+// The update check never runs in a verification, capture or test launch (issue #100,
+// step 4): those runs are evidence, must be reproducible, and must not touch the network.
+// One helper so a new test flag is gated once instead of remembered at every call site.
+static bool updateCheckSuppressed(const Options& o) {
+    return verificationRun(o) || o.frames > 0 || o.audioTest || o.inputTest ||
+           !o.plan.empty() || o.pauseOverlay > 0 || o.netStress > 0 ||
+           o.rollbackStress > 0 || o.hudProbe || !o.debugKeys.empty() ||
+           !o.textKeys.empty() || o.noUpdateCheck || !o.updateResult.empty();
 }
 
 // A plain interactive launch is the original's boot: scene 0x00, the opening movie, then

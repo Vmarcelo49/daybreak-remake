@@ -169,6 +169,7 @@ bool UserSettings::operator==(const UserSettings& other) const {
            toonRendering == other.toonRendering &&
            shadowRendering == other.shadowRendering &&
            titleBackdrop == other.titleBackdrop &&
+           updateCheck == other.updateCheck && updateSkipVersion == other.updateSkipVersion &&
            volumes.master == other.volumes.master && volumes.music == other.volumes.music &&
            volumes.voice == other.volumes.voice && volumes.sfx == other.volumes.sfx &&
            keyboard == other.keyboard && gamepad == other.gamepad && padGuid == other.padGuid &&
@@ -213,6 +214,25 @@ bool storableTitleBackdrop(const std::string& value) {
     // not a directory xm::loadStage could be handed.
     if (value.size() != 7 || value.compare(0, 5, "stage") != 0) return false;
     return value[5] >= '0' && value[5] <= '9' && value[6] >= '0' && value[6] <= '9';
+}
+
+bool storableSkipVersion(const std::string& value) {
+    if (value.empty()) return true;
+    int parts = 0;
+    std::size_t start = 0;
+    for (;;) {
+        const std::size_t dot = value.find('.', start);
+        const std::string part =
+            value.substr(start, dot == std::string::npos ? std::string::npos : dot - start);
+        if (part.empty() || part.size() > 9) return false;
+        for (const char character : part) {
+            if (character < '0' || character > '9') return false;
+        }
+        ++parts;
+        if (dot == std::string::npos) break;
+        start = dot + 1;
+    }
+    return parts == 3;
 }
 
 bool parse(const std::string& text, UserSettings& out, std::string& error, LoadReport& report) {
@@ -268,7 +288,7 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
             if (line.back() != ']') return fail(": unterminated section header");
             section = trimmed(line.substr(1, line.size() - 2));
             if (section != "game" && section != "network" && section != "display" && section != "render" &&
-                section != "title" && section != "audio" && section != "bindings" && section != "controllers") {
+                section != "title" && section != "update" && section != "audio" && section != "bindings" && section != "controllers") {
                 return fail(": unknown section [" + section + "]");
             }
             continue;
@@ -290,7 +310,7 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                 if (version != kSchemaVersion && version != kSchemaVersionLegacy &&
                     version != kSchemaVersionV2 && version != kSchemaVersionV3 &&
                     version != kSchemaVersionV4 && version != kSchemaVersionV5 && version != kSchemaVersionV6 &&
-                    version != kSchemaVersionV7) {
+                    version != kSchemaVersionV7 && version != kSchemaVersionV8) {
                     error = "unsupported config version " + std::to_string(version) +
                             " (this build writes " + std::to_string(kSchemaVersion) + ")";
                     return false;
@@ -383,6 +403,22 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
                     warn("backdrop: '" + value + "' is not a stage directory, keeping the original title art");
                 else
                     candidate.titleBackdrop = value;
+            } else {
+                warn("ignoring unknown key '" + key + "'");
+            }
+        } else if (section == "update") {
+            // v9's section (issue #100). `check` is the Options row; `skip_version` is
+            // written by the title notice's Skip choice.
+            if (key == "check") {
+                const std::optional<bool> on = parseBool(value);
+                if (!on) warn("check: keeping the default (on)");
+                else candidate.updateCheck = *on;
+            } else if (key == "skip_version") {
+                if (value.empty()) candidate.updateSkipVersion.clear();
+                else if (!storableSkipVersion(value))
+                    warn("skip_version: '" + value + "' is not X.Y.Z, skipping nothing");
+                else
+                    candidate.updateSkipVersion = value;
             } else {
                 warn("ignoring unknown key '" + key + "'");
             }
@@ -493,6 +529,11 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
             "config version 7: migrated to " + std::to_string(kSchemaVersion) +
             " (the title backdrop is the original art; every stored value kept)");
         break;
+    case kSchemaVersionV8:
+        report.messages.push_back(
+            "config version 8: migrated to " + std::to_string(kSchemaVersion) +
+            " (update checks are on and no version is skipped; every stored value kept)");
+        break;
     case kSchemaVersion:
         // A CURRENT document always carries the folder key — serialize() writes it even when
         // no folder is remembered — so its absence is a hand-edit or a lossy writer, and the
@@ -569,6 +610,15 @@ std::string serialize(const UserSettings& settings) {
         << "# (issue #98); empty is the original's data/title/back00 art.\n"
         << "backdrop = "
         << (storableTitleBackdrop(settings.titleBackdrop) ? settings.titleBackdrop : std::string())
+        << "\n\n";
+
+    out << "[update]\n"
+        << "# Ask GitHub once per launch whether a newer release exists (issue #100).\n"
+        << "check = " << (settings.updateCheck ? "on" : "off") << "\n"
+        << "# A version the player asked not to be offered again; empty skips nothing.\n"
+        << "skip_version = "
+        << (storableSkipVersion(settings.updateSkipVersion) ? settings.updateSkipVersion
+                                                           : std::string())
         << "\n\n";
 
     out << "[audio]\n"

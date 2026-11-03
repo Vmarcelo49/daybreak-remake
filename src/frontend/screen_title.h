@@ -16,6 +16,8 @@
 #include <string>
 
 #include "frontend/screen.h"
+#include "frontend/update_notice.h"
+#include "ui/caption.h"
 
 namespace ui {
 
@@ -113,9 +115,23 @@ public:
     // because a stage is a scene the renderer owns, not something this batch can upload.
     void setBackdropLive(bool live) { backdropLive_ = live; }
 
+    // The host hands the worker's result here (issue #100, step 4). Every result that is
+    // worth interrupting a player for becomes a notice; Failed, UpToDate, Skipped and an
+    // untrusted signature never reach the screen.
+    void setUpdateNotice(const UpdateNotice& notice) override { notice_.set(notice); }
+    bool updateNoticeVisible() const override { return notice_.visible(); }
+    // The device-free frontend test drives the notice without a GPU.
+    const UpdateNoticeMenu& updateNotice() const { return notice_; }
+
 private:
+    void drawNotice(SpriteRenderer& batch) const;
+
     int       sheets_[kTitleSheetCount] = {-1, -1, -1};
     TitleMenu menu_;
+    UpdateNoticeMenu notice_;
+    bool      noticeFocus_ = false;
+    mutable CaptionText face_;
+    bool      faceLoaded_ = false;
     int sound_ = -1;
     bool      backdropLive_ = false;
 };

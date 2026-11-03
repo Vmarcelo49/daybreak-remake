@@ -517,6 +517,45 @@ int main() {
         check(back == out, "and nothing else moves");
     }
 
+    // Issue #100 took the schema to v9 with [update]. A v8 file must keep every value and
+    // mean "check on, nothing skipped", which is what a v8 build did.
+    std::printf("\n-- issue #100: a v8 file keeps everything and checks for updates\n");
+    {
+        settings::UserSettings out;
+        settings::LoadReport report;
+        std::string error;
+        check(settings::parse("version = 8\n[render]\ntoon = true\n[title]\nbackdrop = stage13\n"
+                              "[audio]\nmaster = 71\n",
+                              out, error, report),
+              "a v8 document loads: " + error);
+        check(out.toonRendering, "the toon toggle is kept");
+        checkStr("the title backdrop is kept", "stage13", out.titleBackdrop);
+        checkInt("the rest of the file applied", 71, out.volumes.master);
+        check(out.updateCheck, "update checks default to on");
+        check(out.updateSkipVersion.empty(), "nothing is skipped");
+        checkInt("with no warning", 0, report.warnings);
+        check(!report.messages.empty() && report.messages[0].find("version 8") != std::string::npos,
+              "and the report says which version it migrated from");
+        out.updateCheck = false;
+        out.updateSkipVersion = "1.2.3";
+        settings::UserSettings back;
+        check(parses(settings::serialize(out), back, error),
+              "the update settings round-trip: " + error);
+        check(!back.updateCheck, "check = off comes back");
+        checkStr("the skipped version comes back", "1.2.3", back.updateSkipVersion);
+        check(back == out, "and nothing else moves");
+        check(settings::serialize(out).find("check = off") != std::string::npos,
+              "serialize writes the row's value");
+        settings::UserSettings bad;
+        settings::LoadReport badReport;
+        check(settings::parse(currentVersionLine() + "[game]\ninstall_dir =\n"
+                              "[update]\nskip_version = 1.2\n", bad, error,
+                              badReport),
+              "a malformed skip_version is a value error, not a rejected file: " + error);
+        check(bad.updateSkipVersion.empty(), "and nothing is skipped");
+        checkInt("with one warning", 1, badReport.warnings);
+    }
+
     std::printf("\n-- issue #36: a v3 file keeps every value and gains the game folder key\n");
     {
         // A v3 document as v3 wrote it — including the toon toggle ON, which is the value a

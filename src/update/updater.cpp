@@ -131,6 +131,15 @@ bool manifestUrlFor(const std::string& overrideUrl, std::string* url, std::strin
     return true;
 }
 
+std::string resolvedManifestUrl() {
+    const char* overrideUrl = std::getenv("DAYBREAK_UPDATE_URL");
+    std::string url;
+    if (!manifestUrlFor(overrideUrl != nullptr ? overrideUrl : "", &url, nullptr)) {
+        return kDefaultManifestUrl;
+    }
+    return url;
+}
+
 // --- journal ------------------------------------------------------------------------
 
 enum class OperationKind { Add, Replace, Delete };
@@ -418,6 +427,7 @@ CheckResult check(const CheckSettings& settings) {
         return result;
     }
     result.status = CheckStatus::Available;
+    result.manifest = manifest;
     result.version = manifest.version;
     result.notes = manifest.notes;
     result.archive = archive.archive;
@@ -486,6 +496,7 @@ ApplyResult apply(const ApplySettings& settings) {
         }
     }
 
+    if (settings.phase) settings.phase(ApplyPhase::Downloading);
     std::vector<std::uint8_t> archiveBytes;
     if (settings.fetchArchive) {
         if (!settings.fetchArchive(archiveInfo, &archiveBytes, &result.error)) {
@@ -509,8 +520,7 @@ ApplyResult apply(const ApplySettings& settings) {
         }
         plat::HttpRequest request;
         request.url = archiveUrlFor(
-            settings.manifestUrl.empty() ? std::string(kDefaultManifestUrl)
-                                         : settings.manifestUrl,
+            settings.manifestUrl.empty() ? resolvedManifestUrl() : settings.manifestUrl,
             settings.manifest.version, archiveInfo.archive);
         request.maxBytes = archiveInfo.size;
         const plat::HttpResult http = plat::httpGet(
@@ -561,6 +571,7 @@ ApplyResult apply(const ApplySettings& settings) {
     }
 
     // Stage, then prove the staged tree against the manifest the archive carries.
+    if (settings.phase) settings.phase(ApplyPhase::Verifying);
     if (!platform::makeDirectories(staged, &result.error)) return result;
     std::vector<std::string> archiveFiles;
     if (!extractArchive(archiveBytes, staged, &archiveFiles, &result.error)) {
@@ -669,6 +680,7 @@ ApplyResult apply(const ApplySettings& settings) {
                   return left.path < right.path;
               });
 
+    if (settings.phase) settings.phase(ApplyPhase::Installing);
     const std::string manifestSha =
         sha256Hex(stagedManifestText.data(), stagedManifestText.size());
     if (!platform::writeFileAtomically(
