@@ -98,5 +98,6 @@ Online play is compatible with 0.2.1: the network protocol did not change.
 ## SHA-256
 
 ```
-SHA256-PLACEHOLDER
+36f8e308cc3b36be8b8550bfc61d9f46afb5bda1942b400cd93758ca7a313a29  daybreak-1.0.0-linux-x86_64.tar.gz
+5a751a33aa76e92d447221f4bd9bc110e1e1a8b9086dc0320631b490a684c162  daybreak-1.0.0-6c83505-windows-x86_64.zip
 ```
