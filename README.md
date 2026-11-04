@@ -71,8 +71,8 @@ An update replaces only the remake's own files. Your game files, your settings a
 texture packs stay where they are. If an update fails, the old version keeps working, and
 you can download the new release from the Releases page by hand.
 
-Players on 0.2.x need to download the first stable release once by hand; after that the
-game can update itself.
+Players on 0.2.x had no updater, so they download 1.0.0 once by hand; from then on the game
+keeps itself up to date.
 
 ## Playing online
 
