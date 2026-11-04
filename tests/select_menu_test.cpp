@@ -363,7 +363,7 @@ int main() {
     }
     // Issue #106: the online selection, which no other case here runs. Two pads play as two
     // players; the panels nobody takes become COMs, and the hand-off out of the selection records
-    // who plays each seat.",1)
+    // who plays each seat.
     {
         ui::FrontendState claim;
         claim.onlineHumans = 2;
@@ -400,6 +400,5 @@ int main() {
     }
 
     std::printf("select_menu_test: %d failures\n",failures);
-    
     return failures ? 1 : 0;
 }

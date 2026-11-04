@@ -131,8 +131,8 @@ int main() {
     // every COM as -1, and both machines' plans identical.
     const int seatOfPanel[4] = {0, -1, 1, -1};
     for (int panel = 0; panel < 4; ++panel) CHECK(plan.slots[panel].peer == seatOfPanel[panel]);
-    // The verdict the screens get from a battle: a seat the core drives is COM, and a remote
-    // player's chords are prepared on their own machine, so it keeps their name.
+    // The verdict the screens get from a battle: a seat the core plays as a CPU is COM, while a
+    // player's own input only ever reaches the core, so it keeps their name.
     CHECK(std::strcmp(ui::participantLabel(roster[0], true), "COM") == 0);
     CHECK(std::strcmp(ui::participantLabel(roster[0], false), "1P") == 0);
     CHECK(ui::seatCell(roster[0], false) == 0 && ui::seatCell(roster[0], true) == 4);
