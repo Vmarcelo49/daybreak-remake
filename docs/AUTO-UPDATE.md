@@ -323,12 +323,14 @@ first appears; no frame waits for it. It never runs when:
   `tools/fingerprints.sh` sets it too.
 
 The result waits until the player is on the title screen; no other screen offers an
-update. The notice sits at the lower left, in the existing panel style:
+update. The notice is a near-opaque banner across the logo, in the existing panel style,
+and it takes the input as soon as it appears (the owner's review: an update must not be
+missable):
 
 * **Available** — "Version X.Y.Z is available": **Update**, **Release notes**
   (`SDL_OpenURL`), **Later** (hidden until the next launch) and **Skip this version**
-  (writes `skip_version`). Down from the last title item moves into the notice; up or
-  cancel moves back, and the title menu keeps its own cursor machine until then.
+  (writes `skip_version`), in two rows. Up or cancel goes back to the title menu; Down at
+  the last title item returns to the notice.
 * **ManualOnly** — "This update must be downloaded manually" + **Open release page**.
 * **Unavailable** (no libcurl) — "Updates need libcurl" + **Open release page**, once.
 * **Failed**, **UpToDate**, **Skipped**, an untrusted signature — nothing but one log line.
