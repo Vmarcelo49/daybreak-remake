@@ -171,7 +171,7 @@ void reportMatchViews(const App& app, uint32_t width, uint32_t height) {
             const ui::Participant& p = app.participants[i];
             std::printf("[split]   p%d panel=%d team=%d %s %s role=%s fighter=%d visible=%d "
                         "target=%d incoming=%d reticle=%d hp=%.0f ring=(%.0f,%.0f)\n",
-                        i, p.panel, p.team, ui::participantLabel(p, seatDrivenByCore(app, p)), p.combo().c_str(),
+                        i, p.panel, p.team, ui::participantLabel(p, seatCpuDriven(app, p)), p.combo().c_str(),
                         f.role == ui::HudFighterRole::Owner
                             ? "owner"
                             : (f.role == ui::HudFighterRole::Ally ? "ally" : "enemy"),

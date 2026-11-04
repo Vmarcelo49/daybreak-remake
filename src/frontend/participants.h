@@ -110,33 +110,34 @@ inline const char* controllerLabel(int controller) {
     }
 }
 
-// A screen has no battle to ask, so it assumes the core drives a seat this machine does not own.
-// The HUD and the evidence line ask the battle instead, which is the only way to hear a player
-// leave mid-match.
-inline bool seatDrivenWithoutBattle(const Participant& p) { return p.remote() ? false : !p.local || !p.human(); }
+// A screen has no battle to ask whether the core plays a seat, so it answers with what the
+// selection recorded: only this machine's own player is a seat a person plays, and every other
+// seat reads COM. The HUD and the evidence line ask the battle instead, which is the only way to
+// hear a player leave mid-match.
+inline bool seatCpuDrivenWithoutBattle(const Participant& p) { return !p.local || !p.human(); }
 
 // The controller that names a seat: this machine's player by its own controller, a player on
-// another machine by the controller they chose there, and COM once the core drives the fighter
-// itself (issue #106). `driven` is the core's own answer to that last question — a CPU's bank is
-// prepared only for a fighter the core runs, while a remote player's chords are prepared on their
-// own machine — so it is right on the tick it changes, including a player who leaves mid-match.
+// another machine by the controller they chose there, and COM once the core plays the fighter
+// itself (issue #106). `cpuDriven` is the battle's own answer to that last question — the core
+// replaces a CPU seat's input with its own decision and never replaces a human's — so it is right
+// on the tick it changes, including a player who leaves mid-match and a human slot handed over.
 //
 // One rule for every place that names a fighter — the VS caption, the result badge, the HUD tag
 // and the evidence line — so those four cannot drift apart. A two-player room reads "1P" and "2P"
 // on both machines: the original's own vocabulary, which has no other machine to name (PORT RULE).
-inline int seatController(const Participant& p, bool driven) {
-    if (driven) return 4;
+inline int seatController(const Participant& p, bool cpuDriven) {
+    if (cpuDriven) return 4;
     if (p.remote()) return std::clamp(p.peer, 0, 3);
     return p.local ? std::clamp(p.controller, 0, 4) : 4;
 }
 
-inline const char* participantLabel(const Participant& p, bool driven) {
-    return controllerLabel(seatController(p, driven));
+inline const char* participantLabel(const Participant& p, bool cpuDriven) {
+    return controllerLabel(seatController(p, cpuDriven));
 }
 
 // The tag atlas numbers its cells as the label does (0..3 are 1P..4P, 4 is COM), and the result
 // badge sheet's cells are in the same order.
-inline int seatCell(const Participant& p, bool driven) { return seatController(p, driven); }
+inline int seatCell(const Participant& p, bool cpuDriven) { return seatController(p, cpuDriven); }
 
 inline const char* teamLabel(int team) { return team == 0 ? "BLUE" : "RED"; }
 

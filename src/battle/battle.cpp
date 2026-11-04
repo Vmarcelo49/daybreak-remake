@@ -404,7 +404,7 @@ void Battle::setHearingSlot(unsigned slot) {
 
 bool Battle::slotIsCpu(unsigned slot) const { return m_impl->roster.owner.at(slot) >= 4; }
 
-bool Battle::slotHasInputBank(unsigned slot) const { return m_impl->combat.actor_has_input_bank(slot); }
+bool Battle::slotCpuDriven(unsigned slot) const { return m_impl->combat.actor_cpu_driven(slot); }
 
 std::uint64_t Battle::stateHash() const {
     std::uint64_t digest = 1469598103934665603ull;

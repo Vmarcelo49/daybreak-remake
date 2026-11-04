@@ -210,7 +210,7 @@ public:
                 // The seat's badge, by the same rule the VS caption and the HUD tag use: a
                 // remote player's badge is the controller they chose (issue #106).
                 const Participant& p = participants_[i];
-                const int controller = seatController(p, seatDrivenWithoutBattle(p));
+                const int controller = seatController(p, seatCpuDrivenWithoutBattle(p));
                 batch.pushSprite(systemSheet_,{controller*64.f,384,64,32},0,0,row.badgeX,row.badgeY);
                 drawText(batch,rowLayout_[i],row.textX,row.textY,.5f);
                 drawText(batch,titleLayout_[i],row.textX,row.titleY,resultTitleScale(titleLayout_[i].width(1.f)));
