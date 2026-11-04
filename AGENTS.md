@@ -15,11 +15,11 @@ and byte-identity with it is not a goal. The target is faithful **behaviour**.
 Original-runtime parity is a separate claim, requiring original-runtime evidence.
 A claim that cannot name its evidence tier, scope and limitations is not a result.
 
-## Current state (2026-10-31)
+## Current state (2026-11-04)
 
 **Playable, locally and online, with no known blocker.** The native build runs the whole loop: title,
-story, versus, character select, battle, results, options and network play. 0.2.1 is out as a
-pre-release for testers.
+story, versus, character select, battle, results, options and network play. 1.0.0 is the
+first stable release, and the game updates itself from then on.
 
 | Area | State | Where |
 |---|---|---|
