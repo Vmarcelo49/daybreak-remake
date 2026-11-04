@@ -1,3 +1,4 @@
+#include "frontend/screen_online.h"
 #include "frontend/screen_select.h"
 #include "frontend/frontend_launch.h"
 #include "assets/asset_source.h"
@@ -360,6 +361,44 @@ int main() {
         cleanMenu.update(confirm);
         check(cleanState.slots[0].costume == 0, "an unflagged panel keeps its costume");
     }
+    // Issue #106: the online selection, which no other case here runs. Two pads play as two
+    // players; the panels nobody takes become COMs, and the hand-off out of the selection records
+    // who plays each seat.
+    {
+        ui::FrontendState claim;
+        claim.onlineHumans = 2;
+        ui::SelectMenu claimMenu(claim);
+        ui::SelectAction action = ui::SelectAction::None;
+        for (uint64_t t = 0; t <= 200 && action != ui::SelectAction::Stage; ++t) {
+            claimMenu.tick();
+            ui::ScreenInput step;
+            step.separatePlayers = true;
+            for (int c = 0; c < 2; ++c) {
+                const auto pad = fnd::input::syntheticMenuPadState(c, t);
+                auto& buttons = step.players[c];
+                buttons.up = pad.up; buttons.down = pad.down;
+                buttons.left = pad.left; buttons.right = pad.right;
+                buttons.upHeld = pad.up; buttons.downHeld = pad.down;
+                buttons.leftHeld = pad.left; buttons.rightHeld = pad.right;
+                buttons.confirm = pad.confirm; buttons.cancel = pad.cancel;
+            }
+            action = claimMenu.updateFrame(step);
+        }
+        check(action == ui::SelectAction::Stage && claim.stagePage, "two online pads reach the stage page");
+        // The two pads had a seat each; the two free panels are COMs.
+        check(claim.slots[0].controller == 0 && claim.slots[1].controller == 1,
+              "the players' own panels keep their controllers");
+        check(claim.slots[2].controller == 4 && claim.slots[3].controller == 4,
+              "the panels nobody took are COMs");
+        // The hand-off names every seat on the way out, and gives this machine its perspective.
+        net::MatchPlan plan;
+        ui::onlineHandoff(claim.slots, plan, 0);
+        check(plan.slots[0].peer == 0 && plan.slots[1].peer == 1 && plan.slots[2].peer == -1,
+              "the plan records who plays each seat");
+        check(claim.slots[0].controller == 0 && claim.slots[1].controller == 4,
+              "this machine keeps only its own player on a controller");
+    }
+
     std::printf("select_menu_test: %d failures\n",failures);
     return failures ? 1 : 0;
 }

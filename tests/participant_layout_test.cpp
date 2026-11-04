@@ -6,6 +6,7 @@
 #include <cstring>
 #define CHECK(condition) do { if (!(condition)) { std::fprintf(stderr,"%s:%d: %s\n",__FILE__,__LINE__,#condition); return 1; } } while (false)
 #include "frontend/participants.h"
+#include "frontend/screen_online.h"
 #include "frontend/screen_result.h"
 
 static ui::FrontendState twoVsTwo() {
@@ -99,6 +100,71 @@ int main() {
     CHECK(ui::resultRowsRevealed(60) == 1);
     CHECK(ui::resultRowsRevealed(120) == 3);
     CHECK(ui::resultRowsRevealed(150) == 4 && ui::resultRowsRevealed(1000) == 4);
+
+    // Issue #106: online, each machine keeps only its own player on a controller and sends every
+    // other seat to the COM sentinel — which is what once made remote players show as COM. The
+    // seat says who is who, and a COM is still a COM.
+    // Peers 0 and 1 took panels 0 and 2 (the order a two-player room fills them in). Before the
+    // hand-off, from the selection screen.
+    ui::FrontendState online;
+    online.slots[0] = {0, 1, 0, 0, 0, false};   // peer 0's player
+    online.slots[2] = {4, 0, 0, 0, 1, false};   // peer 1's player
+    online.slots[1] = {1, 0, 0, 0, 4, false};   // COMs, character 1 and 2
+    online.slots[3] = {2, 0, 0, 0, 4, false};
+    // The hand-off as frame_loop.inc calls it, on peer 1's machine: the seat is kept, the
+    // controller byte becomes this machine's perspective.
+    net::MatchPlan plan;
+    ui::onlineHandoff(online.slots, plan, 1);
+    count = ui::buildParticipants(online.slots.data(), roster);
+    CHECK(count == 4);
+    // The remote human on panel 0 is the seat the play-test saw labelled COM; the roster is in
+    // panel order, so this machine's own player, on panel 2, is the third entry.
+    CHECK(roster[0].remote() && !roster[0].human() && roster[0].controller == 4);
+    CHECK(roster[2].local && !roster[2].remote() && roster[2].panel == 2 && roster[2].controller == 0);
+    // A two-player room reads 1P and 2P on both machines, and the unused panels stay COM.
+    for (int i : {0, 2}) CHECK(std::strcmp(ui::participantLabel(roster[i], false), "1P") == 0);
+    for (int i : {1, 3}) {
+        CHECK(!roster[i].human() && !roster[i].remote() && roster[i].peer < 0);
+        CHECK(std::strcmp(ui::participantLabel(roster[i], false), "COM") == 0);
+    }
+    // The plan is what the peers agree on: every human seat by the controller its player chose,
+    // every COM as -1, and both machines' plans identical.
+    const int seatOfPanel[4] = {0, -1, 1, -1};
+    for (int panel = 0; panel < 4; ++panel) CHECK(plan.slots[panel].peer == seatOfPanel[panel]);
+    // The verdict the screens get from a battle: a seat the core plays as a CPU is COM, while a
+    // player's own input only ever reaches the core, so it keeps their name.
+    CHECK(std::strcmp(ui::participantLabel(roster[0], true), "COM") == 0);
+    CHECK(std::strcmp(ui::participantLabel(roster[0], false), "1P") == 0);
+    CHECK(ui::seatCell(roster[0], false) == 0 && ui::seatCell(roster[0], true) == 4);
+
+    // The VS caption and the result badge have no battle to ask, so they draw
+    // participantLabel(p, false) and seatController(p, false): checked for a remote seat, a local
+    // seat and a COM seat, seen from each peer of a two-player room (peers 0 and 1 on panels 0, 2).
+    for (int localPeer : {0, 1}) {
+        ui::FrontendState room;
+        room.slots[0] = {0, 1, 0, 0, 0, false};
+        room.slots[2] = {4, 0, 0, 0, 1, false};
+        room.slots[1] = {1, 0, 0, 0, 4, false};
+        room.slots[3] = {2, 0, 0, 0, 4, false};
+        net::MatchPlan roomPlan;
+        ui::onlineHandoff(room.slots, roomPlan, localPeer);
+        ui::Participant seats[ui::kParticipantCount];
+        CHECK(ui::buildParticipants(room.slots.data(), seats) == 4);
+        const ui::Participant& remote = seats[localPeer == 0 ? 2 : 0];
+        const ui::Participant& local = seats[localPeer == 0 ? 0 : 2];
+        const int remotePeer = 1 - localPeer;
+        CHECK(remote.remote() && local.local && local.human());
+        // A remote player is named by the controller they chose there, this machine's player is
+        // its own 1P, and a COM is COM; the badge cell follows the same numbering.
+        CHECK(std::strcmp(ui::participantLabel(remote, false), remotePeer == 0 ? "1P" : "2P") == 0);
+        CHECK(ui::seatController(remote, false) == remotePeer);
+        CHECK(std::strcmp(ui::participantLabel(local, false), "1P") == 0);
+        CHECK(ui::seatController(local, false) == 0);
+        for (int com : {1, 3}) {
+            CHECK(std::strcmp(ui::participantLabel(seats[com], false), "COM") == 0);
+            CHECK(ui::seatController(seats[com], false) == 4);
+        }
+    }
 
     std::puts("participant_layout_test: roster, VS slots, and result rows ok");
     return 0;

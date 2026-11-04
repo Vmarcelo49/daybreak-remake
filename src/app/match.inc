@@ -172,6 +172,13 @@ static void buildMatchRoster(App& app) {
     }
 }
 
+// Whether the core plays a roster entry's fighter itself. A CPU seat is driven here, and so is a
+// human slot the CPU has taken over mid-match; a human seat never is, on this machine or another,
+// because a player's input is supplied to the core, not decided by it (issue #106).
+static bool seatCpuDriven(const App& app, const ui::Participant& p) {
+    return p.fighter >= 0 && app.battle->fighter(p.fighter).cpuDriven();
+}
+
 // One HUD entry per roster entry: the participant's MatchConfig index, or -1 when the slot
 // has no participant (a 1v1 fills entries 0 and 1, a 2v2 all four).
 static int hudEntryFighter(const App& app, int entry) {
@@ -931,6 +938,13 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
         // us the fighter's team or whether its lock is mutual with this viewer.
         const int lockedTarget = app.battle->locked_target(view.fighter);
         const int viewPulse = app.battle->lock_pulse(view.fighter);
+        // Each seat's tag cell, read once per frame: the seat a player holds is named after that
+        // player, and a fighter the core plays is COM. Read here rather than stored, so a player
+        // who leaves is named COM from the tick the CPU takes the fighter over (issue #106).
+        int seatCells[ui::kParticipantCount] = {};
+        for (int i = 0; i < app.participantCount; ++i)
+            seatCells[app.participants[i].panel] =
+                ui::seatCell(app.participants[i], seatCpuDriven(app, app.participants[i]));
         // One HUD entry per ROSTER entry (issue #13): the participant's own fighter, its
         // team and its controller. A 1v1 fills two, a 2v2 all four.
         for (int i = 0; i < ui::kHudFighterCount; ++i) {
@@ -950,8 +964,10 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
             view.hud.fighters[i].ringPulse =
                 (fighterIndex == lockedTarget) ? viewPulse : 0;
             // Slot 0 is 1P and slot 4 is com in the tag atlas (P01 (320,256,64,32) rows);
-            // the red copies sit four rows down, which is the tagSheet index.
-            view.hud.fighters[i].slot = p.controller;
+            // the red copies sit four rows down, which is the tagSheet index. The tag names the
+            // seat, and names it COM once the core plays the fighter instead of a player
+            // (issue #106).
+            view.hud.fighters[i].slot = seatCells[p.panel];
             view.hud.fighters[i].tagSheet = p.team;
             view.hud.fighters[i].hp = (float)f.hp() / f.max_hp();
             float ghost = 0.f;

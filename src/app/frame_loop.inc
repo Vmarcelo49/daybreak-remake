@@ -74,14 +74,10 @@ static SDL_AppResult tickOnlineSelection(App& state) {
     if (now == ui::ScreenId::VsIntro) {
         // What the selection decided is the same everywhere, and from here each machine sees it
         // as its own: its player on the first controller, and the others as no controller at all.
-        net::MatchPlan& plan = online.matchPlan;
+        // The hand-off keeps each seat's player, which that second step would otherwise erase
+        // (issue #106).
         const int localPeer = online.lobby->local_peer();
-        for (size_t panel = 0; panel < plan.slots.size(); ++panel) {
-            ui::FrontendSlot& slot = app->frontend.slots[panel];
-            plan.slots[panel] = {slot.character, slot.weapon, slot.costume, static_cast<unsigned>(slot.hypermode),
-                                 slot.controller < 4 ? slot.controller : -1};
-            slot.controller = slot.controller == localPeer ? 0 : 4;
-        }
+        ui::onlineHandoff(app->frontend.slots, online.matchPlan, localPeer);
         app->netMenuHeld = {};
     } else if (now != ui::ScreenId::Select) {
         // Someone backed out, and everyone did on the same frame.

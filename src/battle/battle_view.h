@@ -30,6 +30,10 @@ public:
     virtual glm::mat4 modelMatrix() const = 0;
     virtual const gameplay::CharacterMoves* moves() const = 0;
     virtual const gameplay::WeaponDefinition* weapon() const = 0;
+    // Whether the core plays this fighter itself: on its last tick the CPU's decision replaced the
+    // supplied input. False for a human seat, whether that human is here or on another machine,
+    // which is the distinction a seat label needs (issue #106).
+    virtual bool cpuDriven() const = 0;
 
     // State.
     virtual FighterState state() const = 0;

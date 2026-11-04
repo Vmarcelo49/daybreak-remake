@@ -34,6 +34,18 @@ net::Address settingsServer() {
 
 }  // namespace
 
+// Issue #106: the seat's player is only knowable in the selection's own word for it — each slot's
+// controller before the hand-off turns it into this machine's perspective.
+void onlineHandoff(std::array<FrontendSlot, 4>& slots, net::MatchPlan& plan, int localPeer) {
+    for (size_t panel = 0; panel < slots.size(); ++panel) {
+        const FrontendSlot& before = slots[panel];
+        plan.slots[panel] = {before.character, before.weapon, before.costume,
+                             static_cast<unsigned>(before.hypermode),
+                             before.controller < 4 ? before.controller : -1};
+        slots[panel].onlineHandoff(localPeer);
+    }
+}
+
 void onlineMatchNumbers(std::uint32_t& token, std::uint32_t& seed) {
     std::random_device random;
     token = random();

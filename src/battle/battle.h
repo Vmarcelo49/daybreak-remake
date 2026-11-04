@@ -279,6 +279,9 @@ public:
     // Hands a human's slot to the CPU from this tick on. Repeating it changes nothing.
     void handSlotToCpu(unsigned slot);
     bool slotIsCpu(unsigned slot) const;
+    // Whether the core replaced the slot's supplied input with a CPU decision in the last tick it
+    // ran: a fighter the CPU plays here, as opposed to a human seat, local or on another machine.
+    bool slotCpuDriven(unsigned slot) const;
     // Online, every human is in the roster, and this machine hears only its own player's notices.
     void setHearingSlot(unsigned slot);
     void saveState(BattleSnapshot& snapshot) const;

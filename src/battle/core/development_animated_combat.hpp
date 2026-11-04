@@ -679,6 +679,9 @@ public:
     roster_walk_shot_recovered(binding.character,binding.weapon));
  }
  int projectile_input_x(unsigned slot)const{return projectile_input_x_.at(slot);}
+ //Whether 41efe0 replaced actor `slot`'s supplied input with a CPU decision in the frame it last
+ //prepared. A human's held chord also owns a bank, so it is not part of this answer.
+ bool actor_cpu_driven(unsigned slot)const{return (cpu_acquired_mask_&(1u<<slot))!=0;}
  int actor_input_x(unsigned slot,const net::Input& input)const{return cpu_acquired_mask_&(1u<<slot)?cpu_acquired_axes_.at(slot)[0]:human_input_active_.at(slot)?human_inputs_.at(slot).x():input.x;}
  int actor_input_z(unsigned slot,const net::Input& input)const{return cpu_acquired_mask_&(1u<<slot)?cpu_acquired_axes_.at(slot)[1]:human_input_active_.at(slot)?human_inputs_.at(slot).z():input.z;}
  void handoff_native_cpu_input(unsigned actor,KeiichiCpuInput& acquired){

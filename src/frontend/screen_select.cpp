@@ -163,6 +163,10 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
                 // holds the panel there. Issue #45's empty-on-entry selection therefore needs
                 // no special seed case: every fresh panel takes this path.
                 phase = SelectPhase::Character;
+                // The panel belongs to whoever took it from here on. Online, a player can reach
+                // the stage page without pressing anything on a panel of their own, and the
+                // hand-off then numbers the seats by `controller` (issue #106).
+                if (state_.onlineHumans > 0) slot.controller = c;
                 slot.character = 0;
                 const RosterPos seed = rosterPos(0);
                 cursorX_[c] = seed.x;

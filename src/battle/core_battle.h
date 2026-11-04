@@ -19,6 +19,7 @@ public:
     glm::mat4 modelMatrix() const override { return m_world; }
     const gameplay::CharacterMoves* moves() const override { return m_moves; }
     const gameplay::WeaponDefinition* weapon() const override { return m_weapon; }
+    bool cpuDriven() const override { return m_battle && m_battle->slotCpuDriven(m_slot); }
     game::FighterState state() const override { return m_state; }
     bool is_alive() const override { return m_alive; }
     int hp() const override { return m_hp; }
