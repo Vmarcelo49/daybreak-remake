@@ -207,7 +207,9 @@ public:
             const int revealed = timeline_.phase() == ResultPhase::Done ? participantCount_ : resultRowsRevealed(timeline_.frame());
             for (int i = 0; i < participantCount_ && i < revealed; ++i) {
                 const ResultRow row = resultRow(i);
-                const int controller = std::clamp(participants_[i].controller,0,4);
+                // The seat's badge, not this machine's controller byte (issue #106).
+                const Participant& p = participants_[i];
+                const int controller = p.remote() ? 4 : std::clamp(p.controller,0,4);
                 batch.pushSprite(systemSheet_,{controller*64.f,384,64,32},0,0,row.badgeX,row.badgeY);
                 drawText(batch,rowLayout_[i],row.textX,row.textY,.5f);
                 drawText(batch,titleLayout_[i],row.textX,row.titleY,resultTitleScale(titleLayout_[i].width(1.f)));

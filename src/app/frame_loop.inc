@@ -74,13 +74,17 @@ static SDL_AppResult tickOnlineSelection(App& state) {
     if (now == ui::ScreenId::VsIntro) {
         // What the selection decided is the same everywhere, and from here each machine sees it
         // as its own: its player on the first controller, and the others as no controller at all.
+        // The seat is recorded first, because that second step is exactly what would otherwise
+        // leave nothing to say who a remote fighter is (issue #106).
         net::MatchPlan& plan = online.matchPlan;
         const int localPeer = online.lobby->local_peer();
         for (size_t panel = 0; panel < plan.slots.size(); ++panel) {
             ui::FrontendSlot& slot = app->frontend.slots[panel];
             plan.slots[panel] = {slot.character, slot.weapon, slot.costume, static_cast<unsigned>(slot.hypermode),
                                  slot.controller < 4 ? slot.controller : -1};
-            slot.controller = slot.controller == localPeer ? 0 : 4;
+            slot.peer = slot.controller < 4 ? slot.controller : -1;
+            slot.local = slot.controller == localPeer;
+            slot.controller = slot.local ? 0 : 4;
         }
         app->netMenuHeld = {};
     } else if (now != ui::ScreenId::Select) {

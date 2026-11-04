@@ -145,6 +145,14 @@ static glm::mat4 matchRenderMatrix(const App& app, int fighter) {
     return matrix;
 }
 
+// The core owns a fighter's input when a CPU decides for it or a player's chords are held on
+// it; when it owns nothing, that fighter is a COM. So a seat another machine holds but whose
+// fighter runs on the CPU here (a player who left) is a COM, which `controller` cannot say,
+// because the online hand-off gives every remote seat that sentinel on purpose (issue #106).
+static void linkSeatToCore(App& app, ui::Participant& p) {
+    if (p.remote() && p.fighter >= 0 && app.battle->fighter(p.fighter).driven()) p.peer = -1;
+}
+
 // The launch roster (issue #13): the front end's four slots in panel order, or the
 // standalone --match pair (fighters 0/1 on panels 0/1, the historical recipe). `fighter`
 // links a roster entry to its MatchConfig index, which is a different index space.
@@ -154,8 +162,10 @@ static void buildMatchRoster(App& app) {
             ui::buildParticipants(app.frontend.slots.data(), app.participants);
         for (int i = 0; i < app.participantCount; ++i)
             for (int j = 0; j < app.battleLaunch.fighterCount; ++j)
-                if (app.battleLaunch.fighters[j].panel == app.participants[i].panel)
+                if (app.battleLaunch.fighters[j].panel == app.participants[i].panel) {
                     app.participants[i].fighter = j;
+                    linkSeatToCore(app, app.participants[i]);
+                }
         return;
     }
     // Standalone: controller 0 on the device or script, COM on the rest. The character index is
@@ -950,8 +960,10 @@ static void updateMatchViews(App& app, const fnd::input::PlayerState* inputs[4],
             view.hud.fighters[i].ringPulse =
                 (fighterIndex == lockedTarget) ? viewPulse : 0;
             // Slot 0 is 1P and slot 4 is com in the tag atlas (P01 (320,256,64,32) rows);
-            // the red copies sit four rows down, which is the tagSheet index.
-            view.hud.fighters[i].slot = p.controller;
+            // the red copies sit four rows down, which is the tagSheet index. Driven here, a
+            // fighter is on this machine; undriven, it is the COM the core is running, and the
+            // tag says so rather than blaming a seat a player chose (issue #106).
+            view.hud.fighters[i].slot = f.driven() ? p.controller : 4;
             view.hud.fighters[i].tagSheet = p.team;
             view.hud.fighters[i].hp = (float)f.hp() / f.max_hp();
             float ghost = 0.f;

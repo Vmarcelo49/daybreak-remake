@@ -99,11 +99,11 @@ public:
         }
     }
 private:
-    // "Rena 1  1P": the combo label (AGENTS.md rule 7 — never a bare fighter) plus the
-    // controller slot or COM.
+    // "Rena 1  1P": the combo label (AGENTS.md rule 7 — never a bare fighter) plus the seat —
+    // this machine's controller, another machine's player, or COM (issue #106).
     std::string captionFor(int i) const {
         const Participant& p = participants_[i];
-        return p.combo() + "  " + controllerLabel(p.controller);
+        return p.combo() + "  " + participantLabel(p);
     }
     Participant participants_[kParticipantCount];
     VsSlot slots_[kParticipantCount];
