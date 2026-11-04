@@ -21,6 +21,8 @@ struct Options {
     std::string menuScript;
 #ifdef DAYBREAK_UPDATE_TEST_BUILD
     std::string testUpdateKey;  // --test-update-key=<hex>
+    // --open-urls: the live demo asks for the real release page; tests keep the stub.
+    bool openUrls = false;
 #endif
     bool        hudTest = false;   // composite a synthetic HUD into --out captures
     bool        hudProbe = false;  // --hud-probe: corner markers for the placement test

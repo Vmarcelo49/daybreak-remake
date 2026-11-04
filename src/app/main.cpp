@@ -1986,8 +1986,9 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     }
 #if !defined(__EMSCRIPTEN__)
 #ifdef DAYBREAK_UPDATE_TEST_BUILD
-    // Never open a browser from a test run (issue #100); openUrl only logs.
-    ui::setUrlOpenForTest(true);
+    // Tests never open a browser (issue #100); the live demo passes --open-urls to see the
+    // real SDL_OpenURL path.
+    ui::setUrlOpenForTest(!app->opts.openUrls);
 #endif
     app->updateHost = std::make_unique<UpdateHostState>();
     {

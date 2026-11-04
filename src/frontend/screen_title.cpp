@@ -136,34 +136,42 @@ void TitleScreen::draw(SpriteRenderer& batch) const {
 void TitleScreen::drawNotice(SpriteRenderer& batch) const {
     const UpdateNotice& notice = notice_.notice();
     const int choices = updateNoticeChoiceCount(notice);
-    // The title item cells are drawn with pivot 96 at x=400, so they start at x=304; the
-    // panel stays clear of them, and its height fits the two text rows (owner review).
-    constexpr float kLeft = 8.f, kRight = 296.f, kPad = 12.f;
-    constexpr float kLineHeight = 20.f, kRowHeight = 24.f, kGap = 6.f;
-    const float rows = choices > 0 ? 2.f : 0.f;
-    const float height = kPad + kLineHeight + (choices > 0 ? kGap + rows * kRowHeight : 0.f) +
-                         kPad;
-    const float top = 592.f - height;
-    batch.pushSolid({kLeft, top, kRight - kLeft, height}, kPanel);
+    // A banner over the logo (owner review): large, centred, unmissable, and clear of the
+    // menu cells that start at y=285.
+    constexpr float kLeft = 70.f, kRight = 730.f, kTop = 36.f;
+    const float height = choices > 0 ? 176.f : 96.f;
+    // Nearly opaque: the banner sits over the logo, and a translucent panel let the bright
+    // logo glyphs through the text (owner review).
+    batch.pushSolid({kLeft, kTop, kRight - kLeft, height},
+                    UiColor{0.03f, 0.04f, 0.09f, 1.f});
+    batch.pushSolid({kLeft, kTop, kRight - kLeft, 3.f}, kGold);
     if (!faceLoaded_) return;
-    const std::string line = updateNoticeLine(notice);
-    face_.draw(batch, line.c_str(), kLeft + kPad, top + kPad - 2.f, 14.f / 64.f, kWhite,
-               1.1f);
+    const auto text = [&](const char* value, float y, float size, UiColor colour) {
+        const float width = face_.width(value) * size / 64.f;
+        face_.draw(batch, value, 400.f - width / 2.f, y, size / 64.f, colour, 1.2f);
+    };
+    text(updateNoticeLine(notice).c_str(), kTop + 18.f, 24.f, kWhite);
     if (choices == 0) return;
-    // Two rows of two, so "Release notes" and "Skip this version" fit the free column.
-    float x = kLeft + kPad;
-    float y = top + kPad + kLineHeight + kGap;
-    for (int i = 0; i < choices; ++i) {
-        if (i == 2) {
-            x = kLeft + kPad;
-            y += kRowHeight;
+    // Two centred rows of two large choices, each with the same highlight the menus use.
+    const int perRow[2] = {2, 2};
+    for (int row = 0; row < 2; ++row) {
+        float total = 0.f;
+        for (int i = 0; i < perRow[row]; ++i) {
+            const int choice = row * 2 + i;
+            total += face_.width(updateNoticeChoiceLabel(notice, choice)) * 20.f / 64.f;
         }
-        const char* label = updateNoticeChoiceLabel(notice, i);
-        const float width = face_.width(label) * 13.f / 64.f;
-        const bool selected = noticeFocus_ && notice_.selected() == i;
-        if (selected) batch.pushSolid({x - 5.f, y - 4.f, width + 10.f, 21.f}, kHighlight);
-        face_.draw(batch, label, x, y, 13.f / 64.f, selected ? kWhite : kPale, 1.1f);
-        x += width + 16.f;
+        total += 40.f * (perRow[row] - 1);
+        float x = 400.f - total / 2.f;
+        const float y = kTop + 74.f + row * 54.f;
+        for (int i = 0; i < perRow[row]; ++i) {
+            const int choice = row * 2 + i;
+            const char* label = updateNoticeChoiceLabel(notice, choice);
+            const float width = face_.width(label) * 20.f / 64.f;
+            const bool selected = noticeFocus_ && notice_.selected() == choice;
+            if (selected) batch.pushSolid({x - 10.f, y - 6.f, width + 20.f, 34.f}, kHighlight);
+            face_.draw(batch, label, x, y, 20.f / 64.f, selected ? kWhite : kPale, 1.2f);
+            x += width + 40.f;
+        }
     }
 }
 

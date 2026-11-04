@@ -118,7 +118,15 @@ public:
     // The host hands the worker's result here (issue #100, step 4). Every result that is
     // worth interrupting a player for becomes a notice; Failed, UpToDate, Skipped and an
     // untrusted signature never reach the screen.
-    void setUpdateNotice(const UpdateNotice& notice) override { notice_.set(notice); }
+    void setUpdateNotice(const UpdateNotice& notice) override {
+        notice_.set(notice);
+        // The owner's call: the notice is a banner over the logo and takes the input as
+        // soon as it appears, so an update is never missed. Up/cancel goes back to the menu.
+        if (updateNoticeChoiceCount(notice) > 0) {
+            noticeFocus_ = true;
+            notice_.focus(true);
+        }
+    }
     bool updateNoticeVisible() const override { return notice_.visible(); }
     // The device-free frontend test drives the notice without a GPU.
     const UpdateNoticeMenu& updateNotice() const { return notice_; }

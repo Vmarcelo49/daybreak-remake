@@ -108,7 +108,9 @@ def main():
                         "--launch=daybreak-bin"], check=True, stdout=subprocess.DEVNULL)
         install = fixtures.make_install(stage, root / "install", game_dir)
 
-        into_notice = "WAIT 25\nUP\nWAIT 3\nDOWN\nWAIT 3\n"
+        # The banner takes the input as soon as it appears (owner review), so the scripts
+        # start from it being focused; UP goes back to the menu.
+        into_notice = "WAIT 25\n"
         steps = [
             ("update-notice-available-en", "", "en"),
             ("update-notice-available-ja", "", None),
@@ -165,9 +167,9 @@ def main():
             return 1
         # Back up into the menu, move the menu, and confirm it still works (item 4 is
         # KeyConfig, whose scene name proves the menu responded).
-        # Back up into the menu and move the selection to item 0 (Story), whose scene is
-        # "opening": the log proves the menu responded without needing the Options art.
-        back = into_notice + "UP\nWAIT 3\n" + "UP\nWAIT 2\n" * 5
+        # Back to the menu (item 0), move down to 1 and back up to 0, then confirm Story:
+        # the log proves the menu responded after the notice.
+        back = into_notice + "UP\nWAIT 3\nDOWN\nWAIT 3\nUP\nWAIT 3\n"
         capture(install, binary, "update-notice-back-to-menu-en", back, "en", frames=44)
         _, log = capture(install, binary, "update-notice-menu-confirm-en",
                          back + "CONFIRM\nWAIT 3\n", "en", frames=120)

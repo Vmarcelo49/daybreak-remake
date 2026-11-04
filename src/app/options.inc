@@ -417,6 +417,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--menu-script=")).empty()) o.menuScript = v;
 #ifdef DAYBREAK_UPDATE_TEST_BUILD
         else if (!(v = val("--test-update-key=")).empty()) o.testUpdateKey = v;
+        else if (a == "--open-urls") o.openUrls = true;
 #endif
         else if (a == "--list") o.list = true;
         else if (a == "--hud-test") o.hudTest = true;

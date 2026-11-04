@@ -183,7 +183,7 @@ void UpdateScreen::draw(SpriteRenderer& batch) const {
 }
 
 void UpdateScreen::drawProgress(SpriteRenderer& batch) const {
-    frame(batch, {"アップデート", "UPDATE"}, 180, 420);
+    frame(batch, {"アップデート", "UPDATE"}, 190, 400);
     const int phase = phase_.load();
     const bool restarting = relaunchReady_ || previewRestarting_;
     const char* phaseText = restarting
@@ -193,7 +193,7 @@ void UpdateScreen::drawProgress(SpriteRenderer& batch) const {
             : phase == static_cast<int>(update::ApplyPhase::Verifying)
                 ? say({"確認中", "Verifying"})
                 : say({"インストール中", "Installing"});
-    centred(batch, phaseText, 400, 238, 24.f, kWhite);
+    centred(batch, phaseText, 400, 252, 28.f, kWhite);
     if (phase == static_cast<int>(update::ApplyPhase::Downloading) ||
         phase == static_cast<int>(update::ApplyPhase::Verifying)) {
         const std::uint64_t done = received_.load();
@@ -205,12 +205,12 @@ void UpdateScreen::drawProgress(SpriteRenderer& batch) const {
         } else {
             std::snprintf(line, sizeof line, "%s", "");
         }
-        centred(batch, line, 400, 282, 18.f, kPale);
+        centred(batch, line, 400, 296, 20.f, kPale);
         const float fraction = total > 0
             ? std::clamp(float(done) / float(total), 0.f, 1.f)
             : 0.f;
-        batch.pushSolid({250, 318, 300, 10}, kTrack);
-        batch.pushSolid({250, 318, 300.f * fraction, 10}, kGold);
+        batch.pushSolid({230, 332, 340, 12}, kTrack);
+        batch.pushSolid({230, 332, 340.f * fraction, 12}, kGold);
     }
     const bool cancellable = !restarting &&
         phase != static_cast<int>(update::ApplyPhase::Installing);
@@ -223,15 +223,15 @@ void UpdateScreen::drawProgress(SpriteRenderer& batch) const {
 void UpdateScreen::drawFailure(SpriteRenderer& batch) const {
     frame(batch, {"アップデート", "UPDATE"}, 180, 480);
     centred(batch, say({"更新できませんでした", "The update could not be installed"}), 400,
-            230, 24.f, kWhite);
-    centred(batch, updateFailureReasonText(failure_), 400, 278, 20.f, kGold);
+            248, 24.f, kWhite);
+    centred(batch, updateFailureReasonText(failure_), 400, 294, 20.f, kGold);
     centred(batch, say({"以前のバージョンはそのまま動きます",
                         "The old version keeps working"}),
-            400, 320, 17.f, kPale);
+            400, 334, 17.f, kPale);
     const char* choices[] = {say({"戻る", "Back"}),
                              say({"公開ページを開く", "Open release page"})};
     for (int i = 0; i < 2; ++i) {
-        const float y = 392.f + 36.f * i;
+        const float y = 394.f + 36.f * i;
         centred(batch, choices[i], 400, y, 18.f, choice_ == i ? kGold : kPale);
         if (choice_ == i) {
             const float width = widthOf(choices[i], 18.f);
