@@ -145,7 +145,8 @@ ScreenId UpdateScreen::update(const ScreenInput& in) {
         }
     }
     if (failed_) {
-        if (in.left || in.right) {
+        // The choices are stacked, so up/down move between them (left/right still work).
+        if (in.up || in.down || in.left || in.right) {
             choice_ = 1 - choice_;
             sound_ = 2;
         }
@@ -238,7 +239,7 @@ void UpdateScreen::drawFailure(SpriteRenderer& batch) const {
             batch.pushSolid({400.f - width / 2.f, y + 24.f, width, 2.f}, kGold);
         }
     }
-    help(batch, say({"←→ で選択 ／ 決定で実行", "Left and right choose; confirm runs"}));
+    help(batch, say({"↑↓ で選択 ／ 決定で実行", "Up and down choose; confirm runs"}));
 }
 
 std::unique_ptr<Screen> makeUpdateScreen(SpriteRenderer& batch, const UpdateLaunch& launch,
