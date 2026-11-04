@@ -4,8 +4,8 @@
 // this pins both to a real battle rather than to a reading of the code:
 //   * the core's own verdict, `FighterView::driven()` — a CPU bank or a player's held chords;
 //   * the seat, `ui::Participant::remote()` / `participantLabel()`, which the VS hand-off fills.
-// A seat with an input bank is driven here; a seat on another machine is a player even
-// without one; a fighter nobody plays must read COM in the labels and have no bank.
+// A seat with an input bank is driven here; a seat on another machine is a player; a fighter
+// nobody plays reads COM in the labels, and a CPU the core runs is driven.
 // Tier 4 at most: our own build, and nothing about the original, which has no online mode.
 #include <cstdio>
 #include <cstdlib>
@@ -15,6 +15,7 @@
 
 #include "battle/core_battle.h"
 #include "frontend/participants.h"
+#include "frontend/screen_online.h"
 
 namespace {
 
@@ -46,34 +47,36 @@ void test_labels(const std::string& game) {
 
     // The four seats exactly as the online hand-off leaves them on one machine: peers 0 and 1
     // took panels 0 and 2, this is peer 1's machine, and panels 1 and 3 are COMs.
-    ui::FrontendSlot slots[4];
-    slots[0].character = 0;
-    slots[0].controller = 0;
-    slots[2].character = 4;
-    slots[2].controller = 1;
-    slots[1].character = 1;
-    slots[3].character = 2;
-    for (ui::FrontendSlot& slot : slots) {
-        slot.peer = slot.controller < 4 ? slot.controller : -1;
-        slot.local = slot.controller == 1;
-        slot.controller = slot.local ? 0 : 4;
-    }
+    ui::FrontendState online;
+    online.slots[0] = {0, 0, 0, 0, 0, false};
+    online.slots[2] = {4, 0, 0, 0, 1, false};
+    online.slots[1] = {1, 0, 0, 0, 4, false};
+    online.slots[3] = {2, 0, 0, 0, 4, false};
+    net::MatchPlan plan;
+    ui::onlineHandoff(online.slots, plan, 1);
     ui::Participant roster[ui::kParticipantCount];
-    const int count = ui::buildParticipants(slots, roster);
+    const int count = ui::buildParticipants(online.slots.data(), roster);
     check(count == 4, "the selection yields four seats");
 
     // Which core slot each panel's roster entry is, as the host's launch does it.
     int fighterOf[4] = {0, 1, 2, 3};
     for (int i = 0; i < count; ++i) roster[i].fighter = fighterOf[roster[i].panel];
 
-    check(std::strcmp(ui::participantLabel(roster[0]), "1P") == 0, "a player on another machine is 1P, not COM");
-    check(std::strcmp(ui::participantLabel(roster[2]), "1P") == 0, "this machine's player is 1P");
-    check(std::strcmp(ui::participantLabel(roster[1]), "COM") == 0 &&
-          std::strcmp(ui::participantLabel(roster[3]), "COM") == 0, "a fighter nobody plays is COM");
+    check(std::strcmp(ui::participantLabel(roster[0], false), "1P") == 0, "a player on another machine is 1P, not COM");
+    check(std::strcmp(ui::participantLabel(roster[2], false), "1P") == 0, "this machine's player is 1P");
+    check(std::strcmp(ui::participantLabel(roster[1], false), "COM") == 0 &&
+          std::strcmp(ui::participantLabel(roster[3], false), "COM") == 0, "a fighter nobody plays is COM");
+    // The round is pre-match: the fixtures are CPU, so their banks are prepared here from the
+    // first tick, and the label reads COM for them while the human seats keep their names.
+    for (int t = 0; t < 4; ++t) battle.advance(sim::Inputs{});
+    check(battle.fighter(1).driven(), "a COM the core runs is driven from the first tick");
+    check(std::strcmp(ui::participantLabel(roster[1], battle.fighter(1).driven()), "COM") == 0,
+          "a seat whose CPU runs it is COM");
 
-    // The core has prepared no bank for anyone yet, so nothing here is driven.
-    check(!battle.fighter(0).driven(), "an untouched fighter has no bank");
-    check(roster[0].remote() && roster[0].human(), "the remote seat is a human that this machine does not drive");
+    // Nothing has been advanced yet, so no seat has a bank: every label is the seat's own, and
+    // the HUD takes that for a remote player, never for a COM.
+
+    check(roster[0].remote() && !roster[0].human(), "the remote seat is a player this machine does not drive");
 
     // A held chord gives one fighter a bank, and the core reports it for that fighter.
     sim::Inputs inputs{};

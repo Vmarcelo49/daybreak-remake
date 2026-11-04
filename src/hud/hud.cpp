@@ -343,8 +343,9 @@ void HudComposer::composeFighters(SpriteRenderer& batch, const HudState& st, con
                                   f.ringX, f.ringY, ring.scale, ring.secondDeg, white);
         }
         // draw_battle_overhead_hud, for every other fighter: frame, the lagging fill, the live
-        // one, then the tag cell. The tag is the panel's controller, so a 2v2 shows at a glance
-        // who is human and who is COM.
+        // one, then the tag cell. The tag is the fighter's seat — its controller, another
+        // machine's player, or COM once the core drives it — so a match shows at a glance who is
+        // who (issue #106).
         if (f.visible) {
             battleAtlas_.draw(batch, f.allyBar ? HudIcon::ComBarFrameAlly : HudIcon::ComBarFrame, f.barX, f.barY, 1.f, 0.f, white);
             battleAtlas_.fill(batch, f.allyBar ? HudIcon::ComBarFillGhostAlly : HudIcon::ComBarFillGhost, f.hpLag, f.barX, f.barY);

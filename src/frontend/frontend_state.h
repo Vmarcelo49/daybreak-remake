@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 
+namespace net { struct MatchPlan; }
 namespace ui {
 // FUN_00409340 panel geometry: 0/1 blue, 2/3 red. The 1v1 match uses upper panels.
 inline constexpr int kFrontendBattleSlots[2] = {0, 2};
@@ -18,7 +19,16 @@ struct FrontendSlot {
     // find inputs — so the controller byte alone cannot tell a remote player from a COM.
     int peer = -1;
     bool local = true;
+    // The VS hand-off (src/app/frame_loop.inc), the one place a seat becomes local or remote.
+    void onlineHandoff(int localPeer);
 };
+// Issue #106: the seat's player is only knowable before this rewrite, which is why it is kept.
+// An untouched seat keeps the COM sentinel it was heading for.
+inline void FrontendSlot::onlineHandoff(int localPeer) {
+    peer = controller < 4 ? controller : -1;
+    local = controller == localPeer;
+    controller = local ? 0 : 4;
+}
 struct ResultSlotStats { int kos = 0, deaths = 0, damageDealt = 0, damageTaken = 0; };
 struct OnlineContext;
 struct FrontendState {
@@ -92,4 +102,9 @@ struct FrontendState {
     std::array<std::string, 4> resultTitleText{};
     std::array<bool, 4> penaltyDecided{{false, false, false, false}};
 };
+
+// Online, the selection every machine agreed on, as one machine experiences it: the same slots,
+// with this machine's player on 1P, and every other seat's controller recorded (issue #106). The
+// plan's own word for who plays a seat is that player's controller.
+void onlineHandoff(std::array<FrontendSlot, 4>& slots, net::MatchPlan& plan, int localPeer);
 }

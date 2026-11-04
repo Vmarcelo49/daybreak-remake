@@ -59,6 +59,7 @@ static bool initMatch(App& app);
 static glm::vec3 matchRenderPosition(const App& app, int fighter);
 static glm::mat4 matchRenderMatrix(const App& app, int fighter);
 static void buildMatchRoster(App& app);
+static bool seatDrivenByCore(const App& app, const ui::Participant& p);
 static int hudEntryFighter(const App& app, int entry);
 static void projectViewHud(const App& app, const float viewProj[16], float width, float height, ui::HudState& hud);
 static void buildFrameViews(App& app, uint32_t width, uint32_t height, std::vector<FrameView>& out);

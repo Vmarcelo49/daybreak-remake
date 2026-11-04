@@ -103,7 +103,7 @@ private:
     // this machine's controller, another machine's player, or COM (issue #106).
     std::string captionFor(int i) const {
         const Participant& p = participants_[i];
-        return p.combo() + "  " + participantLabel(p);
+        return p.combo() + "  " + participantLabel(p, seatDrivenWithoutBattle(p));
     }
     Participant participants_[kParticipantCount];
     VsSlot slots_[kParticipantCount];
