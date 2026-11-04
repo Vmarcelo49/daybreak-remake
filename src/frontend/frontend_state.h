@@ -12,6 +12,12 @@ inline constexpr int kFrontendBattleSlots[2] = {0, 2};
 struct FrontendSlot {
     int character = -1, weapon = 0, hypermode = 0, costume = 0, controller = 4;
     bool ready = false;
+    // Online only (issue #106). `peer` is the machine whose player chose this panel, or -1 for a
+    // COM; `local` is whether this is that machine. The VS hand-off rewrites `controller` so the
+    // local player is 1P here and every other seat is COM HERE, which is what the battle needs to
+    // find inputs — so the controller byte alone cannot tell a remote player from a COM.
+    int peer = -1;
+    bool local = true;
 };
 struct ResultSlotStats { int kos = 0, deaths = 0, damageDealt = 0, damageTaken = 0; };
 struct OnlineContext;

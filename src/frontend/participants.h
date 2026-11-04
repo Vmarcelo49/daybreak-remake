@@ -13,7 +13,10 @@
 //   * `panel`      0..3, the selection grid (0/1 blue, 2/3 red);
 //   * `team`       0 blue / 1 red, derived from the panel (FUN_00409340);
 //   * `fighter`    the index in MatchConfig order (the launch's own order), host-filled;
-//   * `controller` 0..3 local human, 4 = COM — FUN_0040d130's sentinel.
+//   * `controller` 0..3 local human, 4 = COM — FUN_0040d130's sentinel;
+//   * `peer`       online, the machine whose player holds the seat, -1 for COM. Before the
+//                  hand-off this is the only record of that player's controller, since the
+//                  hand-off rewrites `controller` for this machine's point of view.
 //
 // The layout numbers are the original's own:
 //   * VS: FUN_00411cb0 @0x411cb0 draws four portraits at (500,295), (700,295), (300,600),
@@ -46,11 +49,18 @@ struct Participant {
     int character = -1;     // roster index; -1 = absent
     int weapon = 0;         // weapon slot within the character
     int weaponId = 0;       // data/item id the launch resolved
-    int controller = 4;     // 0..3 human, 4 = COM
+    int controller = 4;     // 0..3 human, 4 = COM — ALWAYS this machine's slots, never another's
     int fighter = -1;       // MatchConfig index, filled by the host from the launch
+    // The seat, which is what a label says (issue #106). Online the VS hand-off gives every
+    // machine its own perspective, so `controller` reads 4 here for a player if they are simply
+    // on another machine. `peer` and `local` keep that apart from a real COM.
+    int peer = -1;          // the machine whose player holds this seat, -1 = COM
+    bool local = true;      // that machine is this one
 
     bool present() const { return panel >= 0 && character >= 0; }
-    bool human() const { return controller >= 0 && controller < 4; }
+    // Someone plays this fighter (here or on another machine) as opposed to a COM.
+    bool human() const { return (controller >= 0 && controller < 4) || remote(); }
+    bool remote() const { return peer >= 0 && !local; }
     // "Rena 1" — the combo label (AGENTS.md rule 7: a fighter is never bare).
     std::string combo() const { return gameplay::comboSlotLabel(character, weapon); }
 };
@@ -72,6 +82,8 @@ inline int buildParticipants(const FrontendSlot slots[kParticipantCount],
         p.weapon = slot.weapon;
         p.weaponId = gameplay::kWeaponIds[slot.character][slot.weapon];
         p.controller = slot.controller;
+        p.peer = slot.peer;
+        p.local = slot.local;
     }
     return count;
 }
@@ -85,8 +97,8 @@ inline int teamMembers(const Participant roster[kParticipantCount], int count, i
     return n;
 }
 
-// "1P".."4P" for a local controller, "COM" for the sentinel (the same labels the tag atlas
-// and the report badges use).
+// "1P".."4P" for a controller, "COM" for the sentinel (the same labels the tag atlas and the
+// report badges use).
 inline const char* controllerLabel(int controller) {
     switch (controller) {
         case 0: return "1P";
@@ -95,6 +107,14 @@ inline const char* controllerLabel(int controller) {
         case 3: return "4P";
         default: return "COM";
     }
+}
+
+// What a participant is called (issue #106): this machine's player by its own controller, a
+// player on another machine by the controller they chose there, and COM for a fighter nobody
+// plays. The last two share the original's 1P..4P vocabulary, so a two-player room reads
+// "1P" and "2P" on both machines. PORT RULE — the original has no other machine to name.
+inline const char* participantLabel(const Participant& p) {
+    return controllerLabel(p.remote() ? p.peer : p.controller);
 }
 
 inline const char* teamLabel(int team) { return team == 0 ? "BLUE" : "RED"; }
