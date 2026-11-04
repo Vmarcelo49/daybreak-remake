@@ -4,6 +4,9 @@
 
 #include <cstdio>
 
+#include <SDL3/SDL.h>
+
+#include "frontend/menu_panel.h"
 #include "hud/hud_atlas.h"
 
 namespace ui {
@@ -26,6 +29,15 @@ TitleAction TitleMenu::update(const ScreenInput& in) {
 }
 
 TitleScreen::TitleScreen(SpriteRenderer& batch, std::string& error) {
+    // The notice is text, which the original title has none of; the face is best-effort so
+    // a missing font never costs the player the menu.
+    std::string faceError;
+    faceLoaded_ = face_.load(batch, 64.f, faceError, "Goldman-Bold.ttf",
+                             kCaptionFallbackFile);
+    if (!faceLoaded_) {
+        std::fprintf(stderr, "[title] update notice text unavailable: %s\n",
+                     faceError.c_str());
+    }
     // All three loads are attempted, like FUN_00410d60.c:28-33: the first failure is
     // kept so the caller's message names a real asset.
     for (const TitleAsset& asset : kTitleAssets) {
@@ -43,6 +55,49 @@ bool TitleScreen::loaded() const {
 }
 
 ScreenId TitleScreen::update(const ScreenInput& in) {
+    if (notice_.visible()) {
+        if (noticeFocus_) {
+            if (in.up || in.cancel) {
+                noticeFocus_ = false;
+                notice_.focus(false);
+                sound_ = 1;
+                return ScreenId::Title;
+            }
+            const UpdateNoticeAction chosen = notice_.update(in);
+            switch (chosen) {
+                case UpdateNoticeAction::Update:
+                    notice_.hide();
+                    return ScreenId::Update;
+                case UpdateNoticeAction::Notes:
+                    openUrl(notice_.notice().notes.c_str());
+                    sound_ = 0;
+                    break;
+                case UpdateNoticeAction::Later:
+                    notice_.hide();
+                    noticeFocus_ = false;
+                    notice_.focus(false);
+                    sound_ = 1;
+                    break;
+                case UpdateNoticeAction::Skip:
+                    noticeFocus_ = false;
+                    notice_.focus(false);
+                    sound_ = 0;
+                    break;
+                case UpdateNoticeAction::None:
+                    break;
+            }
+            return ScreenId::Title;
+        }
+        // Down from the last title item moves into the notice; the title menu keeps its
+        // own machine until then (the task's "does not steal input").
+        if (in.down && menu_.selected() == kTitleItemCount - 1 &&
+            updateNoticeChoiceCount(notice_.notice()) > 0) {
+            noticeFocus_ = true;
+            notice_.focus(true);
+            sound_ = 2;
+            return ScreenId::Title;
+        }
+    }
     const TitleAction action = menu_.update(in);
     sound_ = action == TitleAction::Moved ? 2 : (action == TitleAction::Activated ? 0 : -1);
     if (action != TitleAction::Activated) return ScreenId::Title;
@@ -74,6 +129,49 @@ void TitleScreen::draw(SpriteRenderer& batch) const {
                          kTitleItemSrc.h};
         batch.pushSprite(sheets_[(int)TitleSheet::Items], src, kTitleItemPivotX, kTitleItemPivotY,
                          kTitleItemX, kTitleItemStride * (float)i + kTitleItemY0);
+    }
+    if (notice_.visible()) drawNotice(batch);
+}
+
+void TitleScreen::drawNotice(SpriteRenderer& batch) const {
+    const UpdateNotice& notice = notice_.notice();
+    const int choices = updateNoticeChoiceCount(notice);
+    // A banner over the logo (owner review): large, centred, unmissable, and clear of the
+    // menu cells that start at y=285.
+    constexpr float kLeft = 70.f, kRight = 730.f, kTop = 36.f;
+    const float height = choices > 0 ? 176.f : 96.f;
+    // Nearly opaque: the banner sits over the logo, and a translucent panel let the bright
+    // logo glyphs through the text (owner review).
+    batch.pushSolid({kLeft, kTop, kRight - kLeft, height},
+                    UiColor{0.03f, 0.04f, 0.09f, 1.f});
+    batch.pushSolid({kLeft, kTop, kRight - kLeft, 3.f}, kGold);
+    if (!faceLoaded_) return;
+    const auto text = [&](const char* value, float y, float size, UiColor colour) {
+        const float width = face_.width(value) * size / 64.f;
+        face_.draw(batch, value, 400.f - width / 2.f, y, size / 64.f, colour, 1.2f);
+    };
+    text(updateNoticeLine(notice).c_str(), kTop + 18.f, 24.f, kWhite);
+    if (choices == 0) return;
+    // Two centred rows of two large choices, each with the same highlight the menus use.
+    const int perRow[2] = {2, 2};
+    for (int row = 0; row < 2; ++row) {
+        float total = 0.f;
+        for (int i = 0; i < perRow[row]; ++i) {
+            const int choice = row * 2 + i;
+            total += face_.width(updateNoticeChoiceLabel(notice, choice)) * 20.f / 64.f;
+        }
+        total += 40.f * (perRow[row] - 1);
+        float x = 400.f - total / 2.f;
+        const float y = kTop + 74.f + row * 54.f;
+        for (int i = 0; i < perRow[row]; ++i) {
+            const int choice = row * 2 + i;
+            const char* label = updateNoticeChoiceLabel(notice, choice);
+            const float width = face_.width(label) * 20.f / 64.f;
+            const bool selected = noticeFocus_ && notice_.selected() == choice;
+            if (selected) batch.pushSolid({x - 10.f, y - 6.f, width + 20.f, 34.f}, kHighlight);
+            face_.draw(batch, label, x, y, 20.f / 64.f, selected ? kWhite : kPale, 1.2f);
+            x += width + 40.f;
+        }
     }
 }
 

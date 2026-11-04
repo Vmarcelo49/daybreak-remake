@@ -16,6 +16,7 @@ text comes from. The package's own code is `daybreak-decomp.txt` (the repository
 | GLM | header-only math (compiled into the executable) | MIT | `glm-MIT.txt` |
 | stb_truetype / stb_vorbis | header-only font rasterizer and Ogg Vorbis decoder (compiled into the executable) | MIT or public domain, at your option | `stb.txt` |
 | pl_mpeg | MPEG-1 video + MP2 audio + MPEG-PS demux, the opening/staff-roll movie decoder (compiled into the executable) | MIT | `pl_mpeg-MIT.txt` |
+| Monocypher 4.0.3 | Ed25519 signature verification for the updater (compiled into the executable) | BSD-2-Clause or CC0-1.0, at your option | `Monocypher.txt` |
 
 Notes:
 
@@ -31,6 +32,8 @@ Notes:
   are part of the distribution the package runs on, and shipping them would break the
   distribution's own ABI rules. `ldd` on the packaged executable shows them resolving from
   the system.
+- Monocypher is fetched from its pinned 4.0.3 release tarball by `scripts/fetch_deps.sh`;
+  its `LICENCE.md` is `Monocypher.txt`. Only its Ed25519 and SHA-512 sources are used.
 - pl_mpeg ships no separate licence file upstream: `pl_mpeg.h` carries
   `SPDX-License-Identifier: MIT` in its header and the project README states the licence.
   The text above is the standard MIT grant and the copyright holder is the library's author

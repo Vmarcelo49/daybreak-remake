@@ -112,4 +112,12 @@ static bool parseNprColour(const std::string& text, glm::vec3& out);
 static bool parseNprSpec(const std::string& spec, render::Appearance& a, std::string& error);
 static bool parseArgs(int argc, char** argv, Options& o, std::string& error);
 static bool verificationRun(const Options& o);
+#if !defined(__EMSCRIPTEN__)
+// The update check's frame-loop seams (main.cpp defines them; frame_loop.inc runs
+// before them in the translation unit).
+static void pollUpdateCheck(App& app);
+static void stopUpdateCheck(App& app);
+#endif
+// --menu-script's per-frame driver (defined in main.cpp, used by frame_loop.inc).
+static void applyMenuScript(App& app, ui::ScreenInput& in);
 static bool resolveBootOpening(const Options& o);

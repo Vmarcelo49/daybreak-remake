@@ -36,6 +36,7 @@ static SDL_AppResult tickOnlineSelection(App& state) {
         [&](const net::MenuLockstep::Held& held) {
             ui::ScreenInput in;
             in.separatePlayers = true;
+    applyMenuScript(*app, in);
             for (size_t p = 0; p < held.size(); ++p) {
                 const std::uint8_t now = held[p], pressed = static_cast<std::uint8_t>(now & ~app->netMenuHeld[p]);
                 auto& buttons = in.players[p];
@@ -134,6 +135,9 @@ static void runScheduledTextKeys(App& app) {
 
 static SDL_AppResult tickFrontend(App& state) {
     App* app = &state;
+#if !defined(__EMSCRIPTEN__)
+    pollUpdateCheck(*app);
+#endif
 #ifdef DAYBREAK_ONLINE
     // Through the result and VS screens too: peers tell each other they are still there.
     if (app->frontend.online && !app->netSession) {
@@ -173,6 +177,7 @@ static SDL_AppResult tickFrontend(App& state) {
     in.leftHeld  = anyDown(fnd::input::Left);
     in.rightHeld = anyDown(fnd::input::Right);
     in.separatePlayers = true;
+    applyMenuScript(*app, in);
     for (int p = 0; p < 4; ++p) {
         const auto& input = app->tickInput[p];
         auto& buttons = in.players[p];
@@ -194,6 +199,19 @@ static SDL_AppResult applyFrontendInput(App& state, const ui::ScreenInput& in) {
     App* app = &state;
     const ui::ScreenId previousScreen = app->screens.current();
     app->screens.update(in);
+#if !defined(__EMSCRIPTEN__)
+    if (app->screens.current() == ui::ScreenId::Update) {
+        if (ui::Screen* screen = app->screens.mutableScreen()) {
+            std::string launch;
+            std::string from;
+            if (screen->wantsRelaunch(&launch, &from)) {
+                app->relaunchLaunch = launch;
+                app->relaunchFrom = from;
+                return SDL_APP_SUCCESS;
+            }
+        }
+    }
+#endif
     if (previousScreen != app->screens.current()) {
         // FUN_00404ff0:0x405096 starts the movie's BGM from inside the scene, on the tick the
         // start call runs — i.e. on the first update after the scene was constructed. It is a
@@ -1060,6 +1078,9 @@ static void appQuit(App* app, SDL_AppResult result) {
             (unsigned long long)app->menuSoundPlays[2], (unsigned long long)app->menuSoundPlays[3],
             (unsigned long long)app->menuVoicePlays,
             (unsigned long long)app->menuBgmPushed);
+#if !defined(__EMSCRIPTEN__)
+    stopUpdateCheck(*app);
+#endif
     flushUserSettings(*app);   // last chance for a change made after the last screen exit
     ui::frontendSettings().applyVolumes = {};
     ui::frontendSettings().applyFullscreen = {};
@@ -1067,5 +1088,16 @@ static void appQuit(App* app, SDL_AppResult result) {
     ui::frontendSettings().applyBindings = {};
     report(*app);
     teardown(*app);
+#if !defined(__EMSCRIPTEN__)
+    if (!app->relaunchLaunch.empty() && !app->installRoot.empty()) {
+        // The window, the audio and the net layer are gone by now, so Windows starts the
+        // new build without a second window ever appearing (issue #100, step 4).
+        std::string relaunchError;
+        if (!update::relaunch(app->installRoot, app->relaunchLaunch, app->launchArgs,
+                              app->relaunchFrom, &relaunchError)) {
+            std::fprintf(stderr, "[update] relaunch failed: %s\n", relaunchError.c_str());
+        }
+    }
+#endif
     delete app;
 }

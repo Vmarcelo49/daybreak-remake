@@ -7,6 +7,11 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 tp="$here/third_party"
 mkdir -p "$tp"
 
+# Verify a fetched file against the hash recorded with its pin.
+verify_sha256() {  # file expected
+    [ "$(sha256sum "$1" | cut -d' ' -f1)" = "$2" ] || { echo "sha256 mismatch: $1" >&2; exit 1; }
+}
+
 WEBGPU_DIST_COMMIT=17dcd42a7683355e7a40ac4e97e77f36dff5b5ab   # 2025-09-03
 SDL3WEBGPU_COMMIT=4fa9d70935e41c075f664b231ee10a64262a8ac7      # 2025-05-01
 SDL3_VERSION=3.4.16
@@ -53,6 +58,48 @@ if [ ! -e "$tp/pl_mpeg/pl_mpeg.h" ]; then
     curl -fsSL "https://raw.githubusercontent.com/phoboslab/pl_mpeg/${PL_MPEG_COMMIT}/pl_mpeg.h" \
         -o "$tp/pl_mpeg/pl_mpeg.h"
 fi
+
+# Monocypher (issue #100): Ed25519 with SHA-512 for the offline release signing tool,
+# and from step 2 for the updater's signature check. The release tarball is pinned by
+# hash because GitHub's generated archives are not promised to stay byte-identical;
+# only the four sources (plus the licence, for provenance) are kept, not the docs.
+MONOCYPHER_VERSION=4.0.3
+MONOCYPHER_SHA256=8cc9bc341a66249016db9bd70e9142d8d0aef9945973744b1ac05dbc55d8ee66
+if [ ! -e "$tp/monocypher/monocypher.c" ]; then
+    echo "  Monocypher $MONOCYPHER_VERSION: fetching"
+    tmp=$(mktemp -d)
+    curl -fsSL --retry 3 -o "$tmp/monocypher.tar.gz" \
+        "https://github.com/LoupVaillant/Monocypher/releases/download/${MONOCYPHER_VERSION}/monocypher-${MONOCYPHER_VERSION}.tar.gz"
+    verify_sha256 "$tmp/monocypher.tar.gz" "$MONOCYPHER_SHA256"
+    tar -xzf "$tmp/monocypher.tar.gz" -C "$tmp"
+    source_dir="$tmp/monocypher-${MONOCYPHER_VERSION}/src"
+    mkdir -p "$tp/monocypher"
+    cp "$source_dir/monocypher.c" "$source_dir/monocypher.h" \
+       "$source_dir/optional/monocypher-ed25519.c" "$source_dir/optional/monocypher-ed25519.h" \
+       "$tp/monocypher/"
+    cp "$tmp/monocypher-${MONOCYPHER_VERSION}/LICENCE.md" "$tp/monocypher/"
+    rm -rf "$tmp"
+fi
+
+# curl headers (issue #100): the Linux HTTP client loads libcurl with dlopen and must never
+# link it, but it still compiles against curl's real option names and types. Only the
+# public headers are kept; the release tarball is pinned by hash like Monocypher, because a
+# generated archive is not promised to stay byte-identical.
+CURL_VERSION=8.23.0
+CURL_TAG=curl-8_23_0
+CURL_TARBALL_SHA256=e3de77cfa6367083c776a26647fc9f633b538c06c3baa73d931a252ac8f72b49
+if [ ! -e "$tp/curl/include/curl/curl.h" ]; then
+    echo "  curl $CURL_VERSION headers: fetching"
+    tmp=$(mktemp -d)
+    curl -fsSL --retry 3 -o "$tmp/curl.tar.gz" \
+        "https://github.com/curl/curl/releases/download/${CURL_TAG}/curl-${CURL_VERSION}.tar.gz"
+    verify_sha256 "$tmp/curl.tar.gz" "$CURL_TARBALL_SHA256"
+    tar -xzf "$tmp/curl.tar.gz" -C "$tmp" "curl-${CURL_VERSION}/include/curl"
+    mkdir -p "$tp/curl/include/curl"
+    cp "$tmp/curl-${CURL_VERSION}/include/curl/"*.h "$tp/curl/include/curl/"
+    rm -rf "$tmp"
+fi
+
 fetch_zip "https://github.com/eliemichel/WebGPU-distribution/archive/${WEBGPU_DIST_COMMIT}.zip" "$tp/webgpu" "WebGPU-distribution"
 fetch_zip "https://github.com/eliemichel/sdl3webgpu/archive/${SDL3WEBGPU_COMMIT}.zip" "$tp/sdl3webgpu" "sdl3webgpu"
 
@@ -68,9 +115,6 @@ fi
 
 # The fonts are fetched rather than committed, and their hashes are pinned because the
 # rasterizer's output is only reproducible against a known file (src/ui/text.h).
-verify_sha256() {  # file expected
-    [ "$(sha256sum "$1" | cut -d' ' -f1)" = "$2" ] || { echo "sha256 mismatch: $1" >&2; exit 1; }
-}
 mkdir -p "$tp/fonts"
 
 # Noto Sans CJK JP (OFL 1.1): the Japanese fallback of the caption chain (D7).

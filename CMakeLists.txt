@@ -6,6 +6,10 @@ file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" DAYBREAK_VERSION)
 string(STRIP "${DAYBREAK_VERSION}" DAYBREAK_VERSION)
 project(daybreak VERSION ${DAYBREAK_VERSION} LANGUAGES C CXX)
 
+# A release package must carry a trusted release key (src/update/release_keys.h); the
+# packaging scripts always configure with this ON, and an empty key list fails the build.
+option(DAYBREAK_RELEASE_BUILD "Build a release package (needs a trusted release key)" OFF)
+
 # Multi-platform product: SDL3 + WebGPU (webgpu.h), built for Linux, Windows
 # (MinGW cross-compile) and the web (Emscripten) from this one file.
 #
@@ -122,6 +126,8 @@ add_library(ui STATIC
     src/frontend/screen.cpp
     src/frontend/screen_opening.cpp
     src/frontend/screen_title.cpp
+    src/frontend/screen_update.cpp
+    src/frontend/update_notice.cpp
     src/frontend/screen_select.cpp
     src/frontend/screen_stage_select.cpp
     src/frontend/screen_vs.cpp
@@ -219,6 +225,52 @@ add_library(battle_core_zlib STATIC
     src/battle/core/zlib/zutil.c)
 target_compile_options(battle_core_zlib PRIVATE -w)
 
+# Monocypher (issue #100): Ed25519 for the offline signing tool and, from step 2, for the
+# updater's signature check. One library, linked by both, so the C sources are compiled
+# once; the web build has no updater and compiles none of this.
+if(NOT EMSCRIPTEN)
+    set(MONOCYPHER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/monocypher")
+    if(NOT EXISTS "${MONOCYPHER_DIR}/monocypher.c")
+        message(FATAL_ERROR "third_party/monocypher is missing — run ./build.sh deps")
+    endif()
+    add_library(monocypher STATIC
+        "${MONOCYPHER_DIR}/monocypher.c"
+        "${MONOCYPHER_DIR}/monocypher-ed25519.c")
+    target_include_directories(monocypher PUBLIC "${MONOCYPHER_DIR}")
+    target_compile_options(monocypher PRIVATE -w)
+endif()
+
+# The updater (issue #100): version, path rules, both manifest parsers, the archive
+# readers, SHA-256/Ed25519, the HTTP seam and the apply engine. The game uses it for the
+# title-screen check and the update screen (step 4).
+if(NOT EMSCRIPTEN)
+    add_library(update STATIC
+        src/update/archive.cpp
+        src/update/crypto.cpp
+        src/update/package_manifest.cpp
+        src/update/paths.cpp
+        src/update/update_manifest.cpp
+        src/update/updater.cpp
+        src/update/version.cpp
+        src/platform/http_policy.cpp)
+    target_include_directories(update PUBLIC src PRIVATE src/battle/core/zlib)
+    target_compile_definitions(update PRIVATE
+        "DAYBREAK_UPDATE_VERSION=\"${DAYBREAK_VERSION}\"")
+    target_link_libraries(update PRIVATE monocypher battle_core_zlib)
+    if(WIN32)
+        # WinHTTP is in the OS: no shipped bytes and the system certificate store.
+        target_sources(update PRIVATE src/platform/http_winhttp.cpp
+                                     src/update/apply_win32.cpp)
+        target_link_libraries(update PRIVATE winhttp)
+    else()
+        # libcurl is loaded at run time and never linked (src/platform/http_curl.cpp).
+        target_sources(update PRIVATE src/platform/http_curl.cpp
+                                     src/update/apply_posix.cpp)
+        target_include_directories(update PRIVATE third_party/curl/include)
+        target_link_libraries(update PRIVATE ${CMAKE_DL_LIBS})
+    endif()
+endif()
+
 add_library(battle_core STATIC
     src/battle/battle.cpp
     src/battle/core/compiled_native_bodies/dash.cpp
@@ -299,9 +351,13 @@ if(NOT CMAKE_CROSSCOMPILING)
 endif()
 
 add_executable(daybreak src/app/main.cpp)
+if(DAYBREAK_RELEASE_BUILD)
+    target_compile_definitions(daybreak PRIVATE DAYBREAK_RELEASE_BUILD=1)
+endif()
 target_link_libraries(daybreak PRIVATE battle_backend)
 if(NOT EMSCRIPTEN)
     target_link_libraries(daybreak PRIVATE net_session)
+    target_link_libraries(daybreak PRIVATE update)
 endif()
 if(WIN32)
     set_target_properties(daybreak PROPERTIES WIN32_EXECUTABLE TRUE)
@@ -326,12 +382,19 @@ if(EMSCRIPTEN)
         set_property(TARGET daybreak APPEND PROPERTY LINK_DEPENDS "${CAPTION_CJK_FONT}")
     endif()
 else()
+    # The loopback end-to-end's build (issue #100): the same game plus the test-only
+    # --test-update-key path. A DAYBREAK_RELEASE_BUILD refuses to compile it.
+    add_executable(daybreak_e2e src/app/main.cpp)
+    target_compile_definitions(daybreak_e2e PRIVATE DAYBREAK_UPDATE_TEST_BUILD=1)
+    target_link_libraries(daybreak_e2e PRIVATE battle_backend net_session update
+        render ui media game_interfaces physics gameplay movie)
     add_custom_target(caption_fonts
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts" "$<TARGET_FILE_DIR:daybreak>/assets/fonts"
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/locale" "$<TARGET_FILE_DIR:daybreak>/assets/locale")
     add_dependencies(daybreak caption_fonts)
+    add_dependencies(daybreak_e2e caption_fonts)
     if(EXISTS "${CAPTION_CJK_FONT}")
         add_custom_command(TARGET caption_fonts POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -377,6 +440,30 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     # from what the source tree ships.
     install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
             DESTINATION LICENSES RENAME daybreak-decomp.txt)
+endif()
+
+# The release signing tool (issue #100). Host-only and never shipped: the owner signs
+# update-manifest.txt on their own machine, so the Windows and web builds have no use
+# for it, and the game only ever carries the public key.
+if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
+    add_executable(release_sign tools/release_sign/main.cpp)
+    target_link_libraries(release_sign PRIVATE monocypher)
+endif()
+
+# The three update suites as one binary, for the Windows build where CTest does not run.
+# `update_selftest --live <url>` is the opt-in live fetch; it is never part of CTest.
+if(NOT EMSCRIPTEN)
+    add_executable(update_selftest
+        tests/update_selftest.cpp
+        tests/update_logic_test.cpp
+        tests/update_crypto_test.cpp
+        tests/update_archive_test.cpp)
+    target_compile_definitions(update_selftest PRIVATE DAYBREAK_UPDATE_SELFTEST=1)
+    target_link_libraries(update_selftest PRIVATE update)
+    if(WIN32)
+        # The apply cases only a real Windows run proves (issue #100, step 3).
+        target_sources(update_selftest PRIVATE tests/update_apply_win_test.cpp)
+    endif()
 endif()
 
 # Host-side tests. Native-only on purpose: the Windows target is cross-compiled and
@@ -778,7 +865,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(controller_scene_lifetime_test PRIVATE render
         ui media game_interfaces physics
         battle_backend gameplay)
-    target_link_libraries(controller_scene_lifetime_test PRIVATE net_session)
+    target_link_libraries(controller_scene_lifetime_test PRIVATE net_session update)
     add_test(NAME controller_scene_lifetime_test COMMAND controller_scene_lifetime_test
              "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak")
     set_tests_properties(controller_scene_lifetime_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
@@ -806,6 +893,111 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME launcher_test
              COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/launcher_test.sh"
                      "${CMAKE_CURRENT_SOURCE_DIR}/package/daybreak")
+
+    # The release package's file list (issue #100): the manifest the updater will trust
+    # to know which files a package owns. Synthetic stage dirs only — no game data, no
+    # network, no build output — and the same command line the packaging scripts use.
+    add_test(NAME package_manifest_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/package_manifest_test.py")
+
+    # The update manifest the updater downloads (issue #100): built from two synthetic
+    # archives, so the tool proves each archive against the manifest inside it before
+    # publishing hashes, and its output is byte-for-byte reproducible (it gets signed).
+    add_test(NAME update_manifest_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/update_manifest_test.py")
+
+    # The offline signing tool (issue #100): RFC 8032 vectors, a keygen/sign/verify round
+    # trip, tamper and wrong-key refusals, and the key-file rules. Throwaway keys live in
+    # a temp directory; the real release key is never generated on this machine.
+    add_test(NAME release_sign_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/release_sign_test.py"
+                     $<TARGET_FILE:release_sign>)
+
+    # The updater's building blocks (issue #100, step 2). No game data and no device; the
+    # HTTP suite talks to tests/http_fixture.py on 127.0.0.1 only.
+    add_executable(update_logic_test tests/update_logic_test.cpp)
+    target_link_libraries(update_logic_test PRIVATE update)
+    add_test(NAME update_logic_test COMMAND update_logic_test)
+
+    add_executable(update_crypto_test tests/update_crypto_test.cpp)
+    target_link_libraries(update_crypto_test PRIVATE update)
+    add_test(NAME update_crypto_test
+             COMMAND update_crypto_test $<TARGET_FILE:release_sign>)
+
+    add_executable(update_archive_test tests/update_archive_test.cpp)
+    target_link_libraries(update_archive_test PRIVATE update)
+    add_test(NAME update_archive_test COMMAND update_archive_test)
+
+    add_executable(update_http_test tests/update_http_test.cpp)
+    target_link_libraries(update_http_test PRIVATE update)
+    add_test(NAME update_http_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_update_http_test.py"
+                     $<TARGET_FILE:update_http_test>)
+
+    # The Python release tools and the C++ parsers must accept and refuse the same
+    # inputs; this runs both halves on the same fixtures (and on the real tarball when
+    # one has been built).
+    # Step 3's engine, driven against the loopback fixture with the real release tools:
+    # check, download, verify, stage, apply, roll back, recover and relaunch.
+    add_executable(update_stub tests/update_stub.cpp)
+    target_link_libraries(update_stub PRIVATE update)
+    add_executable(update_apply_test tests/update_apply_test.cpp)
+    target_link_libraries(update_apply_test PRIVATE update)
+    # The real binary must roll back a planted journal before it touches the install
+    # (issue #100, step 4).
+    add_test(NAME update_recovery_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/update_recovery_test.py"
+                     $<TARGET_FILE:daybreak>)
+    set_tests_properties(update_recovery_test PROPERTIES TIMEOUT 180)
+
+    # The update acceptance tests (issue #100): no gated launch may touch the network, the
+    # whole loopback update through the real binary, and the notice driven with real input.
+    # They skip (77) without the local title art or a display.
+    add_test(NAME update_no_network_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/update_no_network_test.py"
+                     $<TARGET_FILE:daybreak_e2e> "${CMAKE_CURRENT_SOURCE_DIR}")
+    set_tests_properties(update_no_network_test PROPERTIES TIMEOUT 400 SKIP_RETURN_CODE 77)
+    add_test(NAME update_e2e_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/update_e2e_test.py"
+                     $<TARGET_FILE:daybreak_e2e> "${CMAKE_CURRENT_SOURCE_DIR}"
+                     $<TARGET_FILE:release_sign>)
+    set_tests_properties(update_e2e_test PROPERTIES TIMEOUT 400 SKIP_RETURN_CODE 77)
+    add_test(NAME update_screens_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/update_screens_test.py"
+                     $<TARGET_FILE:daybreak_e2e> "${CMAKE_CURRENT_SOURCE_DIR}")
+    set_tests_properties(update_screens_test PROPERTIES TIMEOUT 400 SKIP_RETURN_CODE 77)
+
+    # A release build with no trusted key must not compile (issue #100, step 4).
+    add_test(NAME update_release_guard_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/release_guard_test.py"
+                     ${CMAKE_CXX_COMPILER})
+    set_tests_properties(update_release_guard_test PROPERTIES TIMEOUT 120)
+
+    add_test(NAME update_apply_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_update_apply_test.py"
+                     $<TARGET_FILE:update_apply_test>
+                     $<TARGET_FILE:update_stub>
+                     $<TARGET_FILE:release_sign>)
+    set_tests_properties(update_apply_test PROPERTIES TIMEOUT 300)
+
+    add_executable(update_crosscheck tests/update_crosscheck.cpp)
+    target_link_libraries(update_crosscheck PRIVATE update)
+    add_test(NAME update_crosscheck_test
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/update_crosscheck_test.py"
+                     $<TARGET_FILE:update_crosscheck>
+                     "${CMAKE_CURRENT_SOURCE_DIR}")
+
 
     # The battle HUD's sprite table and draw geometry: device-free arithmetic over the
     # transcribed .rdata anchors, so it needs the headers' include path and webgpu.h only.
@@ -940,6 +1132,12 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(frontend_lifecycle_test PRIVATE ui gameplay glm)
     add_test(NAME frontend_lifecycle_test COMMAND frontend_lifecycle_test)
 
+    # The title's update notice and the update screen's failure reasons (issue #100).
+    # update: the engine's error strings the mapping is tested against.
+    add_executable(update_notice_test tests/update_notice_test.cpp)
+    target_link_libraries(update_notice_test PRIVATE ui update)
+    add_test(NAME update_notice_test COMMAND update_notice_test)
+
 
     # Issue #15's pause semantics: the match gate, the menu and the stale-edge rule.
     # Device-free (no SDL, no assets), like the other gameplay tests.
@@ -966,7 +1164,8 @@ endif()
 # output policy. Keep those tests, and their child processes, off real speakers.
 get_property(host_tests DIRECTORY PROPERTY TESTS)
 if(host_tests)
-    set_property(TEST ${host_tests} APPEND PROPERTY ENVIRONMENT "SDL_AUDIO_DRIVER=dummy")
+    set_property(TEST ${host_tests} APPEND PROPERTY ENVIRONMENT
+        "SDL_AUDIO_DRIVER=dummy" "DAYBREAK_NO_UPDATE_CHECK=1")
 endif()
 
 if(EMSCRIPTEN)
@@ -1049,6 +1248,7 @@ set(DAYBREAK_AREA_FRONTEND
     english_captions_test locale_screen_check locale_coverage_test locale_sheets_test
     title_camera_test screen_stack_test frontend_config_test frontend_lifecycle_test
     result_title_test result_screen_test participant_layout_test select_menu_test
+    update_notice_test update_screens_test
     select_cursor_test select_row_slidein_test stage_vs_test story_dialogue_test
     story_script_test sim_frontend_flow online_flow_check online_join_feedback
     pause_overlay_panel pause_overlay_layout_test
@@ -1071,7 +1271,8 @@ set(DAYBREAK_AREA_BATTLE
 set(DAYBREAK_AREA_NET
     net_lobby_test net_stress_test net_play_check online_flow_check online_join_feedback
     rollback_stress_test rollback_presentation_test rollback_pixels_check
-    rendezvous_server_test cross_build_check math_accuracy_test
+    rendezvous_server_test cross_build_check math_accuracy_test update_http_test
+    update_apply_test update_no_network_test update_e2e_test
 )
 
 set(DAYBREAK_AREA_RENDER
@@ -1092,7 +1293,10 @@ set(DAYBREAK_AREA_SETTINGS
 
 set(DAYBREAK_AREA_PLATFORM
     input_backend_test launcher_test controller_scene_lifetime_test bgm_loop_test
-    unicode_path_check check_tools_test
+    unicode_path_check check_tools_test package_manifest_test update_manifest_test
+    release_sign_test update_logic_test update_crypto_test update_archive_test
+    update_http_test update_crosscheck_test update_apply_test update_release_guard_test
+    update_recovery_test update_no_network_test update_e2e_test update_screens_test
 )
 
 foreach(daybreak_area frontend hud battle net render data settings platform)

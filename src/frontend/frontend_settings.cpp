@@ -43,6 +43,8 @@ void applyUserSettings(FrontendSettings& settings, const settings::UserSettings&
     settings.netServer = document.netServer;
     settings.shadowRendering = document.shadowRendering;
     settings.titleBackdrop = document.titleBackdrop;
+    settings.updateCheck = document.updateCheck;
+    settings.updateSkipVersion = document.updateSkipVersion;
 }
 
 settings::UserSettings toUserSettings(const FrontendSettings& settings) {
@@ -54,6 +56,8 @@ settings::UserSettings toUserSettings(const FrontendSettings& settings) {
     document.toonRendering = settings.toonRendering;
     document.shadowRendering = settings.shadowRendering;
     document.titleBackdrop = settings.titleBackdrop;
+    document.updateCheck = settings.updateCheck;
+    document.updateSkipVersion = settings.updateSkipVersion;
     document.resolution = {settings.resolutionChoice.width, settings.resolutionChoice.height};
     document.installDir = settings.installDir;
     document.language = settings.language;

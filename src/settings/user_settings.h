@@ -86,7 +86,8 @@ inline std::string languageForLocale(const std::string& systemLanguage) { return
 // The project's own rendezvous server. The file leaves it out, so a new build can move it.
 inline constexpr char kDefaultServer[] = "64.181.172.230:3939";
 
-inline constexpr int kSchemaVersion = 8;
+inline constexpr int kSchemaVersion = 9;
+inline constexpr int kSchemaVersionV8 = 8;
 inline constexpr int kSchemaVersionV7 = 7;
 inline constexpr int kSchemaVersionV6 = 6;
 inline constexpr int kSchemaVersionV5 = 5;
@@ -154,6 +155,11 @@ struct UserSettings {
     // is recovered behaviour. The Options screen cycles the curated list
     // (frontend/title_backdrop.h).
     std::string titleBackdrop = "stage03";
+    // The updater (issue #100, step 4). `updateCheck` is whether a launch may ask GitHub
+    // once; `updateSkipVersion` is the version the player chose not to be offered again
+    // ("X.Y.Z", empty = nothing skipped). Both are live in frontendSettings().
+    bool        updateCheck = true;
+    std::string updateSkipVersion;
     fnd::audio::Volumes volumes;
     std::array<int, fnd::input::ActionCount> keyboard{};
     std::array<std::array<int, fnd::input::ActionCount>, fnd::input::kMaxPlayers> gamepad{};
@@ -196,6 +202,10 @@ bool storableInstallDir(const std::string& value);
 // it reports a missing folder and falls back to the original art rather than failing the
 // launch, so this check stays syntactic.
 bool storableTitleBackdrop(const std::string& value);
+
+// --- the updater (issue #100) ------------------------------------------------------
+// "X.Y.Z" or empty: what [update] skip_version accepts and what serialize() writes back.
+bool storableSkipVersion(const std::string& value);
 
 // --- parse / serialize ------------------------------------------------------------
 // One line of human-readable context per accepted warning and one message per rejection.

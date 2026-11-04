@@ -40,6 +40,7 @@ constexpr ScreenName kScreenNames[] = {
     {"netplay", ScreenId::NetplayMenu},       {"netplaylobby", ScreenId::NetplayLobby},
     {"netplayentry", ScreenId::NetplayEntry}, {"gameover", ScreenId::GameOver},
     {"result", ScreenId::Result},             {"staffroll", ScreenId::StaffRoll},
+    {"update", ScreenId::Update},
     {"quit", ScreenId::Quit},
 };
 
@@ -135,6 +136,8 @@ void setOpeningHost(MovieAudio* audio, fnd::input::Backend* input, std::string m
 bool screenAvailable(ScreenId id) {
     // Battle presentation owns live simulation and is constructed by the application.
     if (id == ScreenId::Battle) return true;
+    // Constructed by the application, which owns the update engine's context.
+    if (id == ScreenId::Update) return true;
     for (const ScreenEntry& e : kScreens)
         if (e.id == id) return true;
     return false;

@@ -17,6 +17,12 @@ inline constexpr UiColor kPanel{0.03f, 0.04f, 0.09f, 0.72f};
 inline constexpr UiColor kHighlight{0.16f, 0.32f, 0.72f, 0.85f};
 inline constexpr UiColor kTrack{1.f, 1.f, 1.f, 0.18f};
 
+// Opens a release page in the browser, or only logs it when the test build asked for
+// that (issue #100): the stub has to live in the UI library, which a test build does not
+// recompile with its definition.
+void setUrlOpenForTest(bool enabled);
+void openUrl(const char* url);
+
 struct Words { const char* ja; const char* en; };
 inline const char* say(const Words& words) { return sheetLanguage().empty() ? words.ja : words.en; }
 

@@ -13,6 +13,10 @@ Thumbs.db
 *.pem
 .env
 
+# The release signing key is generated and kept offline by the owner; it must never
+# reach the repository (docs/AUTO-UPDATE.md).
+*.release-secret
+
 # .full.json são respostas brutas do MCP — duplicações dos .txt
 *.full.json
 

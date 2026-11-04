@@ -43,11 +43,12 @@ src/            the product (C++17, SDL3 + WebGPU)
   camera/       the stateful arena camera and its pure view-projection math
   render/       scene rendering, debug primitives and the effect/shadow tables
   gpu/          webgpu.h only: instance, adapter, device, swapchain, buffers
-  platform/     SDL3 only, plus the one surface seam between SDL and WebGPU
+  platform/     SDL3 only, the one surface seam, and the updater's HTTP client
+  update/       the updater's building blocks: version, manifests, archive readers, crypto
   assets/       .X / .cnv / .dat decoding and scene assembly
   audio/ input/ movie/ physics/ settings/ shaders/   as named
 tests/          the host test suite (CTest), scripts and fixtures
-tools/          harness, launch_original.sh, asset-tools, hook-tracer, audit tools
+tools/          harness, launch_original.sh, asset-tools, hook-tracer, audit and release tools
 docs/           one documentation tree; closed plans in docs/archive/
 research/       the reverse-engineering corpus; research/evidence/ holds the banks
 cmake/ scripts/ package/ webdelivery/ assets/
@@ -177,6 +178,19 @@ inside the package or from the base system — never `third_party/` or the build
 settings file, its one-time migration of a retired `install.conf` and its failure messages
 without a device. The packaged binary is named `daybreak-bin` because the launcher owns the
 name `daybreak`.
+
+### The update manifest and release signing
+
+A release that ships the updater also carries the files it checks against
+([`docs/AUTO-UPDATE.md`](docs/AUTO-UPDATE.md)):
+
+* `tools/package_manifest.py` writes and checks `package-manifest.txt`, the list of files a
+  package owns, which both packaging scripts call.
+* `tools/make_update_manifest.py` turns the two release archives into `update-manifest.txt`,
+  after proving each archive against the manifest inside it.
+* `tools/release_sign/` is the offline Ed25519 signing tool, built as
+  `build/linux/release_sign`; the owner runs it locally, and the private key never reaches
+  the repository or CI.
 
 ## Implementation notes
 

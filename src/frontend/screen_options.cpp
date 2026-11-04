@@ -19,15 +19,15 @@ namespace {
 // baked labels mixed faces with the runtime captions. Every word here is one face.
 constexpr int kKeyConfigBackRow = fnd::input::ActionCount;
 
-enum class OptionRow { Toon, Shadow, Fullscreen, Resolution, Language, TitleBackdrop, Master, Music, Voice, Sfx, Back, Count };
+enum class OptionRow { Toon, Shadow, Fullscreen, Resolution, Language, TitleBackdrop, Updates, Master, Music, Voice, Sfx, Back, Count };
 constexpr int kOptionRowCount = (int)OptionRow::Count;
 // The SOUND block and BACK sit 34 and 6 lower than before the title-backdrop row existed
 // (issue #98): the extra GRAPHICS row does not fit above the heading otherwise.
-constexpr float kOptionY[kOptionRowCount] = {130, 164, 198, 232, 266, 300, 368, 402, 436, 470, 500};
-constexpr float kSoundHeadingY = 342.f;
+constexpr float kOptionY[kOptionRowCount] = {130, 164, 198, 232, 266, 300, 334, 392, 420, 448, 476, 506};
+constexpr float kSoundHeadingY = 368.f;
 constexpr Words kOptionNames[kOptionRowCount] = {
     {"トゥーンレンダリング", "TOON SHADING"}, {"影の表示", "SHADOWS"}, {"画面モード", "SCREEN MODE"}, {"解像度", "RESOLUTION"}, {"言語", "LANGUAGE"},
-    {"タイトル背景", "TITLE BACKGROUND"},
+    {"タイトル背景", "TITLE BACKGROUND"}, {"アップデート", "UPDATES"},
     {"全体の音量", "MASTER"}, {"音楽の音量", "MUSIC"}, {"音声の音量", "VOICE"}, {"効果音の音量", "EFFECTS"}, {"終了", "BACK"},
 };
 constexpr Words kOptionHelp[kOptionRowCount] = {
@@ -37,6 +37,7 @@ constexpr Words kOptionHelp[kOptionRowCount] = {
     {"←→ で解像度を変更します", "Left and right change the resolution."},
     {"←→ で言語を切り替えます", "Left and right change the language of the menus and the HUD."},
     {"←→ でタイトル画面の背景を切り替えます", "Left and right switch the title background between the original art and a live stage."},
+    {"←→ で起動時のアップデート確認を切り替えます", "Left and right switch the update check at launch."},
     {"←→ で全体の音量を調整します", "Left and right set the overall volume."},
     {"←→ で音楽の音量を調整します", "Left and right set the music volume."},
     {"←→ で音声の音量を調整します", "Left and right set the voice volume."},
@@ -109,6 +110,11 @@ public:
                 if (in.left || in.right)
                     settings.titleBackdrop = cycleTitleBackdrop(settings.titleBackdrop, in.right ? 1 : -1);
                 break;
+            case OptionRow::Updates:
+                // The title reads this when it builds the check, and a running check
+                // notices the change and stops (main.cpp).
+                settings.updateCheck = !settings.updateCheck;
+                break;
             case OptionRow::Master:
             case OptionRow::Music:
             case OptionRow::Voice:
@@ -178,6 +184,8 @@ private:
         choice(batch, sheetLanguage().empty() ? "日本語" : "ENGLISH", kOptionY[(int)OptionRow::Language], isRow(OptionRow::Language));
         choice(batch, titleBackdropLabel(settings.titleBackdrop).c_str(), kOptionY[(int)OptionRow::TitleBackdrop],
                isRow(OptionRow::TitleBackdrop));
+        choice(batch, say(settings.updateCheck ? on : off), kOptionY[(int)OptionRow::Updates],
+               isRow(OptionRow::Updates));
         const int values[] = {settings.volumes.master, settings.volumes.music, settings.volumes.voice, settings.volumes.sfx};
         for (int i = 0; i < 4; ++i) {
             const int row = (int)OptionRow::Master + i;

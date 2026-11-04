@@ -11,6 +11,8 @@
 # The staging itself is CMake's install rules (CMakeLists.txt), so the file list is a
 # build-system fact; this script builds, stages, verifies and archives:
 #   * every required file is present, and the launcher is executable;
+#   * package-manifest.txt lists every shipped file with its hash, size and mode, and
+#     checks the staged tree again after the verification below (issue #100);
 #   * nothing under a game-data path (daybreakXX.dat, data/, movie/, .X/.cnv) is in the
 #     artifact, and the archive's table of contents is printed so the claim is checkable;
 #   * `ldd` on the packaged executable resolves every library inside the package or from
@@ -45,14 +47,19 @@ done
 fail() { echo "package_linux.sh: $*" >&2; exit 1; }
 
 command -v tar >/dev/null || fail "tar is required"
+command -v python3 >/dev/null || fail "python3 is required (tools/package_manifest.py)"
 tar --version | grep -q GNU || fail "GNU tar is required (--sort/--mtime/--owner)"
 
 if [ "$build" = 1 ]; then
     echo "== building =="
-    "$root/build.sh" linux
+    # A package is a release by definition, so it must carry a trusted key
+    # (src/update/release_keys.h); the escape only exists until the owner supplies it.
+    "$root/build.sh" linux -DDAYBREAK_RELEASE_BUILD=ON
 fi
 [ -f "$root/build/linux/daybreak" ] \
     || fail "no build in $root/build/linux — run ./build.sh linux first (or drop --no-build)"
+grep -q '^DAYBREAK_RELEASE_BUILD:BOOL=ON' "$root/build/linux/CMakeCache.txt" \
+    || fail "the build tree was not configured with DAYBREAK_RELEASE_BUILD=ON — run ./build.sh linux -DDAYBREAK_RELEASE_BUILD=ON first"
 [ -f "$root/third_party/fonts/NotoSansCJKjp-Regular.otf" ] \
     || fail "third_party/fonts/NotoSansCJKjp-Regular.otf is missing — run ./build.sh deps (D7 needs the Japanese fallback in the package)"
 
@@ -62,14 +69,29 @@ rm -rf "$stage"
 mkdir -p "$out_dir"
 cmake --install "$root/build/linux" --prefix "$stage" >/dev/null
 
+# What this package is, and whether it is signed. An unsigned test build is marked so
+# make_update_manifest.py refuses its archives and nobody publishes it by mistake.
+revision=$(git -C "$root" rev-parse --short HEAD)
+if ! git -C "$root" diff --quiet || ! git -C "$root" diff --cached --quiet; then
+    revision="$revision-dirty"
+fi
+printf 'Version: %s\nCode revision: %s\nTarget: Linux x86_64\n' "$version" "$revision" > "$stage/BUILD-INFO.txt"
+
+# The updater may only replace files the package owns, so the package states which ones
+# those are (issue #100). Generated before the checks below so the required-files list
+# covers it; `check` runs again after them, right before the archive is built.
+echo "== package manifest =="
+python3 -I "$root/tools/package_manifest.py" write "$stage" \
+    --version="$version" --target=linux-x86_64 --launch=daybreak
+
 echo "== required files =="
 required=(
-    daybreak-bin daybreak README-LINUX.md VERSION
+    daybreak-bin daybreak package-manifest.txt BUILD-INFO.txt README-LINUX.md VERSION
     assets/fonts/gyrotrope-black.otf assets/fonts/NotoSansCJKjp-Regular.otf
     lib/libwgpu_native.so lib/libSDL3.so.0
     LICENSES/README.md LICENSES/SDL3.txt LICENSES/wgpu-native-MIT.txt
     LICENSES/SIL-OFL-1.1.txt LICENSES/glm-MIT.txt LICENSES/stb.txt
-    LICENSES/daybreak-decomp.txt
+    LICENSES/Monocypher.txt LICENSES/daybreak-decomp.txt
 )
 for f in "${required[@]}"; do
     [ -e "$stage/$f" ] || fail "the staged package is missing $f"
@@ -106,15 +128,26 @@ printf '%s\n' "$ldd_out" | grep -qF "$stage/lib/libwgpu_native.so" \
     || fail "libwgpu_native.so does not resolve inside the package"
 printf '%s\n' "$ldd_out" | grep -qF "$stage/lib/libSDL3.so.0" \
     || fail "libSDL3.so.0 does not resolve inside the package"
+# The updater loads libcurl with dlopen and never links it (src/platform/http_curl.cpp):
+# a NEEDED entry would make the game depend on a library the package does not ship.
+printf '%s\n' "$ldd_out" | grep -q 'libcurl' \
+    && fail "libcurl is linked into daybreak-bin; it must only be loaded at run time"
+
+python3 -I "$root/tools/package_manifest.py" check "$stage"
 
 echo "== archive =="
 tarball="$out_dir/$name.tar.gz"
 rm -f "$tarball" "$tarball.sha256"
 # Deterministic: sorted entries, fixed ownership and mtime, gzip without its own
 # timestamp — two runs give the same sha256 (verified in the issue's report).
+# POSIX ustar on purpose: it is the only tar dialect the updater's reader accepts
+# (docs/AUTO-UPDATE.md), and GNU/pax long-name records are refused there. ustar splits
+# long paths into its prefix field, so a name it cannot represent fails here, loudly.
 tar -C "$out_dir" --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0 \
-    -cf - "$name" | gzip -9n > "$tarball"
-sha256sum "$tarball" > "$tarball.sha256"
+    --format=ustar -cf - "$name" | gzip -9n > "$tarball"
+# The checksum file names the archive relative to itself, so `sha256sum -c` works wherever
+# the pair is downloaded together (a build-machine path would not).
+(cd "$out_dir" && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
 cat "$tarball.sha256"
 
 echo "== artifact contents =="

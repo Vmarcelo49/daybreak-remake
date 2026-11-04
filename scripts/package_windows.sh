@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Package the Windows x64 build without original game data.
 # Usage: package_windows.sh [--no-build] [--out=<directory>]
+#
+# The zip is flat (no top-level directory) and carries package-manifest.txt at its root,
+# the list of files the updater may replace (issue #100). A .sha256 file is written
+# beside the zip, as package_linux.sh does for the tarball.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 out_dir="$root/build/package"
@@ -13,8 +17,15 @@ for arg in "$@"; do
     esac
 done
 command -v zip >/dev/null
+command -v python3 >/dev/null
 command -v x86_64-w64-mingw32-objdump >/dev/null
-if [ "$build" = 1 ]; then "$root/build.sh" windows; fi
+if [ "$build" = 1 ]; then
+    # A package is a release by definition, so it must carry a trusted key
+    # (src/update/release_keys.h); the escape only exists until the owner supplies it.
+    "$root/build.sh" windows -DDAYBREAK_RELEASE_BUILD=ON
+fi
+grep -q '^DAYBREAK_RELEASE_BUILD:BOOL=ON' "$root/build/windows/CMakeCache.txt" \
+    || { echo "the build tree was not configured with DAYBREAK_RELEASE_BUILD=ON — run ./build.sh windows -DDAYBREAK_RELEASE_BUILD=ON first" >&2; exit 1; }
 version=$(tr -d '[:space:]' < "$root/VERSION")
 revision=$(git -C "$root" rev-parse --short HEAD)
 if ! git -C "$root" diff --quiet || ! git -C "$root" diff --cached --quiet; then
@@ -42,7 +53,8 @@ cat > "$stage/LICENSES/README.md" <<'NOTICES'
 
 The port uses the Golden Witch License (daybreak-decomp.txt). SDL3 uses the zlib
 license. wgpu-native and its distribution wrapper, GLM, stb, pl_mpeg, GekkoNet, zpp_bits
-and musl's math use the included MIT, BSD and public-domain notices. Gyrotrope Black and Noto Sans CJK JP use
+and musl's math use the included MIT, BSD and public-domain notices. Monocypher uses
+BSD-2-Clause or CC0-1.0, at your option (Monocypher.txt). Gyrotrope Black and Noto Sans CJK JP use
 SIL-OFL-1.1.txt. Fonts are redistributed without modification.
 
 The MinGW GCC runtime is linked statically under GPL-3.0.txt with the permission
@@ -53,13 +65,18 @@ printf 'Version: %s\nCode revision: %s\nTarget: Windows x64\n' "$version" "$revi
 for file in "$stage"/*.exe "$stage"/*.dll; do
     while IFS= read -r dependency; do
         case "${dependency,,}" in
-            api-ms-*.dll|kernel32.dll|advapi32.dll|gdi32.dll|imm32.dll|msvcrt.dll|ole32.dll|oleaut32.dll|setupapi.dll|shell32.dll|user32.dll|version.dll|winmm.dll|d3dcompiler_47.dll|ntdll.dll|opengl32.dll|propsys.dll|userenv.dll|ws2_32.dll|bcryptprimitives.dll) ;;
+            api-ms-*.dll|kernel32.dll|advapi32.dll|gdi32.dll|imm32.dll|msvcrt.dll|ole32.dll|oleaut32.dll|setupapi.dll|shell32.dll|user32.dll|version.dll|winmm.dll|d3dcompiler_47.dll|ntdll.dll|opengl32.dll|propsys.dll|userenv.dll|ws2_32.dll|bcryptprimitives.dll|winhttp.dll) ;;
             *) test -s "$stage/$dependency" || { echo "Missing runtime DLL: $dependency" >&2; exit 1; } ;;
         esac
     done < <(x86_64-w64-mingw32-objdump -p "$file" | sed -n 's/.*DLL Name: //p')
 done
 test -z "$(find "$stage" -type f \( -iname '*.dat' -o -iname '*.x' -o -iname '*.cnv' -o -iname '*.mpg' \) -print)"
 test -z "$(find "$stage" -type f \( -iname '*.cmd' -o -iname '*.bat' -o -iname '*.ps1' -o -iname '*.sh' \) -print)"
+python3 -I "$root/tools/package_manifest.py" write "$stage" \
+    --version="$version" --target=windows-x86_64 --launch=DaybreakRemake.exe
+python3 -I "$root/tools/package_manifest.py" check "$stage"
+
 (cd "$stage" && zip -q -r "$stage.zip" .)
 mv "$stage.zip" "$out_dir/$name.zip"
-sha256sum "$out_dir/$name.zip"
+(cd "$out_dir" && sha256sum "$name.zip" > "$name.zip.sha256")
+cat "$out_dir/$name.zip.sha256"
