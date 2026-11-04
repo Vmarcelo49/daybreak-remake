@@ -4,10 +4,15 @@
 // Why a Backend class instead of free functions: the remake's InputManager
 // owns the same trio (device reads, script override, edge computation) as
 // one per-frame unit, and the future --input-test wiring needs exactly that
-// shape (init once, tick/poll per frame). Devices stay fixed: P0 is the
-// verified keyboard layout, P1-P3 are gamepads; the original's P2-P4 pads
-// were buttons 1-8 with unknown layout, so no keyboard fallback is offered
-// there. Every action is bound by default: the original has one melee input (issue #10).
+// shape (init once, tick/poll per frame). Every action is bound by default: the original
+// has one melee input (issue #10).
+//
+// Player slots (issue #102, owner decision): no device owns a slot at start. The keyboard
+// and each pad take the lowest free slot on their first press of a bound input, and that
+// press acts, so whoever presses first is player 1. The keyboard has one binding set
+// wherever it sits; pad bindings belong to the slot. A pad that leaves keeps its slot
+// reserved for the rest of the session, so a dead battery does not hand player 1 to the
+// keyboard (input/gamepad_identity.h).
 //
 // This header is SDL-free on purpose: the tables in input_sdl3.h test
 // without SDL linked, and so does everything here (key state is tracked as
@@ -23,6 +28,7 @@
 
 #include "input/gamepad_identity.h"
 #include "input/input.h"
+#include "input/input_sdl3.h"
 
 namespace fnd::input {
 class TickInput;
@@ -54,8 +60,8 @@ class Backend {
     bool init();
     void shutdown();
 
-    // One frame: pump OS input, absorb queued key events, re-poll hotplug,
-    // read keyboard (P0) + gamepads (P1-P3), apply the script override to P0,
+    // One frame: pump OS input, absorb queued key events, re-poll hotplug, let a device's
+    // first press take a slot, read every slot's device, apply the script override to P0,
     // then derive edges for every player. Live fixed-tick hosts pass false
     // and sample_script separately; the default retains capture/test callers.
     void poll(bool applyScript = true);
@@ -84,7 +90,16 @@ class Backend {
     // harvests the queue itself, so forwarding is optional and idempotent.
     // `scancode` is the numeric SDL_Scancode; out-of-range values are ignored.
     void note_key(int scancode, bool pressed);
+    // `player` is a slot and `button` a pad input code (input_sdl3.h, triggers included).
     void note_gamepad_button(int player, int button, bool pressed);
+    // The SDL_AppEvent feed for pads, by SDL instance id. A press on a pad that has no slot
+    // yet takes one, exactly as the poll would; a trigger is turned into its press/release.
+    void note_pad_button(int32_t instanceId, int button, bool pressed);
+    void note_pad_axis(int32_t instanceId, int axis, int value);
+    // Logs a device SDL reports (SDL_EVENT_JOYSTICK_ADDED, including those present at
+    // startup), saying whether SDL recognises it as a gamepad: one that is not is never
+    // opened, and the log is all a player's report can show of that (issue #102).
+    void note_joystick_added(int32_t instanceId) const;
     void suppress_key(int scancode);
     void suppress_gamepad_button(int player, int button);
     bool set_keyboard_binding(Action action, int scancode);
@@ -99,15 +114,11 @@ class Backend {
     void note_focus_gained();
     bool window_focused() const { return window_focused_; }
 
-    // Stable-controller identity (issue #19): the GUID recorded for each player slot.
-    // A pad is opened into the slot whose hint matches its GUID when that slot is free,
-    // so a replugged pad keeps its player (and its bindings) instead of taking the
-    // lowest free slot. See input/gamepad_identity.h for the policy.
-    void set_gamepad_guid_hint(int player, const std::string& guid);
-    const std::string& gamepad_guid_hint(int player) const;
-    // The pad currently in that slot: its SDL GUID string and name, "" when empty.
+    // The pad currently in that slot: its SDL GUID string and name, "" when empty, and its
+    // SDL_GamepadType, -1 when the slot holds no pad.
     std::string gamepad_guid(int player) const;
     std::string gamepad_name(int player) const;
+    int gamepad_type(int player) const;
 
     // Deterministic driver, same line format as the remake
     // ("<frame> TOKEN...", "-" releases all, "#" comments). The override
@@ -131,14 +142,20 @@ class Backend {
     PlayerState players_[kMaxPlayers];
     DeviceType devices_[kMaxPlayers];
     void* pads_[kMaxPlayers];  // SDL_Gamepad* when open; void* keeps SDL out
+    std::vector<void*> idlePads_;   // opened, waiting for the press that gives them a slot
+    int keyboardSlot_ = -1;
+    std::array<std::string, kMaxPlayers> slotGuid_{};      // the pad in each slot
+    std::array<std::string, kMaxPlayers> reservedGuid_{};  // a pad that left, this session
+    bool triggerHeld_[kMaxPlayers][2] = {};                // the event feed's trigger state
     bool key_held_[kKeyHeldSize];
     bool inited_ = false;
     bool window_focused_ = true;   // unknown focus means focused (note_focus_lost)
     bool suppressedKeys_[kKeyHeldSize] = {};
-    bool suppressedButtons_[kMaxPlayers][26] = {};
+    bool suppressedButtons_[kMaxPlayers][sdl3::kPadInputCount] = {};
     int keyboard_[ActionCount];
     int buttons_[kMaxPlayers][ActionCount];
-    std::array<std::string, kMaxPlayers> guidHints_{};
+    int32_t failedPadId_ = 0;   // the last pad SDL_OpenGamepad refused, logged once
+    bool traceButtons_ = false; // DAYBREAK_INPUT_TRACE=1: log every pad button event
     struct TickSample { int player; PlayerState state; };
     std::vector<TickSample> tickSamples_;
     PlayerState eventStates_[kMaxPlayers];
@@ -150,6 +167,9 @@ class Backend {
     std::string scene_name_;
 
     void record_button(int player, int code, bool down);
+    int claim_slot(DeviceType device, const std::string& guid);
+    bool claim_keyboard(int scancode);
+    void claim_idle_pads();
     void repoll_gamepads();
     void drain_key_events();
     void update_keyboard();
@@ -159,5 +179,10 @@ class Backend {
     // focus drops held keys and ignores the devices until focus returns.
     bool device_input_ignored() const { return !window_focused_; }
 };
+
+// The printed name of a pad input code (input_sdl3.h, triggers included) for the pad family
+// SDL reports: A/B/X/Y and LB/RT on Xbox-style pads, CROSS/CIRCLE and L1/R2 on PlayStation,
+// L/ZR on Nintendo. `gamepadType` is an SDL_GamepadType; -1 (no pad) reads as Xbox.
+std::string padInputLabel(int code, int gamepadType);
 
 }  // namespace fnd::input

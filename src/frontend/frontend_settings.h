@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <vector>
 #include "audio/audio.h"
@@ -59,6 +60,10 @@ struct FrontendSettings {
     std::function<void(bool)> applyFullscreen;
     std::function<bool(const DisplayResolution&)> applyResolution;
     std::function<void()> applyBindings;
+    // The SDL_GamepadType of the pad in a player slot, -1 when the slot has none: the
+    // Controls screen names buttons after the pad's family and lets any pad rebind a slot
+    // that has none (issue #102).
+    std::function<int(int)> padTypeForSlot;
 };
 FrontendSettings& frontendSettings();
 
@@ -74,9 +79,15 @@ void applyUserSettings(FrontendSettings& settings, const settings::UserSettings&
 // Pad identity is device state and stays with the host, which fills padGuid/padName in
 // before saving.
 settings::UserSettings toUserSettings(const FrontendSettings& settings);
-// The SDL event pump supplies physical input while the binding screen is armed.
-void submitBindingInput(bool keyboard, int player, int code);
+// The Controls screen's columns: 0 is the keyboard, 1..4 the pad bindings of players 1..4.
+inline constexpr int kBindingColumns = 5;
+// The SDL event pump supplies physical input while the binding screen is armed. A pad press
+// names the slot of the pad it came from, -1 for a pad that has no slot yet; a key always
+// binds the keys, a pad press a pad's bindings, whatever the column. `pressedAtNs` is the
+// event's SDL timestamp (0: unknown): a press from before the capture was armed is the one
+// that armed it, delivered late, and is ignored.
+void submitBindingInput(bool keyboard, int padSlot, int code, uint64_t pressedAtNs = 0);
 bool bindingCaptureActive();
-void armBindingCapture(int player, int action);
+void armBindingCapture(int column, int action);
 void cancelBindingCapture();
 }

@@ -249,6 +249,9 @@ values and the camera all come from `src/battle/core/`.
 - `DAYBREAK_CAMINFO=1` prints the trace the banked DX9 logs hold, field for field, so
   `tests/compare_match_traces.py` can diff a run against
   `research/evidence/parity-baseline/logs/`.
+- `DAYBREAK_INPUT_TRACE=1` logs every gamepad button event with the player it reached. Pad
+  connections, the player each pad became and refused opens are always logged, in
+  `daybreak.log` when there is no console (issue #102).
 - `--headless` needs no display and still renders on the real GPU.
 - `--plan=<file>`, `--debug-keys=`, `--special-mode=`, `--view-fighter=` and `--hash-log=` run what
   `simctl` ran and show it from any fighter. F1 to F8 are live in a battle: see `docs/DEBUG-KEYS.md`,

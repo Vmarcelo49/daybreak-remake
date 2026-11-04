@@ -179,6 +179,12 @@ int main(int argc, char** argv) {
         app.matchInput.sample_tick_inputs(app.pendingInput);
         for (int p = 0; p < 4; ++p) app.tickInput[p] = app.pendingInput[p].consume();
     };
+    // The keyboard takes player 1 on its first press (issue #102); the check below is that
+    // a scene swap keeps it there.
+    app.matchInput.note_key(fnd::input::sdl3::kScRight, true);
+    sampleInput();
+    app.matchInput.note_key(fnd::input::sdl3::kScRight, false);
+    sampleInput();
     std::vector<const xm::Model*> before;
     std::string previousRigs;
     for (int round = 0; round < 3; ++round) {

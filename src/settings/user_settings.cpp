@@ -152,6 +152,13 @@ constexpr ActionName kActionNames[] = {
 static_assert(sizeof(kActionNames) / sizeof(kActionNames[0]) == fnd::input::ActionCount,
               "the persisted action names must cover every action");
 
+// The pad layout every version wrote before issue #102 (A guard, B jump, Y shoot, LB lock,
+// RB special, Back tactics). The file stores every row, so a player who never rebound a pad
+// carries this row and would never see the new defaults; a row that is exactly this one is
+// read as "the defaults" and replaced on load.
+constexpr std::array<int, fnd::input::ActionCount> kPadRowBeforeIssue102 = {
+    11, 12, 13, 14, 2, 0, 3, 1, 10, 4, 9, 6};
+
 }  // namespace
 
 UserSettings::UserSettings() {
@@ -547,6 +554,14 @@ bool parse(const std::string& text, UserSettings& out, std::string& error, LoadR
         }
         break;
     }
+    bool padLayoutUpdated = false;
+    for (auto& pad : candidate.gamepad) {
+        if (pad != kPadRowBeforeIssue102) continue;
+        pad = UserSettings{}.gamepad[0];
+        padLayoutUpdated = true;
+    }
+    if (padLayoutUpdated)
+        report.messages.push_back("pad rows with the old default layout take the new one");
     out = candidate;
     report.loaded = true;
     return true;

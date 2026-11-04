@@ -30,12 +30,11 @@ import update_e2e_fixtures as fixtures  # noqa: E402
 SKIP = 77
 N = "0.2.1"
 NEXT = "0.2.2"
+# The notice takes the input as soon as it appears (issue #100, the owner's review), so the
+# confirm goes straight to Update. Anything before it would be that banner's own input: a
+# leading UP dismisses it and the following DOWN/CONFIRM land on the title menu.
 MENU_SCRIPT = """# Title menu -> notice -> Update.
 WAIT 90
-UP
-WAIT 3
-DOWN
-WAIT 3
 CONFIRM
 WAIT 5
 """

@@ -233,8 +233,9 @@ static void flushUserSettings(App& app) {
 }
 
 // The pad identity is device state, not UI state: refresh it from the backend, then let
-// the comparison below notice it. A disconnected pad keeps the identity it had, which is
-// what keeps its bindings on the same player across a replug.
+// the comparison below notice it. It records which pad last held each player, for a
+// player's report; slots are taken by the first press, so nothing places a pad by it
+// (input/gamepad_identity.h).
 static void pollUserSettings(App& app, double now) {
     if (!app.settingsActive) return;
     if (app.matchInputReady) {
@@ -515,29 +516,9 @@ static SDL_AppResult tickBattlePause(App& app) {
         up = up || in.just_pressed[fnd::input::Up];
         down = down || in.just_pressed[fnd::input::Down];
         confirm = confirm || in.just_pressed[fnd::input::Jump];
-        cancel = cancel || in.just_pressed[fnd::input::AttackA];
+        cancel = cancel || in.just_pressed[menuCancelAction(app, controllers[i])];
     }
     return applyPauseChoice(app, app.pauseMenu.update(up, down, confirm, cancel));
-}
-
-// A readable hint from the CURRENT bindings (P1 keyboard plus, when the pausing player has
-// a pad, that pad's button names), so a rebind shows up here with no second table.
-static std::string bindingHint(const App& app, fnd::input::Action action, int padPlayer) {
-    const auto& settings = ui::frontendSettings();
-    std::string out;
-    const int key = settings.keyboard[action];
-    if (key >= 0) {
-        const char* name = SDL_GetScancodeName(static_cast<SDL_Scancode>(key));
-        if (name && *name) out = name;
-    }
-    if (padPlayer >= 0 && padPlayer < 4) {
-        const int button = settings.gamepad[static_cast<size_t>(padPlayer)][action];
-        if (button >= 0) {
-            const char* name = SDL_GetGamepadStringForButton(static_cast<SDL_GamepadButton>(button));
-            if (name && *name) out += out.empty() ? name : std::string(" / ") + name;
-        }
-    }
-    return out.empty() ? "unbound" : out;
 }
 
 // The caption cell the pause menu rasterizes at. Fixed on purpose: CaptionText::load
@@ -563,11 +544,6 @@ static constexpr float kPauseFontCellPx = 32.f;
 static bool drawBattlePauseOverlay(App& app, WGPUCommandEncoder encoder, WGPUTextureView view,
                                    uint32_t width, uint32_t height, WGPUTextureFormat format) {
     if (!app.battlePaused || !app.pauseUiReady || width == 0 || height == 0) return true;
-    int padPlayer = 0;
-    if (app.frontendMatch) {
-        const int controller = panelController(app, ui::kFrontendBattleSlots[0]);
-        if (controller > 0) padPlayer = controller;
-    }
     std::vector<std::string> lines;
     lines.push_back("PAUSED");
     for (int row = 0; row < app.pauseMenu.rows; ++row)
@@ -1818,13 +1794,8 @@ bool initScreens(App& app) {
         }
     };
     settings.applyBindings();
-    if (app.settingsActive) {
-        // Stable-controller identity: the hints have to be in place before the first pad
-        // poll, so a replugged pad is given back its player slot (issue #19).
-        for (int player = 0; player < fnd::input::kMaxPlayers; ++player)
-            app.matchInput.set_gamepad_guid_hint(player, app.userSettings.padGuid[static_cast<size_t>(player)]);
-        applyPersistedDisplay(app);
-    }
+    settings.padTypeForSlot = [&app](int slot) { return app.matchInput.gamepad_type(slot); };
+    if (app.settingsActive) applyPersistedDisplay(app);
     // FUN_00647e00 loads the system bank separately from gameplay data/se.
     if (app.menuAudio.open(fnd::audio::Spec{})) {
         app.menuAudio.set_volumes(settings.volumes);

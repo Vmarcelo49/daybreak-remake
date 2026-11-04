@@ -2,6 +2,7 @@
 #include "frontend/frontend_settings.h"
 #include "frontend/menu_panel.h"
 #include "frontend/title_backdrop.h"
+#include "input/input_backend.h"
 #include "assets/asset_source.h"
 #include "assets/cnv.h"
 #include "ui/caption.h"
@@ -51,6 +52,9 @@ constexpr Words kBindingNames[fnd::input::ActionCount] = {
 class ConfigScreen : public PanelScreen {
 public:
     ConfigScreen(SpriteRenderer& batch, bool keys, std::string& error) : keys_(keys) {
+        // Player 1 on a pad opens on their own pad column, not the keys.
+        const auto& padType = frontendSettings().padTypeForSlot;
+        if (keys && padType && padType(0) >= 0) column_ = 1;
         const bool ok = keys ? uploadBackground(batch, "data/keyconfig/0000", {{240, 8, 320, 56}, {120, 92, 560, 420}}, background_, error)
                              : uploadBackground(batch, "data/config/0001", {{240, 8, 320, 56}, {340, 250, 270, 140}}, background_, error);
         if (ok) loadFace(batch, error);
@@ -72,9 +76,9 @@ public:
         if (in.confirm && row_ == rows - 1) return ScreenId::Title;
         auto& settings = frontendSettings();
         if (keys_) {
-            if (in.left) player_ = (player_ + 3) % 4;
-            if (in.right) player_ = (player_ + 1) % 4;
-            if (in.confirm) armBindingCapture(player_,kBindingRowActions[row_]);
+            if (in.left) column_ = (column_ + kBindingColumns - 1) % kBindingColumns;
+            if (in.right) column_ = (column_ + 1) % kBindingColumns;
+            if (in.confirm) armBindingCapture(column_,kBindingRowActions[row_]);
         } else if (in.left || in.right || in.confirm) {
             switch ((OptionRow)row_) {
             case OptionRow::Toon:
@@ -192,57 +196,43 @@ private:
     void drawKeyConfig(SpriteRenderer& batch) const {
         const auto& settings = frontendSettings();
         frame(batch, {"操作設定", "CONTROLS"}, 14, 542);
-        constexpr float kFirstRow = 104.f, kPitch = 31.f, kColumn = 330.f, kColumnWidth = 88.f;
-        static const char* const kPlayers[4] = {"1P", "2P", "3P", "4P"};
-        for (int p = 0; p < 4; ++p)
-            centred(batch, kPlayers[p], kColumn + kColumnWidth * (p + 0.5f), 78, 18.f, player_ == p ? kGold : kPale);
+        // The keyboard is one device with one set of keys, wherever it sits; the pad
+        // bindings belong to the player slot (input/input_backend.h).
+        constexpr float kFirstRow = 104.f, kPitch = 31.f, kColumn = 320.f, kColumnWidth = 72.f;
+        const char* const headings[kBindingColumns] = {say({"キー", "KEYS"}), "1P", "2P", "3P", "4P"};
+        int padTypes[4];
+        for (int p = 0; p < 4; ++p) padTypes[p] = settings.padTypeForSlot ? settings.padTypeForSlot(p) : -1;
+        for (int c = 0; c < kBindingColumns; ++c)
+            centred(batch, headings[c], kColumn + kColumnWidth * (c + 0.5f), 78, 18.f, column_ == c ? kGold : kPale);
         for (int a = 0; a < fnd::input::ActionCount; ++a) {
             const float y = kFirstRow + a * kPitch;
             const bool selected = a == row_;
             if (selected) {
                 batch.pushSolid({116, y - 4.f, 568, 28}, {1.f, 1.f, 1.f, 0.08f});
-                batch.pushSolid({kColumn + player_ * kColumnWidth, y - 4.f, kColumnWidth, 28}, kHighlight);
+                batch.pushSolid({kColumn + column_ * kColumnWidth, y - 4.f, kColumnWidth, 28}, kHighlight);
             }
             label(batch, say(kBindingNames[a]), 134, y, 17.f, selected ? kWhite : kPale);
-            for (int p = 0; p < 4; ++p) {
-                const int code = p == 0 ? settings.keyboard[kBindingRowActions[a]] : settings.gamepad[p][kBindingRowActions[a]];
-                const std::string name = p == 0 ? keyName(code) : gamepadLabel(code);
-                centred(batch, name.c_str(), kColumn + kColumnWidth * (p + 0.5f), y + 2.f, 14.f, selected && p == player_ ? kWhite : kPale);
+            for (int c = 0; c < kBindingColumns; ++c) {
+                const int action = kBindingRowActions[a];
+                const std::string name = c == 0 ? keyName(settings.keyboard[action])
+                                                : fnd::input::padInputLabel(settings.gamepad[c - 1][action], padTypes[c - 1]);
+                centred(batch, name.c_str(), kColumn + kColumnWidth * (c + 0.5f), y + 2.f, 13.f,
+                        selected && c == column_ ? kWhite : kPale);
             }
         }
         const float backY = kFirstRow + fnd::input::ActionCount * kPitch + 2.f;
         const bool backSelected = row_ == kKeyConfigBackRow;
         if (backSelected) batch.pushSolid({116, backY - 4.f, 568, 28}, kHighlight);
         centred(batch, say({"終了", "BACK"}), 400, backY, 17.f, backSelected ? kWhite : kPale);
-        help(batch, bindingCaptureActive() ? say({"キーまたはボタンを押してください ／ ESC で中止", "Press a key or pad button. Esc cancels."})
-                                           : say({"決定で変更 ／ ←→ でプレイヤー選択", "Confirm to rebind. Left and right pick the player."}));
+        help(batch, bindingCaptureActive() ? say({"キーまたはパッドのボタンを押してください ／ ESC で中止", "Press a key, pad button or trigger. Esc cancels."})
+                                           : say({"決定で変更 ／ ←→ で列を選択", "Confirm to rebind. Left and right pick the column."}));
     }
     static std::string keyName(int code) {
         if (code < 0) return "--";
         const char* name = SDL_GetScancodeName(static_cast<SDL_Scancode>(code));
         return name && *name ? name : "#" + std::to_string(code);
     }
-    static std::string gamepadLabel(int code) {
-        switch (code) {
-        case SDL_GAMEPAD_BUTTON_SOUTH: return "A";
-        case SDL_GAMEPAD_BUTTON_EAST: return "B";
-        case SDL_GAMEPAD_BUTTON_WEST: return "X";
-        case SDL_GAMEPAD_BUTTON_NORTH: return "Y";
-        case SDL_GAMEPAD_BUTTON_BACK: return "BACK";
-        case SDL_GAMEPAD_BUTTON_GUIDE: return "GUID";
-        case SDL_GAMEPAD_BUTTON_START: return "STRT";
-        case SDL_GAMEPAD_BUTTON_LEFT_STICK: return "L3";
-        case SDL_GAMEPAD_BUTTON_RIGHT_STICK: return "R3";
-        case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: return "LB";
-        case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: return "RB";
-        case SDL_GAMEPAD_BUTTON_DPAD_UP: return "UP";
-        case SDL_GAMEPAD_BUTTON_DPAD_DOWN: return "DOWN";
-        case SDL_GAMEPAD_BUTTON_DPAD_LEFT: return "LEFT";
-        case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: return "RGHT";
-        default: return code < 0 ? "--" : "#" + std::to_string(code);
-        }
-    }
-    bool keys_; int sound_=-1; int row_=0,player_=0; 
+    bool keys_; int sound_=-1; int row_=0,column_=0; 
 };
 std::unique_ptr<Screen> create(SpriteRenderer& b,bool keys,std::string& error) {
     auto result=std::make_unique<ConfigScreen>(b,keys,error); if(!result->loaded()) return {}; return result;
