@@ -15,42 +15,50 @@ can settle (what the screens show) is separated out below.
 |---|---|---|
 | Build tools | yes | **no** — nothing is built there |
 | This checkout | yes | **no** — nothing is checked out there |
-| The game files | `Higurashi-Daybreak/` beside the checkout | copied, in a folder of their own |
-| The game binary | `build/linux/daybreak` | copied from this machine, and it may not run |
-| `netctl` | `build/linux/netctl` | copied, or rebuilt there |
+| The game files | `Higurashi-Daybreak/` beside the checkout | copied, in `~/daybreak-net/data` |
+| The game binary | `build/linux/daybreak` | only for the interactive step, and it may not run |
+| `netctl` and its libraries | `build/linux/netctl` | copied to `~/daybreak-net/{bin,lib}` |
 
 The binaries are the one real risk: Arch and Kubuntu are different glibc and different shared
-libraries, so a binary built here can fail to start there. `prepare` checks that, and says which
-half failed. If `netctl` does not run there, one line builds it there instead:
+libraries, so a binary built here can fail to start there. `netctl` needs two libraries that are
+not part of a base system, and both go along with it by the SONAME its own `ldd` resolves:
+`libwgpu_native.so` (fetched, never installed anywhere) and `libSDL3.so.0` (SDL3 may be absent).
+`prepare` copies them and the binary into `~/daybreak-net/{bin,lib}` and runs each peer under
+`LD_LIBRARY_PATH=~/daybreak-net/lib`, not a patched rpath, so no binary it ships is modified.
+It then runs `netctl --help` there, and if that fails prints the remote `ldd` that says which
+library is missing. The glibc and libstdc++ runtime deliberately stay the other machine's own.
 
-```
-ssh USER@HOST 'sudo apt install -y build-essential cmake ninja-build libsdl3-dev'
-```
+Nothing needs to be installed on the other machine, and nothing is built there.
 
-and then the checkout is needed there after all — at which point `./build.sh deps && ./build.sh
-linux --target netctl` on that machine is the shortest path. Nothing else in this plan needs a
-build there.
+## This machine cannot host the room
+
+Measured on this machine: its nftables rules **drop inbound UDP**, so a peer here never hears a
+peer on the other machine, even though `ssh` from here works and every outbound flow does. The
+rules need root, which a session does not have, so the room is **hosted on the other machine** and
+this machine joins: the reply to an outbound flow passes conntrack. `robustness --host remote` is
+that arrangement, and it is what a real run uses; `--host local` is kept for a machine whose
+firewall allows it.
 
 ## The four steps
 
 All of it is one script, `tests/net-two-machine/netsuite.py`. Run it from this machine.
 
 ```bash
-# 1. Copy what the other machine needs, and prove both binaries start there.
+# 1. Copy netctl and the two libraries it needs, and prove it starts there.
 tests/net-two-machine/netsuite.py prepare --remote USER@HOST
 
-# 2. Rehearse here first: both sides on this machine, so a script bug is not blamed on the network.
-tests/net-two-machine/netsuite.py robustness --remote USER@HOST --same-host --ticks 3600
+# 2. Rehearse here first: every peer on this machine, so a script bug is not blamed on the network.
+tests/net-two-machine/netsuite.py robustness --remote USER@HOST --host remote --rehearse --ticks 3600
 
-# 3. Two machines, one headless room, ideal and bad network. This is the real run.
-tests/net-two-machine/netsuite.py robustness --remote USER@HOST --ticks 3600
+# 3. Two machines, one headless room. This is the real run.
+tests/net-two-machine/netsuite.py robustness --remote USER@HOST --host remote --ticks 3600
 
 # 4. The interactive run, for what only a person can see.
-tests/net-two-machine/netsuite.py interactive --remote USER@HOST --host local
+tests/net-two-machine/netsuite.py interactive --remote USER@HOST --host remote
 ```
 
-Step 2 needs no second machine at all and is how the script was first exercised here; it is worth
-running before the real one so a failure in step 3 means the network, not the harness.
+Step 2 needs no second machine at all; it is worth running before the real one so a failure in
+step 3 means the network or the code, not the harness.
 
 ## What step 3 checks, and what a failure means
 
@@ -60,22 +68,29 @@ suite asserts five things per network profile:
 
 | Check | A failure means |
 |---|---|
-| every peer reported | one machine never reached the other: firewall, different network, or a peer crashed. `ssh` working says nothing about UDP — allow `udp/37564` (or the port it prints) |
+| every peer reported | one machine never reached the other: firewall, different network, or a peer crashed. `ssh` working says nothing about UDP — allow `udp/<port>` on the host (or host on the other machine, as above) |
 | no desyncs | the two machines' battles diverged — the hard bug this is for (#107) |
 | one round, one end frame | the round resolved differently on the two machines |
 | every seat a peer plays is `H` on every machine | a seat one machine plays is being run by the CPU on the other: the slot mapping or the input routing is wrong, and #106's premise would be wrong with it |
 | the logs agree frame by frame | the state hashes disagree at a named frame, with the log kept under `build/net-two-machine/` |
 
-Two network profiles run: ideal, and 10 % loss with 80 ms delay and jitter through
-`tools/net_proxy.py`, which also covers the rollback path under conditions a LAN rarely produces.
+Both profiles always run, but only one of them crosses the network:
+
+- **ideal network** — one side on each machine. This is the profile that measures two machines.
+- **10 % loss, 80 ms delay, 5 ms jitter** — the whole room on this machine, through
+  `tools/net_proxy.py`. A peer told `--proxy` sends every packet to the proxy and trusts the
+  6-byte prefix it comes back with, so every peer of a room must share one proxy, and
+  `net_proxy.py` binds to loopback; measured, a proxied joiner never reaches a direct host. The
+  profile therefore stays a one-machine rehearsal: it exercises rollback under loss and delay,
+  which is what it is for, and it says nothing about the network between the two machines.
 
 ## The checks only a person can make
 
 The headless suite cannot see a label. **This is the check for #106 itself**, and it needs
 someone at each screen, or at least a capture from each.
 
-1. Both machines open the game and reach the online menu; this machine hosts, the other joins
-   the room code or `ip:37564`.
+1. Both machines open the game and reach the online menu; the other machine hosts (this one's
+   firewall drops inbound UDP), and this one joins with the room code or `ip:37564`.
 2. **On the character select**, each player takes a different panel. The stage page waits until
    every machine's player has a panel of their own — if it opens early, a seat was left on the
    COM sentinel and every number after it shifts.
@@ -94,21 +109,27 @@ someone at each screen, or at least a capture from each.
 Record each step's screen for the issue: `PRINT SCREEN` on both machines, or
 `grim -o DP-1 shot.png` on Wayland.
 
+`interactive` prints the command line for each side and writes nothing: the game creates its own
+`settings.conf` on first run, and each side runs with `XDG_CONFIG_HOME` pointed at a folder of its
+own, so nobody's real settings are touched.
+
 ## Troubleshooting
 
 | Symptom | Cause |
 |---|---|
-| a peer never answers, `ssh` is fine | UDP is not reaching the host: `sudo ufw allow 37564/udp` on the host, and check both machines are on the same subnet |
-| `prepare` copies but a binary will not start there | different libc or a missing library; build that binary on the other machine (`docs/BUILD-linux.md`) |
+| a peer never answers, `ssh` is fine | UDP is not reaching the host. This machine's own firewall drops inbound, so host on the other machine: `--host remote` |
+| `prepare` copies but netctl will not start there | a missing library; `prepare` prints the remote `ldd`, and the two that go along are `libwgpu_native.so` and `libSDL3.so.0` |
 | both peers report but the round never ends | the ticks ran out before the round did; raise `--ticks` or set `--time-limit` |
-| desyncs on both machines but none on loopback | the network, not the code: rerun on the ideal profile to confirm, then with the proxy to measure it |
+| desyncs on both machines but none on loopback | a real cross-machine divergence: keep the logs and treat it as #107. Rerun with `--rehearse` to confirm the harness is not the cause, then read the first disagreeing frame |
+| `interactive` says there is no packaged tree | staging one needs a build tree configured as a release, which the development one is not; run the game on each machine from a build of this checkout instead |
 
 ## Limits
 
-- `netctl` asks no one to play: its inputs come from a repeatable script, so it covers
-  rollback, round resolution and seat ownership, never a human's timing.
+- `netctl` asks no one to play: its inputs come from a repeatable script, so it covers rollback,
+  round resolution and seat ownership, never a human's timing.
 - The interactive run is a `--net-host`/`--net-join` launch; the room-code path needs the
   rendezvous server and is closer to how the playtest happened. Both should be run; only the
   latter was reported broken.
-- Every result here is our build against our build. Nothing in it is evidence about the
-  original.
+- The loss-and-delay profile is a single machine. Only the ideal profile measures the network
+  between the two machines.
+- Every result here is our build against our build. Nothing in it is evidence about the original.
