@@ -4,8 +4,8 @@ The updater is built in steps. **Steps 1–4 are built and tested**: both packag
 which files they own, the release manifest is generated from the two archives, the owner
 has an offline signing tool, the game has the whole engine — check, download, verify,
 stage, apply, roll back, recover and relaunch — and the title screen now offers an update
-and installs it. The release key list is still empty (the owner supplies the public key),
-so a package build refuses to compile until it is filled in.
+and installs it. The owner's public key is in `src/update/release_keys.h`, so a release
+build compiles; an empty list still fails it.
 
 | Piece | Where | State |
 |---|---|---|
@@ -16,7 +16,7 @@ so a package build refuses to compile until it is filled in.
 | HTTPS GET (redirects, timeouts, cancel) | `src/platform/http.h`, `http_curl.cpp`, `http_winhttp.cpp` | built; Linux tested against a local fixture and the real 0.2.1 asset; Windows compiled only by CI (no toolchain here) |
 | Version, path rules, both parsers, archive readers, SHA-256/Ed25519 | `src/update/` | built, tested |
 | Check, download, verify, stage, apply, roll back, recover, relaunch | `src/update/updater.{h,cpp}`, `apply_posix.cpp` / `apply_win32.cpp` | built, tested on Linux; the Windows cases run in `update_selftest.exe` |
-| Trusted release keys | `src/update/release_keys.h` | **empty until the owner supplies the public key**; a `DAYBREAK_RELEASE_BUILD` refuses to compile without one |
+| Trusted release keys | `src/update/release_keys.h` | the owner's key; a `DAYBREAK_RELEASE_BUILD` refuses to compile with an empty list |
 | Title notice, update screen, Options row, `--no-update-check` | `src/frontend/update_notice.*`, `screen_update.*`, `src/app/main.cpp` | built; device-free notice/failure tests and captures, Windows relaunch not run |
 
 ## Why a package manifest
@@ -298,6 +298,11 @@ complete rollback, a child process that `_exit()`s at every operation followed b
 and the end-to-end stub that applies and relaunches into the new version. The Windows
 counterparts (including renaming the running `update_selftest.exe` aside) run in
 `update_selftest.exe` on the owner's machine.
+
+**Windows so far (owner's report, 2026-11-04):** the Windows game opened, the update
+notice appeared, and the owner could not use a controller in that run; no update was
+completed in that report and `update_selftest.exe` has not been run. Nothing beyond that
+is claimed for Windows.
 
 ## What the player sees (step 4)
 

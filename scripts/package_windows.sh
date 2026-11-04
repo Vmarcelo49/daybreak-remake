@@ -61,12 +61,7 @@ The MinGW GCC runtime is linked statically under GPL-3.0.txt with the permission
 in GCC-Runtime-Library-Exception.txt. Windows system libraries are not bundled.
 Original game data is not included.
 NOTICES
-{
-    printf 'Version: %s\nCode revision: %s\nTarget: Windows x64\n' "$version" "$revision"
-    if [ "${DAYBREAK_ALLOW_UNSIGNED_PACKAGE:-}" = "1" ]; then
-        printf 'Signed: unsigned-test-build\n'
-    fi
-} > "$stage/BUILD-INFO.txt"
+printf 'Version: %s\nCode revision: %s\nTarget: Windows x64\n' "$version" "$revision" > "$stage/BUILD-INFO.txt"
 for file in "$stage"/*.exe "$stage"/*.dll; do
     while IFS= read -r dependency; do
         case "${dependency,,}" in

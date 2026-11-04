@@ -10,7 +10,6 @@ no build output — and expect both the success shape and every refusal.
 
 import hashlib
 import io
-import os
 import struct
 import subprocess
 import sys
@@ -178,16 +177,13 @@ class UpdateManifestTest(unittest.TestCase):
         write_zip(windows, WINDOWS_FILES, windows_manifest)
         return linux, windows
 
-    def run_tool(self, linux, windows, version=VERSION, out=None, env=None):
+    def run_tool(self, linux, windows, version=VERSION, out=None):
         out = out or (self.root / "update-manifest.txt")
-        environment = dict(os.environ)
-        if env:
-            environment.update(env)
         result = subprocess.run(
             [sys.executable, "-I", UPDATE_TOOL,
              "--version=" + version, "--linux=" + str(linux),
              "--windows=" + str(windows), "--out=" + str(out)],
-            capture_output=True, text=True, env=environment,
+            capture_output=True, text=True,
         )
         return result, out
 
@@ -205,15 +201,9 @@ class UpdateManifestTest(unittest.TestCase):
         write_tar(linux, LINUX_TOP, linux_files, linux_manifest)
         windows = self.root / WINDOWS_ARCHIVE
         write_zip(windows, windows_files, windows_manifest)
-        # The CI job exports the escape; this test owns the environment it checks.
-        refused, _ = self.run_tool(
-            linux, windows, env={"DAYBREAK_ALLOW_UNSIGNED_PACKAGE": ""})
+        refused, _ = self.run_tool(linux, windows)
         self.assertEqual(refused.returncode, 1, refused.stderr)
         self.assertIn("unsigned-test-build", refused.stderr)
-        allowed, _ = self.run_tool(
-            linux, windows, env={"DAYBREAK_ALLOW_UNSIGNED_PACKAGE": "1"})
-        self.assertEqual(allowed.returncode, 0, allowed.stderr)
-        self.assertIn("unsigned test build", allowed.stderr)
 
     def test_success_writes_the_exact_format(self):
         linux, windows = self.make_pair()

@@ -467,20 +467,15 @@ UNSIGNED_MARKER = b"unsigned-test-build"
 def check_signed(files, label):
     """Refuse an archive whose BUILD-INFO.txt says it is an unsigned test build.
 
-    The escape is the same temporary switch the build uses (DAYBREAK_ALLOW_UNSIGNED_PACKAGE);
-    it exists only until the owner supplies the release key, and the branch's CI needs it to
-    exercise this tool on real archives.
+    No package can be built that way any more (a release build needs a trusted key), so
+    this only catches a hand-made archive that still carries the old marker.
     """
     info = files.get("BUILD-INFO.txt")
     if info is None or UNSIGNED_MARKER not in info:
         return
-    if os.environ.get("DAYBREAK_ALLOW_UNSIGNED_PACKAGE") == "1":
-        print("make_update_manifest: WARNING: %s is an unsigned test build; this manifest "
-              "must not be published" % label, file=sys.stderr)
-        return
     raise ArchiveError(
         "%s: BUILD-INFO.txt says unsigned-test-build; an unsigned package must not be "
-        "published (set DAYBREAK_ALLOW_UNSIGNED_PACKAGE=1 only for CI)" % label
+        "published" % label
     )
 
 

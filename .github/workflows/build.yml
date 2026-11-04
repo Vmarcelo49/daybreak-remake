@@ -22,9 +22,6 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CMAKE_PREFIX_PATH: ${{ github.workspace }}/.sdl3
-      # Temporary, until the owner supplies the release key (src/update/release_keys.h):
-      # the packages are marked unsigned and make_update_manifest.py warns.
-      DAYBREAK_ALLOW_UNSIGNED_PACKAGE: 1
     steps:
       - uses: actions/checkout@v4
       - name: Install the system packages
@@ -65,9 +62,6 @@ jobs:
 
   windows:
     runs-on: ubuntu-24.04
-    env:
-      # Temporary, until the owner supplies the release key (src/update/release_keys.h).
-      DAYBREAK_ALLOW_UNSIGNED_PACKAGE: 1
     steps:
       - uses: actions/checkout@v4
       - name: Install the system packages
@@ -100,9 +94,6 @@ jobs:
   update-manifest:
     runs-on: ubuntu-24.04
     needs: [linux, windows]
-    env:
-      # The archives are unsigned test builds; the tool warns instead of refusing them.
-      DAYBREAK_ALLOW_UNSIGNED_PACKAGE: 1
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

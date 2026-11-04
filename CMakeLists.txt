@@ -7,10 +7,7 @@ string(STRIP "${DAYBREAK_VERSION}" DAYBREAK_VERSION)
 project(daybreak VERSION ${DAYBREAK_VERSION} LANGUAGES C CXX)
 
 # A release package must carry a trusted release key (src/update/release_keys.h); the
-# packaging scripts always configure with this ON. DAYBREAK_ALLOW_UNSIGNED_PACKAGE=1 is a
-# temporary escape for the branch's CI until the owner supplies the key: it prints a
-# warning, marks the package in BUILD-INFO.txt, and make_update_manifest.py refuses the
-# archives. Remove it with the commit that adds the real key.
+# packaging scripts always configure with this ON, and an empty key list fails the build.
 option(DAYBREAK_RELEASE_BUILD "Build a release package (needs a trusted release key)" OFF)
 
 # Multi-platform product: SDL3 + WebGPU (webgpu.h), built for Linux, Windows
@@ -356,12 +353,6 @@ endif()
 add_executable(daybreak src/app/main.cpp)
 if(DAYBREAK_RELEASE_BUILD)
     target_compile_definitions(daybreak PRIVATE DAYBREAK_RELEASE_BUILD=1)
-    if(DEFINED ENV{DAYBREAK_ALLOW_UNSIGNED_PACKAGE} AND
-       "$ENV{DAYBREAK_ALLOW_UNSIGNED_PACKAGE}" STREQUAL "1")
-        message(WARNING "DAYBREAK_ALLOW_UNSIGNED_PACKAGE=1: this package carries no trusted "
-                        "release key and must not be published")
-        target_compile_definitions(daybreak PRIVATE DAYBREAK_ALLOW_UNSIGNED_PACKAGE=1)
-    endif()
 endif()
 target_link_libraries(daybreak PRIVATE battle_backend)
 if(NOT EMSCRIPTEN)

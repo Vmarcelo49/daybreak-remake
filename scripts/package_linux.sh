@@ -75,12 +75,7 @@ revision=$(git -C "$root" rev-parse --short HEAD)
 if ! git -C "$root" diff --quiet || ! git -C "$root" diff --cached --quiet; then
     revision="$revision-dirty"
 fi
-{
-    printf 'Version: %s\nCode revision: %s\nTarget: Linux x86_64\n' "$version" "$revision"
-    if [ "${DAYBREAK_ALLOW_UNSIGNED_PACKAGE:-}" = "1" ]; then
-        printf 'Signed: unsigned-test-build\n'
-    fi
-} > "$stage/BUILD-INFO.txt"
+printf 'Version: %s\nCode revision: %s\nTarget: Linux x86_64\n' "$version" "$revision" > "$stage/BUILD-INFO.txt"
 
 # The updater may only replace files the package owns, so the package states which ones
 # those are (issue #100). Generated before the checks below so the required-files list
