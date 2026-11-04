@@ -208,9 +208,10 @@ public:
             for (int i = 0; i < participantCount_ && i < revealed; ++i) {
                 const ResultRow row = resultRow(i);
                 // The seat's badge, by the same rule the VS caption and the HUD tag use: a
-                // remote player's badge is the controller they chose (issue #106).
+                // remote player's badge is the controller they chose (issue #106). The screen has
+                // no battle to ask; the selection's own record already names the COM seats.
                 const Participant& p = participants_[i];
-                const int controller = seatController(p, seatCpuDrivenWithoutBattle(p));
+                const int controller = seatController(p, false);
                 batch.pushSprite(systemSheet_,{controller*64.f,384,64,32},0,0,row.badgeX,row.badgeY);
                 drawText(batch,rowLayout_[i],row.textX,row.textY,.5f);
                 drawText(batch,titleLayout_[i],row.textX,row.titleY,resultTitleScale(titleLayout_[i].width(1.f)));

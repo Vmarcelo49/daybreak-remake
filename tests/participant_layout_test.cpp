@@ -137,6 +137,35 @@ int main() {
     CHECK(std::strcmp(ui::participantLabel(roster[0], false), "1P") == 0);
     CHECK(ui::seatCell(roster[0], false) == 0 && ui::seatCell(roster[0], true) == 4);
 
+    // The VS caption and the result badge have no battle to ask, so they draw
+    // participantLabel(p, false) and seatController(p, false): checked for a remote seat, a local
+    // seat and a COM seat, seen from each peer of a two-player room (peers 0 and 1 on panels 0, 2).
+    for (int localPeer : {0, 1}) {
+        ui::FrontendState room;
+        room.slots[0] = {0, 1, 0, 0, 0, false};
+        room.slots[2] = {4, 0, 0, 0, 1, false};
+        room.slots[1] = {1, 0, 0, 0, 4, false};
+        room.slots[3] = {2, 0, 0, 0, 4, false};
+        net::MatchPlan roomPlan;
+        ui::onlineHandoff(room.slots, roomPlan, localPeer);
+        ui::Participant seats[ui::kParticipantCount];
+        CHECK(ui::buildParticipants(room.slots.data(), seats) == 4);
+        const ui::Participant& remote = seats[localPeer == 0 ? 2 : 0];
+        const ui::Participant& local = seats[localPeer == 0 ? 0 : 2];
+        const int remotePeer = 1 - localPeer;
+        CHECK(remote.remote() && local.local && local.human());
+        // A remote player is named by the controller they chose there, this machine's player is
+        // its own 1P, and a COM is COM; the badge cell follows the same numbering.
+        CHECK(std::strcmp(ui::participantLabel(remote, false), remotePeer == 0 ? "1P" : "2P") == 0);
+        CHECK(ui::seatController(remote, false) == remotePeer);
+        CHECK(std::strcmp(ui::participantLabel(local, false), "1P") == 0);
+        CHECK(ui::seatController(local, false) == 0);
+        for (int com : {1, 3}) {
+            CHECK(std::strcmp(ui::participantLabel(seats[com], false), "COM") == 0);
+            CHECK(ui::seatController(seats[com], false) == 4);
+        }
+    }
+
     std::puts("participant_layout_test: roster, VS slots, and result rows ok");
     return 0;
 }

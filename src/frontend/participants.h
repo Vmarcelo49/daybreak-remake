@@ -110,12 +110,6 @@ inline const char* controllerLabel(int controller) {
     }
 }
 
-// A screen has no battle to ask whether the core plays a seat, so it answers with what the
-// selection recorded: only this machine's own player is a seat a person plays, and every other
-// seat reads COM. The HUD and the evidence line ask the battle instead, which is the only way to
-// hear a player leave mid-match.
-inline bool seatCpuDrivenWithoutBattle(const Participant& p) { return !p.local || !p.human(); }
-
 // The controller that names a seat: this machine's player by its own controller, a player on
 // another machine by the controller they chose there, and COM once the core plays the fighter
 // itself (issue #106). `cpuDriven` is the battle's own answer to that last question — the core

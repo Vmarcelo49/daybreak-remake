@@ -103,7 +103,8 @@ private:
     // this machine's controller, another machine's player, or COM (issue #106).
     std::string captionFor(int i) const {
         const Participant& p = participants_[i];
-        return p.combo() + "  " + participantLabel(p, seatCpuDrivenWithoutBattle(p));
+        // No battle runs yet; the selection's own record already names the COM seats.
+        return p.combo() + "  " + participantLabel(p, false);
     }
     Participant participants_[kParticipantCount];
     VsSlot slots_[kParticipantCount];
