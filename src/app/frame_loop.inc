@@ -969,6 +969,9 @@ static SDL_AppResult appEvent(App* app, SDL_Event* event) {
             // so nothing resumes here.
             app->matchInput.note_focus_gained();
             break;
+        case SDL_EVENT_JOYSTICK_ADDED:
+            app->matchInput.note_joystick_added((int32_t)event->jdevice.which);
+            break;
         case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
             if (ui::bindingCaptureActive()) {
                 const int player = app->matchInput.gamepad_player((int32_t)event->gbutton.which);

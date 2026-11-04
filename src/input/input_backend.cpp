@@ -13,6 +13,7 @@
 
 #include <array>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <string>
 
@@ -121,6 +122,11 @@ bool Backend::init() {
         return false;
     }
     devices_[0] = DeviceType::Keyboard;
+    const char* trace = std::getenv("DAYBREAK_INPUT_TRACE");
+    traceButtons_ = trace && trace[0] == '1';
+    const int version = SDL_GetVersion();
+    std::printf("[fnd::input] SDL %d.%d.%d, gamepad subsystem up\n", SDL_VERSIONNUM_MAJOR(version),
+                SDL_VERSIONNUM_MINOR(version), SDL_VERSIONNUM_MICRO(version));
     repoll_gamepads();
     inited_ = true;
     return true;
@@ -242,7 +248,20 @@ void Backend::note_key(int scancode, bool pressed) {
     record_button(0, scancode, pressed && !suppressedKeys_[scancode]);
 }
 
+void Backend::note_joystick_added(int32_t instanceId) const {
+    const SDL_JoystickID id = static_cast<SDL_JoystickID>(instanceId);
+    const char* name = SDL_GetJoystickNameForID(id);
+    char guid[64] = {};
+    SDL_GUIDToString(SDL_GetJoystickGUIDForID(id), guid, sizeof guid);
+    std::printf("[fnd::input] device %u connected: \"%s\" guid %s, %s\n", (unsigned)id,
+                name ? name : "?", guid,
+                SDL_IsGamepad(id) ? "a gamepad" : "not a gamepad (no mapping), ignored");
+}
+
 void Backend::note_gamepad_button(int player, int button, bool pressed) {
+    if (traceButtons_)
+        std::printf("[fnd::input] pad button %d %s, player %d%s\n", button, pressed ? "down" : "up",
+                    player, device_input_ignored() ? " (window unfocused, ignored)" : "");
     if (player < 1 || player >= kMaxPlayers || button < 0 || button >= SDL_GAMEPAD_BUTTON_COUNT) return;
     if (device_input_ignored()) return;   // same gate as note_key
     if (!pressed) suppressedButtons_[player][button] = false;
@@ -399,6 +418,7 @@ void Backend::repoll_gamepads() {
             }
         }
         if (gone) {
+            std::printf("[fnd::input] pad left player %d\n", i + 1);
             SDL_CloseGamepad(pad);
             pads_[i] = nullptr;
             devices_[i] = DeviceType::None;
@@ -429,6 +449,13 @@ void Backend::repoll_gamepads() {
                 if (SDL_Gamepad* opened = SDL_OpenGamepad(ids[k])) {
                     pads_[slot] = opened;
                     devices_[slot] = DeviceType::Gamepad;
+                    const char* name = SDL_GetGamepadName(opened);
+                    std::printf("[fnd::input] pad \"%s\" is player %d\n", name ? name : "?",
+                                slot + 1);
+                } else if (failedPadId_ != static_cast<int32_t>(ids[k])) {
+                    failedPadId_ = static_cast<int32_t>(ids[k]);
+                    std::printf("[fnd::input] pad %u could not be opened: %s\n",
+                                (unsigned)ids[k], SDL_GetError());
                 }
             }
         }

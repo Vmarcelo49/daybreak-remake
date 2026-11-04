@@ -85,6 +85,10 @@ class Backend {
     // `scancode` is the numeric SDL_Scancode; out-of-range values are ignored.
     void note_key(int scancode, bool pressed);
     void note_gamepad_button(int player, int button, bool pressed);
+    // Logs a device SDL reports (SDL_EVENT_JOYSTICK_ADDED, including those present at
+    // startup), saying whether SDL recognises it as a gamepad: one that is not is never
+    // opened, and the log is all a player's report can show of that (issue #102).
+    void note_joystick_added(int32_t instanceId) const;
     void suppress_key(int scancode);
     void suppress_gamepad_button(int player, int button);
     bool set_keyboard_binding(Action action, int scancode);
@@ -139,6 +143,8 @@ class Backend {
     int keyboard_[ActionCount];
     int buttons_[kMaxPlayers][ActionCount];
     std::array<std::string, kMaxPlayers> guidHints_{};
+    int32_t failedPadId_ = 0;   // the last pad SDL_OpenGamepad refused, logged once
+    bool traceButtons_ = false; // DAYBREAK_INPUT_TRACE=1: log every pad button event
     struct TickSample { int player; PlayerState state; };
     std::vector<TickSample> tickSamples_;
     PlayerState eventStates_[kMaxPlayers];
