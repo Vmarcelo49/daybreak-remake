@@ -110,6 +110,42 @@ int main() {
               "no controller identity before a pad is seen");
     }
 
+    std::printf("\n-- pad layout (issue #102): new defaults, triggers, the old default row\n");
+    {
+        settings::UserSettings defaults;
+        checkInt("A is jump", 0, defaults.gamepad[0][fnd::input::Jump]);
+        checkInt("B is guard", 1, defaults.gamepad[0][fnd::input::Guard]);
+        checkInt("X is melee", 2, defaults.gamepad[0][fnd::input::AttackA]);
+        checkInt("Y changes target", 3, defaults.gamepad[0][fnd::input::LockSwitch]);
+        checkInt("RB shoots", 10, defaults.gamepad[0][fnd::input::Shoot]);
+        checkInt("LB is special", 9, defaults.gamepad[0][fnd::input::Special]);
+        checkInt("RT is tactics", fnd::input::sdl3::kPadRightTrigger,
+                 defaults.gamepad[0][fnd::input::Tactics]);
+        checkInt("Start pauses", 6, defaults.gamepad[0][fnd::input::Pause]);
+        const std::string text = settings::serialize(defaults);
+        const std::string row = "pad2 = ";
+        const size_t at = text.find(row);
+        check(at != std::string::npos, "the document has a pad2 row");
+        if (at != std::string::npos) {
+            const size_t end = text.find('\n', at);
+            settings::UserSettings parsed;
+            std::string error;
+            std::string old = text;
+            old.replace(at, end - at, row + "11, 12, 13, 14, 2, 0, 3, 1, 10, 4, 9, 6");
+            check(parses(old, parsed, error) && parsed.gamepad[1] == defaults.gamepad[1],
+                  "a pad row with the old default layout takes the new one: " + error);
+            std::string custom = text;
+            custom.replace(at, end - at, row + "11, 12, 13, 14, 2, 0, 3, 1, 10, 4, 9, 27");
+            check(parses(custom, parsed, error) && parsed.gamepad[1][fnd::input::Pause] == 27,
+                  "a rebound row is kept, and the right trigger is a valid code: " + error);
+            std::string beyond = text;
+            beyond.replace(at, end - at, row + "11, 12, 13, 14, 2, 0, 3, 1, 10, 4, 9, 28");
+            parses(beyond, parsed, error);
+            checkInt("a code past the right trigger is refused", defaults.gamepad[1][fnd::input::Pause],
+                     parsed.gamepad[1][fnd::input::Pause]);
+        }
+    }
+
     std::printf("\n-- round trip: serialize -> parse is lossless for the persisted set\n");
     {
         settings::UserSettings original;
@@ -765,41 +801,30 @@ int main() {
                  settings::chooseResolutionIndex({}, {1920, 1080}));
     }
 
-    std::printf("\n-- stable-controller policy: bindings follow the player, not the pad order\n");
+    std::printf("\n-- player slots: the first press is player 1, a pad that left keeps its slot\n");
     {
-        using fnd::input::preferredPadSlot;
-        std::array<std::string, 4> hints{};
-        // The backend marks slot 0 (keyboard) occupied.
-        const std::array<bool, 4> keyboardOnly = {true, false, false, false};
-        checkInt("no identity: lowest free pad slot", 1,
-                 preferredPadSlot(hints, keyboardOnly, "padA"));
-        hints[2] = "padA";
-        checkInt("a recorded pad returns to its player", 2,
-                 preferredPadSlot(hints, keyboardOnly, "padA"));
-        checkInt("an unknown pad takes the lowest free slot", 1,
-                 preferredPadSlot(hints, keyboardOnly, "padB"));
-        // The replug case the policy exists for: the pads enumerate in the other order.
-        hints[1] = "padA";
-        hints[2] = "padB";
-        std::array<bool, 4> occupied = {true, false, false, false};
-        const int first = preferredPadSlot(hints, occupied, "padB");
-        checkInt("pad B goes to player 2 even though it enumerated first", 2, first);
-        occupied[static_cast<size_t>(first)] = true;
-        checkInt("pad A goes to player 1", 1, preferredPadSlot(hints, occupied, "padA"));
+        using fnd::input::slotForNewDevice;
+        std::array<std::string, 4> reserved{};
+        std::array<bool, 4> occupied{};
+        checkInt("the first device to press is player 1", 0,
+                 slotForNewDevice(reserved, occupied, "padA"));
+        checkInt("the keyboard is player 1 too when it presses first", 0,
+                 slotForNewDevice(reserved, occupied, ""));
+        occupied[0] = true;
+        checkInt("the next device takes the lowest free slot", 1,
+                 slotForNewDevice(reserved, occupied, ""));
+        // Pad A held player 2 and left: player 2 waits for it.
+        reserved[1] = "padA";
+        checkInt("another device skips the reserved slot", 2,
+                 slotForNewDevice(reserved, occupied, "padB"));
+        checkInt("the keyboard skips it as well", 2, slotForNewDevice(reserved, occupied, ""));
+        checkInt("the pad that left gets its slot back", 1,
+                 slotForNewDevice(reserved, occupied, "padA"));
+        occupied = {true, false, true, true};
+        checkInt("a reserved slot is used when it is the only free one", 1,
+                 slotForNewDevice(reserved, occupied, "padC"));
         occupied[1] = true;
-        checkInt("the last free pad slot", 3, preferredPadSlot(hints, occupied, "padC"));
-        occupied[3] = true;
-        checkInt("all pad slots taken", -1, preferredPadSlot(hints, occupied, "padD"));
-        // An unidentified pad takes a free slot but never displaces a pad that is already
-        // sitting in its recorded one.
-        std::array<std::string, 4> named{};
-        named[1] = "padA";
-        const std::array<bool, 4> firstTaken = {true, true, false, false};
-        checkInt("an empty GUID takes the lowest FREE slot", 2,
-                 preferredPadSlot(named, firstTaken, ""));
-        // A recorded pad that is not connected changes nothing.
-        checkInt("an absent pad leaves its slot free for the lowest-slot rule", 1,
-                 preferredPadSlot(named, keyboardOnly, "padZ"));
+        checkInt("all slots taken", -1, slotForNewDevice(reserved, occupied, "padD"));
     }
 
     std::printf("\nchecks: %d, failures: %d\n", g_checks, g_failures);

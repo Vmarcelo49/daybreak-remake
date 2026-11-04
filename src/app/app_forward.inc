@@ -33,7 +33,6 @@ static std::uint32_t onlineSelectionHash(const ui::FrontendState& state);
 static void pinFrontendStage(App& app);
 static SDL_AppResult applyPauseChoice(App& app, gameplay::PauseChoice choice);
 static SDL_AppResult tickBattlePause(App& app);
-static std::string bindingHint(const App& app, fnd::input::Action action, int padPlayer);
 static bool drawBattlePauseOverlay(App& app, WGPUCommandEncoder encoder, WGPUTextureView view, uint32_t width, uint32_t height, WGPUTextureFormat format);
 static void driveSyntheticLocalPads(App& app);
 static bool buildTrianglePipeline(App& app);

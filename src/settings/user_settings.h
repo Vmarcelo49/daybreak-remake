@@ -31,6 +31,7 @@
 
 #include "audio/audio.h"
 #include "input/input.h"
+#include "input/input_sdl3.h"
 
 namespace settings {
 
@@ -97,10 +98,11 @@ inline constexpr int kSchemaVersionV4 = 4;
 inline constexpr int kLegacyActionCount = 13;
 inline constexpr int kLegacyHeavyIndex = 5;
 // The value range a binding row may carry, in the SDL numbering the document stores: -1 is
-// "unbound", the upper bound is the last SDL_GAMEPAD_BUTTON_* code, and the scancode ceiling is
+// "unbound", the pad's upper bound is the right trigger's code (input_sdl3.h numbers the two
+// triggers past the last SDL_GAMEPAD_BUTTON_*), and the scancode ceiling is
 // SDL_SCANCODE_COUNT - 1. The Options screen's capture validates against the same pair, so what
 // it accepts and what the file reads back cannot disagree.
-inline constexpr int kMaxPadButton = 25;
+inline constexpr int kMaxPadButton = fnd::input::sdl3::kPadInputCount - 1;
 inline constexpr int kMaxScancode = 511;
 
 // The user config directory name under $XDG_CONFIG_HOME and the file inside it.
@@ -155,8 +157,9 @@ struct UserSettings {
     fnd::audio::Volumes volumes;
     std::array<int, fnd::input::ActionCount> keyboard{};
     std::array<std::array<int, fnd::input::ActionCount>, fnd::input::kMaxPlayers> gamepad{};
-    // Stable-controller identity: the SDL GUID (and name, for diagnostics) of the pad
-    // that last occupied each player slot. See input/gamepad_identity.h for the policy.
+    // The SDL GUID and name of the pad that last occupied each player slot: a record for a
+    // player's report. Slots are taken by the first press, so nothing places a pad by it
+    // (input/gamepad_identity.h).
     std::array<std::string, fnd::input::kMaxPlayers> padGuid{};
     std::array<std::string, fnd::input::kMaxPlayers> padName{};
 

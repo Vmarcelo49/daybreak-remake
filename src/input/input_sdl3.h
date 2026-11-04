@@ -58,23 +58,30 @@ inline constexpr int kP1ScancodeByAction[ActionCount] = {
     kScLock, kScPause,                 // LockSwitch Pause
 };
 
-// SDL3 gamepad buttons (SDL_GamepadButton), Xbox-label layout. Provisional —
-// the original P2-P4 pads are buttons 1-8 with exact layout unknown, and the
-// remake's map (X=melee, A=guard, B=jump, Y=shoot, LB=lock, RB=special,
-// Back=tactics, Start=pause) is carried over verbatim until captures say
-// otherwise.
+// SDL3 gamepad buttons (SDL_GamepadButton), positional and named by the Xbox layout
+// (PlayStation equivalents: A=Cross, B=Circle, X=Square, Y=Triangle, LB/RB=L1/R1,
+// LT/RT=L2/R2). The original's P2-P4 pads are buttons 1-8 with no recorded layout, so
+// this map is a port rule: the owner's layout (issue #102, 2026-11-03).
 inline constexpr int kPadDpadUp = 11;
 inline constexpr int kPadDpadDown = 12;
 inline constexpr int kPadDpadLeft = 13;
 inline constexpr int kPadDpadRight = 14;
-inline constexpr int kPadMelee = 2;   // X (west)
-inline constexpr int kPadGuard = 0;   // A (south)
-inline constexpr int kPadJump = 1;    // B (east)
-inline constexpr int kPadShoot = 3;   // Y (north)
-inline constexpr int kPadLock = 9;    // left shoulder
-inline constexpr int kPadSpecial = 10;  // right shoulder
-inline constexpr int kPadTactics = 4;   // back
+inline constexpr int kPadJump = 0;      // A (south): jump, and confirm in the menus
+inline constexpr int kPadGuard = 1;     // B (east): guard, and cancel in the menus
+inline constexpr int kPadMelee = 2;     // X (west)
+inline constexpr int kPadLock = 3;      // Y (north): change target
+inline constexpr int kPadSpecial = 9;   // left shoulder: hyper mode / special
+inline constexpr int kPadShoot = 10;    // right shoulder
 inline constexpr int kPadPause = 6;     // start (5 is guide, not start)
+
+// The triggers are axes in SDL, so a binding names them with codes past the last
+// SDL_GamepadButton; the backend reads them as pressed past kPadTriggerThreshold.
+inline constexpr int kPadButtonCount = 26;   // SDL_GAMEPAD_BUTTON_COUNT
+inline constexpr int kPadLeftTrigger = kPadButtonCount;
+inline constexpr int kPadRightTrigger = kPadButtonCount + 1;
+inline constexpr int kPadInputCount = kPadButtonCount + 2;
+inline constexpr int kPadTriggerThreshold = 16384;   // half of SDL's 0..32767 trigger range
+inline constexpr int kPadTactics = kPadRightTrigger;
 inline constexpr int kPadButtonByAction[ActionCount] = {
     kPadDpadUp, kPadDpadDown, kPadDpadLeft, kPadDpadRight,
     kPadMelee, kPadGuard, kPadShoot, kPadJump,

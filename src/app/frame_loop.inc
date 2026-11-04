@@ -2,6 +2,14 @@
 // callbacks. main.cpp keeps the entry points themselves.
 // Included by main.cpp inside its anonymous namespace.
 
+// The menus' cancel: Guard on a pad (B / Circle by default), the melee key on the keyboard
+// and on every scripted or synthetic slot, which is the original's (issue #102).
+static fnd::input::Action menuCancelAction(const App& app, int slot) {
+    return app.matchInputReady && app.matchInput.device(slot) == fnd::input::DeviceType::Gamepad
+               ? fnd::input::Guard
+               : fnd::input::AttackA;
+}
+
 #ifdef DAYBREAK_ONLINE
 // The selection on every machine at once: one screen update per agreed frame, from everyone's held
 // buttons. Each peer's buttons are that controller's, so the screen plays as with four local pads.
@@ -13,13 +21,14 @@ static SDL_AppResult tickOnlineSelection(App& state) {
 
     enum Bit : std::uint8_t { BitUp = 1, BitDown = 2, BitLeft = 4, BitRight = 8, BitConfirm = 16, BitCancel = 32 };
     std::uint8_t local = 0;
-    for (const auto& player : app->tickInput) {
+    for (int slot = 0; slot < 4; ++slot) {
+        const auto& player = app->tickInput[slot];
         if (player.down[fnd::input::Up]) local |= BitUp;
         if (player.down[fnd::input::Down]) local |= BitDown;
         if (player.down[fnd::input::Left]) local |= BitLeft;
         if (player.down[fnd::input::Right]) local |= BitRight;
         if (player.down[fnd::input::Jump]) local |= BitConfirm;
-        if (player.down[fnd::input::AttackA]) local |= BitCancel;
+        if (player.down[menuCancelAction(*app, slot)]) local |= BitCancel;
     }
 
     SDL_AppResult result = SDL_APP_CONTINUE;
@@ -153,7 +162,8 @@ static SDL_AppResult tickFrontend(App& state) {
     in.left    = anyPressed(fnd::input::Left);
     in.right   = anyPressed(fnd::input::Right);
     in.confirm = anyPressed(fnd::input::Jump);
-    in.cancel  = anyPressed(fnd::input::AttackA);
+    for (int p = 0; p < 4; ++p)
+        in.cancel = in.cancel || app->tickInput[p].just_pressed[menuCancelAction(*app, p)];
     in.start   = anyPressed(fnd::input::Pause);
     in.escape  = std::exchange(app->storyEscape, false);
     // The held state beside the edges (screen.h): the select screen's free cursor slides while
@@ -171,7 +181,7 @@ static SDL_AppResult tickFrontend(App& state) {
         buttons.left = input.just_pressed[fnd::input::Left];
         buttons.right = input.just_pressed[fnd::input::Right];
         buttons.confirm = input.just_pressed[fnd::input::Jump];
-        buttons.cancel = input.just_pressed[fnd::input::AttackA];
+        buttons.cancel = input.just_pressed[menuCancelAction(*app, p)];
         buttons.upHeld = input.down[fnd::input::Up];
         buttons.downHeld = input.down[fnd::input::Down];
         buttons.leftHeld = input.down[fnd::input::Left];
@@ -973,20 +983,33 @@ static SDL_AppResult appEvent(App* app, SDL_Event* event) {
             app->matchInput.note_joystick_added((int32_t)event->jdevice.which);
             break;
         case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
-            if (ui::bindingCaptureActive()) {
+            if (ui::bindingCaptureActive() && !ui::bindingCaptureForKeyboard()) {
                 const int player = app->matchInput.gamepad_player((int32_t)event->gbutton.which);
                 app->matchInput.suppress_gamepad_button(player,(int)event->gbutton.button);
                 ui::submitBindingInput(false, player, (int)event->gbutton.button);
             } else {
-                const int player = app->matchInput.gamepad_player((int32_t)event->gbutton.which);
-                app->matchInput.note_gamepad_button(player, (int)event->gbutton.button, true);
+                app->matchInput.note_pad_button((int32_t)event->gbutton.which, (int)event->gbutton.button, true);
             }
             break;
         case SDL_EVENT_GAMEPAD_BUTTON_UP:
-            app->matchInput.note_gamepad_button(
-                app->matchInput.gamepad_player((int32_t)event->gbutton.which),
-                (int)event->gbutton.button, false);
+            app->matchInput.note_pad_button((int32_t)event->gbutton.which, (int)event->gbutton.button, false);
             break;
+        case SDL_EVENT_GAMEPAD_AXIS_MOTION: {
+            // The triggers bind like buttons (input_sdl3.h); only the press past half travel
+            // is captured, so resting noise cannot bind one.
+            const int axis = event->gaxis.axis;
+            const bool trigger = axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER || axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER;
+            if (trigger && ui::bindingCaptureActive() && !ui::bindingCaptureForKeyboard() &&
+                event->gaxis.value >= fnd::input::sdl3::kPadTriggerThreshold) {
+                const int player = app->matchInput.gamepad_player((int32_t)event->gaxis.which);
+                const int code = axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER ? fnd::input::sdl3::kPadLeftTrigger
+                                                                       : fnd::input::sdl3::kPadRightTrigger;
+                app->matchInput.suppress_gamepad_button(player, code);
+                ui::submitBindingInput(false, player, code);
+            }
+            app->matchInput.note_pad_axis((int32_t)event->gaxis.which, axis, event->gaxis.value);
+            break;
+        }
         case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
             if (app->window) {
                 const SDL_DisplayID display = SDL_GetDisplayForWindow(app->window);

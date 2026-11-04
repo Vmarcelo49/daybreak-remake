@@ -1,7 +1,7 @@
 #include "frontend/frontend_settings.h"
 #include "input/input_sdl3.h"
 namespace ui {
-namespace { int capturePlayer = -1, captureAction = -1; }
+namespace { int captureColumn = -1, captureAction = -1; }
 FrontendSettings::FrontendSettings() {
     for (int a = 0; a < fnd::input::ActionCount; ++a) keyboard[a] = fnd::input::sdl3::kP1ScancodeByAction[a];
     for (auto& pad : gamepad) for (int a = 0; a < fnd::input::ActionCount; ++a) pad[a] = fnd::input::sdl3::kPadButtonByAction[a];
@@ -57,22 +57,28 @@ settings::UserSettings toUserSettings(const FrontendSettings& settings) {
     document.netServer = settings.netServer;
     return document;
 }
-bool bindingCaptureActive() { return capturePlayer >= 0; }
-void armBindingCapture(int player, int action) {
-    if (player >= 0 && player < 4 && action >= 0 && action < fnd::input::ActionCount) {
-        capturePlayer = player; captureAction = action;
+bool bindingCaptureActive() { return captureColumn >= 0; }
+bool bindingCaptureForKeyboard() { return captureColumn == 0; }
+void armBindingCapture(int column, int action) {
+    if (column >= 0 && column < kBindingColumns && action >= 0 && action < fnd::input::ActionCount) {
+        captureColumn = column; captureAction = action;
     }
 }
-void cancelBindingCapture() { capturePlayer = captureAction = -1; }
-void submitBindingInput(bool keyboard, int player, int code) {
-    if (!bindingCaptureActive() || player < 0 || player >= 4 || code < 0) return;
+void cancelBindingCapture() { captureColumn = captureAction = -1; }
+void submitBindingInput(bool keyboard, int padSlot, int code) {
+    if (!bindingCaptureActive() || code < 0) return;
     if (code > (keyboard ? settings::kMaxScancode : settings::kMaxPadButton)) return;
-    // The device rule: the keyboard is ONE device, so only player 1 (slot 0) may bind it —
-    // the capture armed for any other slot must not steal a keypress. A pad's capture belongs
-    // to the player slot it was armed for, and a press from any other pad is ignored.
-    const bool rightDevice = keyboard ? capturePlayer == 0 : player == capturePlayer;
-    if (!rightDevice) return;
-    auto& target = keyboard ? frontendSettings().keyboard : frontendSettings().gamepad[player];
+    // The keyboard binds only its own column. A pad binds the player column it was armed
+    // for when it is that player's pad; when that player has no pad, any pad may set it up,
+    // since slots are taken by the first press and a player rebinding before joining has
+    // no other way in.
+    const int slot = captureColumn - 1;
+    if (keyboard != (slot < 0)) return;
+    if (!keyboard && padSlot != slot) {
+        const auto& typeOf = frontendSettings().padTypeForSlot;
+        if (typeOf && typeOf(slot) >= 0) return;
+    }
+    auto& target = keyboard ? frontendSettings().keyboard : frontendSettings().gamepad[slot];
     // One physical button has one action; displace its previous assignment.
     for (int& binding : target) if (binding == code) binding = -1;
     target[captureAction] = code;

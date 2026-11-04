@@ -12,16 +12,22 @@ includes `<SDL3/SDL.h>`.
 
 ## 1. Mapping (reference: MEDIA-INPUT.md §1, remake `input_manager.*`)
 
-- P0 keyboard = verified P1 layout via `kP1ScancodeByAction`
+- Player slots (issue #102): no device owns a slot at start. The keyboard and
+  each pad take the lowest free slot on their first press of a bound input,
+  and that press acts, so whoever presses first is player 1. A pad that
+  leaves keeps its slot for the session (`input/gamepad_identity.h`). Menus
+  read every slot.
+- Keyboard = verified P1 layout via `kP1ScancodeByAction`
   (arrows + Z/X/C/A/S/D/Q/W; AttackB unbound). Q is Tactics *and*
   camera-left (same scancode, so orbit and action agree by construction);
   E is camera-right only.
-- P1–P3 gamepads = **provisional** map carried over verbatim from the
-  remake (`X=melee, A=guard, B=jump, Y=shoot, LB=lock, RB=special,
-  Back=tactics, Start=pause`, D-pad + left stick with deadzone 8000).
-  The original P2–P4 pads are buttons 1–8 with exact layout unknown, so this
-  stays labelled provisional until captures say otherwise. AttackB has no
-  key or button anywhere and stays exist-but-unbound.
+- Gamepads = the owner's layout, a port rule (the original P2–P4 pads are
+  buttons 1–8 with no recorded layout): `A=jump/confirm, B=guard/cancel,
+  X=melee, Y=change target, RB=shoot, LB=special, RT=tactics, Start=pause`,
+  D-pad + left stick with deadzone 8000. The triggers bind as codes 26/27,
+  past the last `SDL_GamepadButton`. On a pad the menus cancel with Guard;
+  the keyboard keeps melee. AttackB has no key or button anywhere and stays
+  exist-but-unbound.
 
 ## 2. Backend contract (`fnd::input::Backend`)
 
@@ -29,7 +35,8 @@ includes `<SDL3/SDL.h>`.
   itself (video/events) stays with `plat::init`, so `shutdown()` can never
   `SDL_Quit` a window it does not own.
 - `poll()` order: pump OS input → absorb queued key events → re-poll
-  hotplug → read P0 keyboard + P1–P3 pads → script override on P0 →
+  hotplug → first presses take slots → read each slot's device → script
+  override on player 1 →
   `compute_edges` for all four players (2-frame `press_timer` included).
 - Keyboard is event-held **OR** `SDL_GetKeyboardState`: pushed/forwarded
   `KEY_DOWN` never reaches SDL's internal array (verified headless, §4),

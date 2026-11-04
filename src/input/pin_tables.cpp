@@ -49,12 +49,13 @@ static_assert(fnd::input::sdl3::kPadDpadUp == SDL_GAMEPAD_BUTTON_DPAD_UP, "pad u
 static_assert(fnd::input::sdl3::kPadDpadDown == SDL_GAMEPAD_BUTTON_DPAD_DOWN, "pad down drifted");
 static_assert(fnd::input::sdl3::kPadDpadLeft == SDL_GAMEPAD_BUTTON_DPAD_LEFT, "pad left drifted");
 static_assert(fnd::input::sdl3::kPadDpadRight == SDL_GAMEPAD_BUTTON_DPAD_RIGHT, "pad right drifted");
+static_assert(fnd::input::sdl3::kPadJump == SDL_GAMEPAD_BUTTON_SOUTH, "pad jump drifted");
+static_assert(fnd::input::sdl3::kPadGuard == SDL_GAMEPAD_BUTTON_EAST, "pad guard drifted");
 static_assert(fnd::input::sdl3::kPadMelee == SDL_GAMEPAD_BUTTON_WEST, "pad melee drifted");
-static_assert(fnd::input::sdl3::kPadGuard == SDL_GAMEPAD_BUTTON_SOUTH, "pad guard drifted");
-static_assert(fnd::input::sdl3::kPadJump == SDL_GAMEPAD_BUTTON_EAST, "pad jump drifted");
-static_assert(fnd::input::sdl3::kPadShoot == SDL_GAMEPAD_BUTTON_NORTH, "pad shoot drifted");
-static_assert(fnd::input::sdl3::kPadLock == SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, "pad lock drifted");
-static_assert(fnd::input::sdl3::kPadSpecial == SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,
+static_assert(fnd::input::sdl3::kPadLock == SDL_GAMEPAD_BUTTON_NORTH, "pad lock drifted");
+static_assert(fnd::input::sdl3::kPadSpecial == SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,
               "pad special drifted");
-static_assert(fnd::input::sdl3::kPadTactics == SDL_GAMEPAD_BUTTON_BACK, "pad tactics drifted");
+static_assert(fnd::input::sdl3::kPadShoot == SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, "pad shoot drifted");
+static_assert(fnd::input::sdl3::kPadButtonCount == SDL_GAMEPAD_BUTTON_COUNT,
+              "the trigger codes must sit past the last SDL button");
 static_assert(fnd::input::sdl3::kPadPause == SDL_GAMEPAD_BUTTON_START, "pad pause drifted");

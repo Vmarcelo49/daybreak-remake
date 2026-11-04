@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
         backend.note_key(SDL_SCANCODE_Z,true);
         backend.poll(false);
         check(!backend.player(0).down[Jump], "an unfocused window drops the key feed");
-        backend.note_gamepad_button(1,SDL_GAMEPAD_BUTTON_EAST,true);
+        backend.note_gamepad_button(1,SDL_GAMEPAD_BUTTON_SOUTH,true);
         backend.poll(false);
         backend.sample_tick_inputs(ticks);
         check(!ticks[1].consume().just_pressed[Jump], "an unfocused window drops the pad feed");
@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
         backend.note_key(SDL_SCANCODE_Z,true);
         backend.poll(false);
         check(backend.player(0).just_pressed[Jump], "the key feed works again after focus is regained");
-        backend.note_gamepad_button(1,SDL_GAMEPAD_BUTTON_EAST,true);
+        backend.note_gamepad_button(1,SDL_GAMEPAD_BUTTON_SOUTH,true);
         backend.poll(false);
         backend.sample_tick_inputs(ticks);
         check(ticks[1].consume().just_pressed[Jump], "the pad feed works again after focus is regained");
@@ -98,8 +98,8 @@ int main(int argc, char** argv) {
         TickInput ticks[kMaxPlayers];
         backend.note_key(SDL_SCANCODE_Z,true);
         backend.note_key(SDL_SCANCODE_Z,false);
-        backend.note_gamepad_button(1,SDL_GAMEPAD_BUTTON_EAST,true);
-        backend.note_gamepad_button(1,SDL_GAMEPAD_BUTTON_EAST,false);
+        backend.note_gamepad_button(1,SDL_GAMEPAD_BUTTON_SOUTH,true);
+        backend.note_gamepad_button(1,SDL_GAMEPAD_BUTTON_SOUTH,false);
         backend.poll(false);
         backend.sample_tick_inputs(ticks);
         check(!backend.player(0).down[Jump], "short tap ends released before poll");
@@ -120,18 +120,37 @@ int main(int argc, char** argv) {
         SDL_INIT_INTERFACE(&desc);
         desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
         desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
-        desc.button_mask = 1u << SDL_GAMEPAD_BUTTON_SOUTH;
+        // Full masks: a virtual pad numbers its buttons and axes by the mask, so a partial
+        // one would put SDL's B somewhere other than joystick button 1.
+        desc.button_mask = (1u << SDL_GAMEPAD_BUTTON_COUNT) - 1;
+        desc.naxes = SDL_GAMEPAD_AXIS_COUNT;
+        desc.axis_mask = (1u << SDL_GAMEPAD_AXIS_COUNT) - 1;
         desc.name = "Guard lifecycle test";
         const auto id = SDL_AttachVirtualJoystick(&desc);
         check(id != 0, "virtual controller attached");
         SDL_Joystick* joystick = SDL_OpenJoystick(id);
         check(joystick != nullptr, "virtual controller opened");
+        if (joystick)
+            for (int axis : {SDL_GAMEPAD_AXIS_LEFT_TRIGGER, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER})
+                SDL_SetJoystickVirtualAxis(joystick, axis, SDL_JOYSTICK_AXIS_MIN);
         Backend backend;
         check(backend.init(), "controller input initialized");
         backend.poll(false);
+        check(backend.gamepad_player(id) < 0, "a connected pad has no player before it presses");
+        // Issue #102: the first press of a bound input takes the lowest free slot, and acts.
+        SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_EAST, true);
+        SDL_UpdateJoysticks();
+        backend.poll(false);
         const int player = backend.gamepad_player(id);
-        check(player > 0, "controller assigned a player");
-        if (joystick && player > 0) {
+        check(player == 0, "the first device to press is player 1");
+        check(backend.player(0).just_pressed[Guard], "the press that joins is the one that acts");
+        SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_EAST, false);
+        backend.note_key(SDL_SCANCODE_Z, true);
+        backend.poll(false);
+        check(backend.device(1) == DeviceType::Keyboard && backend.player(1).just_pressed[Jump],
+              "the keyboard pressing second is player 2, with its own keys");
+        backend.note_key(SDL_SCANCODE_Z, false);
+        if (joystick && player >= 0) {
             TickInput ticks[kMaxPlayers];
             auto sample = [&]() {
                 SDL_UpdateJoysticks();
@@ -140,7 +159,7 @@ int main(int argc, char** argv) {
                 const auto state = ticks[player].consume();
                 return state;
             };
-            SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_SOUTH, true);
+            SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_EAST, true);
             check(sample().just_pressed[Guard], "controller Guard hold reaches tick");
             backend.note_focus_lost();
             check(sample().just_released[Guard], "focus loss releases controller Guard");
@@ -150,15 +169,21 @@ int main(int argc, char** argv) {
             check(backend.device(player) == DeviceType::Gamepad,
                   "an unfocused window keeps its pad in the slot (no synthetic takeover)");
             backend.note_focus_gained();
-            SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_SOUTH, false);
+            SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_EAST, false);
             sample();
             check(!backend.player(player).just_pressed[Guard],
                   "a hold from before focus loss cannot re-enter on regain");
-            SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_SOUTH, true);
+            SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_EAST, true);
             check(sample().just_pressed[Guard], "fresh controller press works after focus is regained");
+            // RT is Tactics by default: a trigger binds like a button (issue #102).
+            SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, SDL_JOYSTICK_AXIS_MAX);
+            check(sample().just_pressed[Tactics], "a full right trigger presses Tactics");
+            SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, SDL_JOYSTICK_AXIS_MIN);
+            check(sample().just_released[Tactics], "a released right trigger lets go of Tactics");
             SDL_DetachVirtualJoystick(id);
             check(sample().just_released[Guard], "controller disconnect releases held Guard");
             check(!sample().down[Guard], "disconnected Guard stays released");
+            check(backend.device(player) == DeviceType::None, "a pad that left frees its slot");
         } else if (id) {
             SDL_DetachVirtualJoystick(id);
         }

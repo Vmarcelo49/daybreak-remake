@@ -22,7 +22,6 @@
 // The backend reads the pinned tables, so it re-pins what it touches: a
 // renumbered SDL would otherwise misbind silently instead of failing loudly.
 // (Table shape — 13 slots, pad Start=6 — is pin_tables.cpp's job.)
-static_assert(SDL_GAMEPAD_BUTTON_COUNT == 26, "suppression array drifted");
 static_assert(SDL_SCANCODE_COUNT == 512, "key-held array size drifted");
 static_assert(fnd::input::sdl3::kScUp == SDL_SCANCODE_UP, "P1 up drifted");
 static_assert(fnd::input::sdl3::kScDown == SDL_SCANCODE_DOWN, "P1 down drifted");
@@ -42,13 +41,8 @@ static_assert(fnd::input::sdl3::kPadDpadUp == SDL_GAMEPAD_BUTTON_DPAD_UP, "pad u
 static_assert(fnd::input::sdl3::kPadDpadDown == SDL_GAMEPAD_BUTTON_DPAD_DOWN, "pad down drifted");
 static_assert(fnd::input::sdl3::kPadDpadLeft == SDL_GAMEPAD_BUTTON_DPAD_LEFT, "pad left drifted");
 static_assert(fnd::input::sdl3::kPadDpadRight == SDL_GAMEPAD_BUTTON_DPAD_RIGHT, "pad right drifted");
-static_assert(fnd::input::sdl3::kPadMelee == SDL_GAMEPAD_BUTTON_WEST, "pad melee drifted");
-static_assert(fnd::input::sdl3::kPadGuard == SDL_GAMEPAD_BUTTON_SOUTH, "pad guard drifted");
-static_assert(fnd::input::sdl3::kPadJump == SDL_GAMEPAD_BUTTON_EAST, "pad jump drifted");
-static_assert(fnd::input::sdl3::kPadShoot == SDL_GAMEPAD_BUTTON_NORTH, "pad shoot drifted");
-static_assert(fnd::input::sdl3::kPadLock == SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, "pad lock drifted");
-static_assert(fnd::input::sdl3::kPadSpecial == SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, "pad special drifted");
-static_assert(fnd::input::sdl3::kPadTactics == SDL_GAMEPAD_BUTTON_BACK, "pad tactics drifted");
+static_assert(fnd::input::sdl3::kPadButtonCount == SDL_GAMEPAD_BUTTON_COUNT,
+              "the trigger codes must sit past the last SDL button");
 static_assert(fnd::input::sdl3::kPadPause == SDL_GAMEPAD_BUTTON_START, "pad pause drifted");
 
 namespace fnd::input {
@@ -57,12 +51,23 @@ namespace {
 const PlayerState kEmptyPlayer;
 
 // The pad's identity string: SDL's 32-hex-character GUID. Empty when the id is not a
-// pad (or SDL cannot say), which the placement policy reads as "no identity".
+// pad (or SDL cannot say), which the slot policy reads as "no identity".
 std::string guidStringForId(SDL_JoystickID id) {
     const SDL_GUID guid = SDL_GetGamepadGUIDForID(id);
     char text[64] = {};
     SDL_GUIDToString(guid, text, sizeof text);
     return std::string(text);
+}
+
+// A pad input code is down: a button, or a trigger past half travel.
+bool padInputDown(SDL_Gamepad* pad, int code) {
+    if (!pad || code < 0) return false;
+    if (code < sdl3::kPadButtonCount) return SDL_GetGamepadButton(pad, static_cast<SDL_GamepadButton>(code));
+    if (code == sdl3::kPadLeftTrigger)
+        return SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) >= sdl3::kPadTriggerThreshold;
+    if (code == sdl3::kPadRightTrigger)
+        return SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) >= sdl3::kPadTriggerThreshold;
+    return false;
 }
 }  // namespace
 
@@ -81,19 +86,9 @@ bool Backend::set_keyboard_binding(Action action, int scancode) {
 
 bool Backend::set_gamepad_binding(int player, Action action, int button) {
     if (player < 0 || player >= kMaxPlayers || action < 0 || action >= ActionCount ||
-        button < -1 || button >= SDL_GAMEPAD_BUTTON_COUNT) return false;
+        button < -1 || button >= sdl3::kPadInputCount) return false;
     buttons_[player][action] = button;
     return true;
-}
-
-void Backend::set_gamepad_guid_hint(int player, const std::string& guid) {
-    if (player < 0 || player >= kMaxPlayers) return;
-    guidHints_[player] = guid;
-}
-
-const std::string& Backend::gamepad_guid_hint(int player) const {
-    static const std::string none;
-    return (player >= 0 && player < kMaxPlayers) ? guidHints_[player] : none;
 }
 
 std::string Backend::gamepad_guid(int player) const {
@@ -111,6 +106,11 @@ std::string Backend::gamepad_name(int player) const {
     return name ? std::string(name) : std::string();
 }
 
+int Backend::gamepad_type(int player) const {
+    if (player < 0 || player >= kMaxPlayers || !pads_[player]) return -1;
+    return static_cast<int>(SDL_GetGamepadType(static_cast<SDL_Gamepad*>(pads_[player])));
+}
+
 Backend::~Backend() { shutdown(); }
 
 bool Backend::init() {
@@ -121,7 +121,6 @@ bool Backend::init() {
         std::fprintf(stderr, "[fnd::input] SDL_INIT_GAMEPAD failed: %s\n", SDL_GetError());
         return false;
     }
-    devices_[0] = DeviceType::Keyboard;
     const char* trace = std::getenv("DAYBREAK_INPUT_TRACE");
     traceButtons_ = trace && trace[0] == '1';
     const int version = SDL_GetVersion();
@@ -137,7 +136,13 @@ void Backend::shutdown() {
         if (SDL_Gamepad* pad = static_cast<SDL_Gamepad*>(pads_[i])) SDL_CloseGamepad(pad);
         pads_[i] = nullptr;
         devices_[i] = DeviceType::None;
+        slotGuid_[i].clear();
+        reservedGuid_[i].clear();
+        triggerHeld_[i][0] = triggerHeld_[i][1] = false;
     }
+    for (void* pad : idlePads_) SDL_CloseGamepad(static_cast<SDL_Gamepad*>(pad));
+    idlePads_.clear();
+    keyboardSlot_ = -1;
     SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
     // A re-init must start clean, never holding a key the window forgot — and never
     // remembering a focus loss it was not there for.
@@ -156,12 +161,13 @@ void Backend::poll(bool applyScript) {
     if (!device_input_ignored()) {
         drain_key_events();
         repoll_gamepads();
+        claim_idle_pads();
         update_keyboard();
-        for (int i = 1; i < kMaxPlayers; ++i) {
+        for (int i = 0; i < kMaxPlayers; ++i) {
             if (devices_[i] == DeviceType::Gamepad) {
                 update_gamepad(i);
-            } else {
-                // A removed (or never present) pad reads as released, not frozen:
+            } else if (devices_[i] == DeviceType::None) {
+                // A removed (or never present) device reads as released, not frozen:
                 // clearing before edge computation turns a mid-hold removal into
                 // one just_released instead of a stuck hold.
                 PlayerState& p = players_[i];
@@ -170,12 +176,11 @@ void Backend::poll(bool applyScript) {
             }
         }
     } else {
-        // Device input ignored: a verification run owns every slot (script + synthetic
-        // pads), or the window is unfocused. Reading a physical device here is what makes
-        // a capture depend on whoever is holding a pad: SDL reports a connected controller
-        // whether or not this window has focus, so a second game on the same machine moves
-        // this run's menus. Every slot reads as released; nothing rejoins the game until
-        // released and pressed afresh (see note_focus_lost).
+        // Device input ignored: the window is unfocused. Reading a physical device here is
+        // what makes a capture depend on whoever is holding a pad: SDL reports a connected
+        // controller whether or not this window has focus, so a second game on the same
+        // machine moves this run's menus. Every slot reads as released; nothing rejoins the
+        // game until released and pressed afresh (see note_focus_lost).
         for (int i = 0; i < kMaxPlayers; ++i) {
             PlayerState& p = players_[i];
             for (int a = 0; a < ActionCount; ++a) p.down[a] = false;
@@ -218,7 +223,7 @@ DeviceType Backend::device(int index) const {
 }
 
 int Backend::gamepad_player(int32_t instanceId) const {
-    for (int p = 1; p < kMaxPlayers; ++p)
+    for (int p = 0; p < kMaxPlayers; ++p)
         if (pads_[p] && SDL_GetGamepadID(static_cast<SDL_Gamepad*>(pads_[p])) == (SDL_JoystickID)instanceId)
             return p;
     return -1;
@@ -236,6 +241,53 @@ bool Backend::any_down(Action action) const {
     return false;
 }
 
+int Backend::claim_slot(DeviceType device, const std::string& guid) {
+    std::array<bool, kMaxPlayers> occupied{};
+    for (int i = 0; i < kMaxPlayers; ++i) occupied[i] = devices_[i] != DeviceType::None;
+    const int slot = slotForNewDevice(reservedGuid_, occupied, guid);
+    if (slot < 0) return -1;
+    devices_[slot] = device;
+    slotGuid_[slot] = guid;
+    reservedGuid_[slot].clear();
+    triggerHeld_[slot][0] = triggerHeld_[slot][1] = false;
+    eventStates_[slot] = players_[slot] = {};
+    return slot;
+}
+
+// The keyboard joins on a key bound to an action; Escape, Enter and the like do not make it
+// a player.
+bool Backend::claim_keyboard(int scancode) {
+    if (keyboardSlot_ >= 0) return true;
+    bool bound = false;
+    for (int a = 0; a < ActionCount; ++a) bound = bound || keyboard_[a] == scancode;
+    if (!bound) return false;
+    keyboardSlot_ = claim_slot(DeviceType::Keyboard, {});
+    if (keyboardSlot_ >= 0) std::printf("[fnd::input] keyboard is player %d\n", keyboardSlot_ + 1);
+    return keyboardSlot_ >= 0;
+}
+
+void Backend::claim_idle_pads() {
+    for (size_t k = 0; k < idlePads_.size();) {
+        auto* pad = static_cast<SDL_Gamepad*>(idlePads_[k]);
+        const std::string guid = guidStringForId(SDL_GetGamepadID(pad));
+        std::array<bool, kMaxPlayers> occupied{};
+        for (int i = 0; i < kMaxPlayers; ++i) occupied[i] = devices_[i] != DeviceType::None;
+        const int target = slotForNewDevice(reservedGuid_, occupied, guid);
+        bool pressed = false;
+        for (int a = 0; target >= 0 && a < ActionCount; ++a)
+            pressed = pressed || padInputDown(pad, buttons_[target][a]);
+        if (!pressed) {
+            ++k;
+            continue;
+        }
+        const int slot = claim_slot(DeviceType::Gamepad, guid);
+        pads_[slot] = pad;
+        idlePads_.erase(idlePads_.begin() + static_cast<std::ptrdiff_t>(k));
+        const char* name = SDL_GetGamepadName(pad);
+        std::printf("[fnd::input] pad \"%s\" is player %d\n", name ? name : "?", slot + 1);
+    }
+}
+
 void Backend::note_key(int scancode, bool pressed) {
     if (scancode < 0 || scancode >= kKeyHeldSize) return;
     // The forwarded DEVICE events obey the same gate as the polling read: an ignored run
@@ -245,7 +297,46 @@ void Backend::note_key(int scancode, bool pressed) {
     if (device_input_ignored()) return;
     key_held_[scancode] = pressed;
     if (!pressed) suppressedKeys_[scancode] = false;
-    record_button(0, scancode, pressed && !suppressedKeys_[scancode]);
+    if (keyboardSlot_ < 0 && !(pressed && !suppressedKeys_[scancode] && claim_keyboard(scancode))) return;
+    record_button(keyboardSlot_, scancode, pressed && !suppressedKeys_[scancode]);
+}
+
+void Backend::note_gamepad_button(int player, int button, bool pressed) {
+    if (player < 0 || player >= kMaxPlayers || button < 0 || button >= sdl3::kPadInputCount) return;
+    if (device_input_ignored()) return;   // same gate as note_key
+    if (!pressed) suppressedButtons_[player][button] = false;
+    record_button(player, button, pressed && !suppressedButtons_[player][button]);
+}
+
+void Backend::note_pad_button(int32_t instanceId, int button, bool pressed) {
+    int player = gamepad_player(instanceId);
+    if (player < 0 && pressed && !device_input_ignored()) {
+        // The poll's claim, early: the press that joins a pad is the one that acts, even
+        // when it is released before the next poll.
+        for (void* pad : idlePads_)
+            if (SDL_GetGamepadID(static_cast<SDL_Gamepad*>(pad)) == (SDL_JoystickID)instanceId) {
+                claim_idle_pads();
+                player = gamepad_player(instanceId);
+                break;
+            }
+    }
+    if (traceButtons_)
+        std::printf("[fnd::input] pad %d button %d %s, player %d%s\n", instanceId, button,
+                    pressed ? "down" : "up", player + 1,
+                    device_input_ignored() ? " (window unfocused, ignored)" : "");
+    note_gamepad_button(player, button, pressed);
+}
+
+void Backend::note_pad_axis(int32_t instanceId, int axis, int value) {
+    const int trigger = axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER    ? 0
+                        : axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER ? 1
+                                                                 : -1;
+    const int player = gamepad_player(instanceId);
+    if (trigger < 0 || player < 0) return;   // a pad with no slot joins through the poll
+    const bool down = value >= sdl3::kPadTriggerThreshold;
+    if (triggerHeld_[player][trigger] == down) return;
+    triggerHeld_[player][trigger] = down;
+    note_pad_button(instanceId, trigger == 0 ? sdl3::kPadLeftTrigger : sdl3::kPadRightTrigger, down);
 }
 
 void Backend::note_joystick_added(int32_t instanceId) const {
@@ -258,26 +349,17 @@ void Backend::note_joystick_added(int32_t instanceId) const {
                 SDL_IsGamepad(id) ? "a gamepad" : "not a gamepad (no mapping), ignored");
 }
 
-void Backend::note_gamepad_button(int player, int button, bool pressed) {
-    if (traceButtons_)
-        std::printf("[fnd::input] pad button %d %s, player %d%s\n", button, pressed ? "down" : "up",
-                    player, device_input_ignored() ? " (window unfocused, ignored)" : "");
-    if (player < 1 || player >= kMaxPlayers || button < 0 || button >= SDL_GAMEPAD_BUTTON_COUNT) return;
-    if (device_input_ignored()) return;   // same gate as note_key
-    if (!pressed) suppressedButtons_[player][button] = false;
-    record_button(player, button, pressed && !suppressedButtons_[player][button]);
-}
-
 void Backend::record_button(int player, int code, bool down) {
     PlayerState& state = eventStates_[player];
-    const int* bindings = player == 0 ? keyboard_ : buttons_[player];
+    const bool keyboard = devices_[player] == DeviceType::Keyboard;
+    const int* bindings = keyboard ? keyboard_ : buttons_[player];
     bool changed = false;
     for (int a = 0; a < ActionCount; ++a) {
         if (bindings[a] != code) continue;
         changed = changed || state.down[a] != down;
         state.down[a] = down;
     }
-    if (player == 0) {
+    if (keyboard) {
         state.stick_x = state.down[Right] ? 32767 : (state.down[Left] ? -32768 : 0);
         state.stick_y = state.down[Down] ? 32767 : (state.down[Up] ? -32768 : 0);
     } else {
@@ -292,7 +374,7 @@ void Backend::suppress_key(int scancode) {
 }
 
 void Backend::suppress_gamepad_button(int player, int button) {
-    if (player >= 0 && player < kMaxPlayers && button >= 0 && button < SDL_GAMEPAD_BUTTON_COUNT)
+    if (player >= 0 && player < kMaxPlayers && button >= 0 && button < sdl3::kPadInputCount)
         suppressedButtons_[player][button] = true;
 }
 
@@ -306,10 +388,9 @@ void Backend::suppress_held_devices() {
     for (int sc = 0; sc < kKeyHeldSize; ++sc)
         suppressedKeys_[sc] = keys && sc < count && keys[sc];
     // Pads continue reporting physical holds after the window loses focus.
-    for (int p = 1; p < kMaxPlayers; ++p) {
+    for (int p = 0; p < kMaxPlayers; ++p) {
         auto* pad = static_cast<SDL_Gamepad*>(pads_[p]);
-        for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT; ++b)
-            suppressedButtons_[p][b] = pad && SDL_GetGamepadButton(pad, static_cast<SDL_GamepadButton>(b));
+        for (int b = 0; b < sdl3::kPadInputCount; ++b) suppressedButtons_[p][b] = padInputDown(pad, b);
     }
 }
 
@@ -403,60 +484,50 @@ void Backend::repoll_gamepads() {
     // not a backend failure.
     int count = 0;
     SDL_JoystickID* ids = SDL_GetGamepads(&count);
-    for (int i = 1; i < kMaxPlayers; ++i) {
+    const auto connected = [&](SDL_Gamepad* pad) {
+        const SDL_JoystickID id = SDL_GetGamepadID(pad);
+        if (id == 0) return false;
+        if (!ids) return true;
+        for (int k = 0; k < count; ++k)
+            if (ids[k] == id) return true;
+        return false;
+    };
+    for (int i = 0; i < kMaxPlayers; ++i) {
         SDL_Gamepad* pad = static_cast<SDL_Gamepad*>(pads_[i]);
-        if (!pad) continue;
-        SDL_JoystickID id = SDL_GetGamepadID(pad);
-        bool gone = (id == 0);
-        if (!gone && ids) {
-            gone = true;
-            for (int k = 0; k < count; ++k) {
-                if (ids[k] == id) {
-                    gone = false;
-                    break;
-                }
-            }
+        if (!pad || connected(pad)) continue;
+        std::printf("[fnd::input] pad left player %d; the slot waits for it\n", i + 1);
+        SDL_CloseGamepad(pad);
+        pads_[i] = nullptr;
+        devices_[i] = DeviceType::None;
+        reservedGuid_[i] = slotGuid_[i];
+        slotGuid_[i].clear();
+    }
+    for (size_t k = 0; k < idlePads_.size();) {
+        auto* pad = static_cast<SDL_Gamepad*>(idlePads_[k]);
+        if (connected(pad)) {
+            ++k;
+            continue;
         }
-        if (gone) {
-            std::printf("[fnd::input] pad left player %d\n", i + 1);
-            SDL_CloseGamepad(pad);
-            pads_[i] = nullptr;
-            devices_[i] = DeviceType::None;
-        }
+        SDL_CloseGamepad(pad);
+        idlePads_.erase(idlePads_.begin() + static_cast<std::ptrdiff_t>(k));
     }
     if (ids) {
         for (int k = 0; k < count; ++k) {
-            bool known = false;
-            for (int i = 1; i < kMaxPlayers; ++i) {
-                SDL_Gamepad* pad = static_cast<SDL_Gamepad*>(pads_[i]);
-                if (pad && SDL_GetGamepadID(pad) == ids[k]) {
-                    known = true;
-                    break;
-                }
-            }
+            bool known = gamepad_player(ids[k]) >= 0;
+            for (void* pad : idlePads_)
+                known = known || SDL_GetGamepadID(static_cast<SDL_Gamepad*>(pad)) == ids[k];
             if (known) continue;
-            // Stable-controller policy: a pad whose GUID is recorded for a free slot goes
-            // back to that player (so a replug cannot move its bindings); anything else
-            // takes the lowest free slot, which is the enumeration order this backend had
-            // before persistence existed. See input/gamepad_identity.h.
-            std::array<bool, kMaxPlayers> occupied{};
-            for (int i = 0; i < kMaxPlayers; ++i) occupied[i] = pads_[i] != nullptr;
-            occupied[0] = true;   // slot 0 is the keyboard
-            const int slot = preferredPadSlot(guidHints_, occupied, guidStringForId(ids[k]));
-            if (slot >= 0) {
-                // A failed open keeps the slot free for the next re-poll
-                // rather than burning a player on a dead pad.
-                if (SDL_Gamepad* opened = SDL_OpenGamepad(ids[k])) {
-                    pads_[slot] = opened;
-                    devices_[slot] = DeviceType::Gamepad;
-                    const char* name = SDL_GetGamepadName(opened);
-                    std::printf("[fnd::input] pad \"%s\" is player %d\n", name ? name : "?",
-                                slot + 1);
-                } else if (failedPadId_ != static_cast<int32_t>(ids[k])) {
-                    failedPadId_ = static_cast<int32_t>(ids[k]);
-                    std::printf("[fnd::input] pad %u could not be opened: %s\n",
-                                (unsigned)ids[k], SDL_GetError());
-                }
+            // A failed open is retried on the next re-poll rather than burning a player on
+            // a dead pad; its reason is logged once.
+            if (SDL_Gamepad* opened = SDL_OpenGamepad(ids[k])) {
+                idlePads_.push_back(opened);
+                const char* name = SDL_GetGamepadName(opened);
+                std::printf("[fnd::input] pad \"%s\" ready; its first press takes a player\n",
+                            name ? name : "?");
+            } else if (failedPadId_ != static_cast<int32_t>(ids[k])) {
+                failedPadId_ = static_cast<int32_t>(ids[k]);
+                std::printf("[fnd::input] pad %u could not be opened: %s\n", (unsigned)ids[k],
+                            SDL_GetError());
             }
         }
         SDL_free(ids);
@@ -486,6 +557,7 @@ void Backend::drain_key_events() {
         note_focus_lost();
 }
 
+
 void Backend::update_keyboard() {
     int num = 0;
     const bool* kb = SDL_GetKeyboardState(&num);
@@ -497,7 +569,12 @@ void Backend::update_keyboard() {
         if (sc < kKeyHeldSize && key_held_[sc]) return true;
         return kb && sc < num && kb[sc];
     };
-    PlayerState& p = players_[0];
+    if (keyboardSlot_ < 0) {
+        for (int a = 0; a < ActionCount && keyboardSlot_ < 0; ++a)
+            if (key_down(keyboard_[a])) claim_keyboard(keyboard_[a]);
+        if (keyboardSlot_ < 0) return;
+    }
+    PlayerState& p = players_[keyboardSlot_];
     for (int a = 0; a < ActionCount; ++a) p.down[a] = key_down(keyboard_[a]);
     // No analog source on a keyboard: sticks are synthesised from the digital
     // D-pad, verbatim from the remake.
@@ -514,7 +591,7 @@ void Backend::update_gamepad(int index) {
     PlayerState& p = players_[index];
     for (int a = 0; a < ActionCount; ++a) {
         const int b = buttons_[index][a];
-        const bool pressed = b >= 0 && SDL_GetGamepadButton(pad, (SDL_GamepadButton)b);
+        const bool pressed = padInputDown(pad, b);
         if (b >= 0 && !pressed) suppressedButtons_[index][b] = false;
         p.down[a] = pressed && !suppressedButtons_[index][b];
     }
@@ -527,6 +604,56 @@ void Backend::update_gamepad(int index) {
     // Web note: no rumble is wired here — the browser haptics API is async
     // and permission-gated, so it stays a future backend option, not a promise.
     stick_to_digital(p.stick_x, p.stick_y, p.down[Left], p.down[Right], p.down[Up], p.down[Down]);
+}
+
+std::string padInputLabel(int code, int gamepadType) {
+    if (code < 0) return "--";
+    const auto type = static_cast<SDL_GamepadType>(gamepadType);
+    const bool playstation = type == SDL_GAMEPAD_TYPE_PS3 || type == SDL_GAMEPAD_TYPE_PS4 ||
+                             type == SDL_GAMEPAD_TYPE_PS5;
+    const bool nintendo = type == SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO ||
+                          type == SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT ||
+                          type == SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT ||
+                          type == SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR;
+    // Face buttons are positional in SDL; the printed label is the pad family's.
+    if (code <= SDL_GAMEPAD_BUTTON_NORTH) {
+        switch (SDL_GetGamepadButtonLabelForType(type, static_cast<SDL_GamepadButton>(code))) {
+        case SDL_GAMEPAD_BUTTON_LABEL_A: return "A";
+        case SDL_GAMEPAD_BUTTON_LABEL_B: return "B";
+        case SDL_GAMEPAD_BUTTON_LABEL_X: return "X";
+        case SDL_GAMEPAD_BUTTON_LABEL_Y: return "Y";
+        case SDL_GAMEPAD_BUTTON_LABEL_CROSS: return "CROSS";
+        case SDL_GAMEPAD_BUTTON_LABEL_CIRCLE: return "CIRCLE";
+        case SDL_GAMEPAD_BUTTON_LABEL_SQUARE: return "SQUARE";
+        case SDL_GAMEPAD_BUTTON_LABEL_TRIANGLE: return "TRIANGLE";
+        default: break;
+        }
+    }
+    const char* shoulders[4] = {"LB", "RB", "LT", "RT"};
+    if (playstation) shoulders[0] = "L1", shoulders[1] = "R1", shoulders[2] = "L2", shoulders[3] = "R2";
+    if (nintendo) shoulders[0] = "L", shoulders[1] = "R", shoulders[2] = "ZL", shoulders[3] = "ZR";
+    switch (code) {
+    case SDL_GAMEPAD_BUTTON_SOUTH: return "A";
+    case SDL_GAMEPAD_BUTTON_EAST: return "B";
+    case SDL_GAMEPAD_BUTTON_WEST: return "X";
+    case SDL_GAMEPAD_BUTTON_NORTH: return "Y";
+    case SDL_GAMEPAD_BUTTON_BACK: return playstation ? (type == SDL_GAMEPAD_TYPE_PS5 ? "CREATE" : "SHARE")
+                                         : nintendo  ? "-" : "BACK";
+    case SDL_GAMEPAD_BUTTON_GUIDE: return playstation ? "PS" : "HOME";
+    case SDL_GAMEPAD_BUTTON_START: return playstation ? "OPTIONS" : nintendo ? "+" : "START";
+    case SDL_GAMEPAD_BUTTON_LEFT_STICK: return playstation ? "L3" : "LS";
+    case SDL_GAMEPAD_BUTTON_RIGHT_STICK: return playstation ? "R3" : "RS";
+    case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: return shoulders[0];
+    case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: return shoulders[1];
+    case sdl3::kPadLeftTrigger: return shoulders[2];
+    case sdl3::kPadRightTrigger: return shoulders[3];
+    case SDL_GAMEPAD_BUTTON_DPAD_UP: return "UP";
+    case SDL_GAMEPAD_BUTTON_DPAD_DOWN: return "DOWN";
+    case SDL_GAMEPAD_BUTTON_DPAD_LEFT: return "LEFT";
+    case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: return "RIGHT";
+    case SDL_GAMEPAD_BUTTON_TOUCHPAD: return "TOUCHPAD";
+    default: return "#" + std::to_string(code);
+    }
 }
 
 }  // namespace fnd::input
