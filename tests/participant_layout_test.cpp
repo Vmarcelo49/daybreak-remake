@@ -100,6 +100,37 @@ int main() {
     CHECK(ui::resultRowsRevealed(120) == 3);
     CHECK(ui::resultRowsRevealed(150) == 4 && ui::resultRowsRevealed(1000) == 4);
 
+    // Issue #106: online, each machine keeps only its own player on a controller and sends every
+    // other seat to the COM sentinel — which is what once made remote players show as COM. The
+    // seat says who is who, and a COM is still a COM.
+    //
+    // Peers 0 and 1 took panels 0 and 2 (the order a two-player room fills them in). Before the
+    // hand-off, from the selection screen.
+    ui::FrontendState online;
+    online.slots[0] = {0, 1, 0, 0, 0, false};   // peer 0's player
+    online.slots[2] = {4, 0, 0, 0, 1, false};   // peer 1's player
+    online.slots[1] = {1, 0, 0, 0, 4, false};   // COMs, character 1 and 2
+    online.slots[3] = {2, 0, 0, 0, 4, false};
+    // The hand-off as frame_loop.inc does it, on peer 1's machine: the seat is kept, the
+    // controller byte becomes this machine's perspective.
+    for (ui::FrontendSlot& slot : online.slots) {
+        slot.peer = slot.controller < 4 ? slot.controller : -1;
+        slot.local = slot.controller == 1;
+        slot.controller = slot.local ? 0 : 4;
+    }
+    count = ui::buildParticipants(online.slots.data(), roster);
+    CHECK(count == 4);
+    // The remote human on panel 0 is the seat the play-test saw labelled COM; the roster is in
+    // panel order, so this machine's own player, on panel 2, is the third entry.
+    CHECK(roster[0].remote() && roster[0].human() && roster[0].controller == 4);
+    CHECK(roster[2].local && !roster[2].remote() && roster[2].panel == 2 && roster[2].controller == 0);
+    // A two-player room reads 1P and 2P on both machines, and the unused panels stay COM.
+    for (int i : {0, 2}) CHECK(std::strcmp(ui::participantLabel(roster[i]), "1P") == 0);
+    for (int i : {1, 3}) {
+        CHECK(!roster[i].human() && !roster[i].remote() && roster[i].peer < 0);
+        CHECK(std::strcmp(ui::participantLabel(roster[i]), "COM") == 0);
+    }
+
     std::puts("participant_layout_test: roster, VS slots, and result rows ok");
     return 0;
 }
