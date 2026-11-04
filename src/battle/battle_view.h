@@ -30,6 +30,10 @@ public:
     virtual glm::mat4 modelMatrix() const = 0;
     virtual const gameplay::CharacterMoves* moves() const = 0;
     virtual const gameplay::WeaponDefinition* weapon() const = 0;
+    // Whether the core owns this fighter's input bank: a CPU drives it, or a player's chords are
+    // held on it. Online, a fighter another machine plays has neither here, and its label must not
+    // claim COM (issue #106).
+    virtual bool driven() const = 0;
 
     // State.
     virtual FighterState state() const = 0;
