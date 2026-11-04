@@ -4,27 +4,43 @@
 #include "frontend/screen_options.h"
 #include "frontend/title_backdrop.h"
 #include <cstdio>
+#include <SDL3/SDL_timer.h>
 #define CHECK(x) do { if(!(x)) { std::fprintf(stderr,"failure: %s\n",#x); return 1; } } while(0)
 int main() {
     CHECK(ui::kFrontendBattleSlots[0] == 0 && ui::kFrontendBattleSlots[1] == 2);
     auto& settings=ui::frontendSettings(); int changes=0; settings.applyBindings=[&]{++changes;};
     // Column 0 is the keyboard, columns 1..4 the pads of players 1..4 (issue #102). Player 3
-    // (slot 2) has a pad; the others have none.
+    // (slot 2) has a pad; the others have none. The device pressed decides which set changes.
     settings.padTypeForSlot = [](int slot) { return slot == 2 ? 1 : -1; };
     ui::armBindingCapture(0,fnd::input::Jump);
     ui::submitBindingInput(true,0,512); CHECK(ui::bindingCaptureActive());
-    ui::submitBindingInput(false,0,3); CHECK(ui::bindingCaptureActive());   // a pad cannot bind keys
     ui::submitBindingInput(true,0,6); CHECK(!ui::bindingCaptureActive());
     CHECK(settings.keyboard[fnd::input::Jump]==6); CHECK(settings.keyboard[fnd::input::Shoot]==-1); CHECK(changes==1);
+    // A pad pressed on the keys column binds its own player's pad (the owner's report: a
+    // pad player could only ever change the keys).
+    ui::armBindingCapture(0,fnd::input::Jump); ui::submitBindingInput(false,-1,3);
+    CHECK(ui::bindingCaptureActive());   // a pad with no player yet has nothing to change
+    ui::submitBindingInput(false,2,9); CHECK(!ui::bindingCaptureActive());
+    CHECK(settings.gamepad[2][fnd::input::Jump]==9); CHECK(settings.keyboard[fnd::input::Jump]==6); CHECK(changes==2);
+    // A pad column takes its own player's pad, not another player's.
     ui::armBindingCapture(3,fnd::input::Jump); ui::submitBindingInput(false,1,3); CHECK(ui::bindingCaptureActive());
-    ui::submitBindingInput(true,0,6); CHECK(ui::bindingCaptureActive());     // keys cannot bind a pad
-    ui::submitBindingInput(false,2,3); CHECK(settings.gamepad[2][fnd::input::Jump]==3); CHECK(changes==2);
+    ui::submitBindingInput(false,2,3); CHECK(settings.gamepad[2][fnd::input::Jump]==3); CHECK(changes==3);
+    // A key pressed on a pad column binds the keys.
+    ui::armBindingCapture(3,fnd::input::Jump); ui::submitBindingInput(true,0,29);
+    CHECK(settings.keyboard[fnd::input::Jump]==29); CHECK(settings.gamepad[2][fnd::input::Jump]==3); CHECK(changes==4);
     // Player 2 has no pad yet, so any pad may set it up, one with no slot included.
     ui::armBindingCapture(2,fnd::input::Jump); ui::submitBindingInput(false,-1,27);
-    CHECK(!ui::bindingCaptureActive()); CHECK(settings.gamepad[1][fnd::input::Jump]==27); CHECK(changes==3);
+    CHECK(!ui::bindingCaptureActive()); CHECK(settings.gamepad[1][fnd::input::Jump]==27); CHECK(changes==5);
     ui::armBindingCapture(2,fnd::input::Jump); ui::submitBindingInput(false,-1,28);
     CHECK(ui::bindingCaptureActive());   // past the right trigger
     ui::cancelBindingCapture();
+    // The confirm that armed the capture arrives as an event stamped before the arming and
+    // must not bind itself; a press after it does.
+    const uint64_t beforeArming = SDL_GetTicksNS();
+    ui::armBindingCapture(3,fnd::input::Shoot);
+    ui::submitBindingInput(false,2,0,beforeArming); CHECK(ui::bindingCaptureActive());
+    ui::submitBindingInput(false,2,10,SDL_GetTicksNS()); CHECK(!ui::bindingCaptureActive());
+    CHECK(settings.gamepad[2][fnd::input::Shoot]==10);
     settings.padTypeForSlot = nullptr;
     bool rowSeen[fnd::input::ActionCount] = {};
     for (auto action : ui::kBindingRowActions) {

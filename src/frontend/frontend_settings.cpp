@@ -1,7 +1,14 @@
 #include "frontend/frontend_settings.h"
 #include "input/input_sdl3.h"
+#include <SDL3/SDL_timer.h>
 namespace ui {
-namespace { int captureColumn = -1, captureAction = -1; }
+namespace {
+int captureColumn = -1, captureAction = -1;
+// SDL_GetTicksNS() at arming. A pad's confirm is read from its polled state in the frame it
+// is pressed, but its BUTTON_DOWN event is dispatched at the start of the next frame, after
+// the screen has armed the capture: without this the confirm bound itself (issue #102).
+uint64_t captureArmedAtNs = 0;
+}
 FrontendSettings::FrontendSettings() {
     for (int a = 0; a < fnd::input::ActionCount; ++a) keyboard[a] = fnd::input::sdl3::kP1ScancodeByAction[a];
     for (auto& pad : gamepad) for (int a = 0; a < fnd::input::ActionCount; ++a) pad[a] = fnd::input::sdl3::kPadButtonByAction[a];
@@ -58,27 +65,30 @@ settings::UserSettings toUserSettings(const FrontendSettings& settings) {
     return document;
 }
 bool bindingCaptureActive() { return captureColumn >= 0; }
-bool bindingCaptureForKeyboard() { return captureColumn == 0; }
 void armBindingCapture(int column, int action) {
     if (column >= 0 && column < kBindingColumns && action >= 0 && action < fnd::input::ActionCount) {
         captureColumn = column; captureAction = action;
+        captureArmedAtNs = SDL_GetTicksNS();
     }
 }
 void cancelBindingCapture() { captureColumn = captureAction = -1; }
-void submitBindingInput(bool keyboard, int padSlot, int code) {
+void submitBindingInput(bool keyboard, int padSlot, int code, uint64_t pressedAtNs) {
     if (!bindingCaptureActive() || code < 0) return;
+    if (pressedAtNs != 0 && pressedAtNs < captureArmedAtNs) return;
     if (code > (keyboard ? settings::kMaxScancode : settings::kMaxPadButton)) return;
-    // The keyboard binds only its own column. A pad binds the player column it was armed
-    // for when it is that player's pad; when that player has no pad, any pad may set it up,
-    // since slots are taken by the first press and a player rebinding before joining has
-    // no other way in.
-    const int slot = captureColumn - 1;
-    if (keyboard != (slot < 0)) return;
-    if (!keyboard && padSlot != slot) {
+    // The device pressed says which set changes: a key binds the keys, a pad press binds a
+    // pad's (issue #102 — a pad player rebinding from the keys column got nothing). A pad
+    // column binds when the press comes from that player's pad, or from any pad when that
+    // player has none yet; from the keys column a pad binds its own player.
+    int slot = captureColumn - 1;
+    if (!keyboard) {
         const auto& typeOf = frontendSettings().padTypeForSlot;
-        if (typeOf && typeOf(slot) >= 0) return;
+        if (slot < 0) slot = padSlot;
+        else if (padSlot != slot && typeOf && typeOf(slot) >= 0) return;
+        if (slot < 0) return;   // a pad with no player yet has no bindings to change
     }
-    auto& target = keyboard ? frontendSettings().keyboard : frontendSettings().gamepad[slot];
+    auto& target = keyboard ? frontendSettings().keyboard
+                            : frontendSettings().gamepad[static_cast<size_t>(slot)];
     // One physical button has one action; displace its previous assignment.
     for (int& binding : target) if (binding == code) binding = -1;
     target[captureAction] = code;

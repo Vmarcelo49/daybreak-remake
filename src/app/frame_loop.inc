@@ -938,7 +938,7 @@ static SDL_AppResult appEvent(App* app, SDL_Event* event) {
             if (ui::bindingCaptureActive()) {
                 app->matchInput.suppress_key((int)event->key.scancode);
                 if (event->key.key == SDLK_ESCAPE) ui::cancelBindingCapture();
-                else if (!event->key.repeat) ui::submitBindingInput(true, 0, (int)event->key.scancode);
+                else if (!event->key.repeat) ui::submitBindingInput(true, 0, (int)event->key.scancode, event->key.timestamp);
                 return SDL_APP_CONTINUE;
             }
             app->matchInput.note_key((int)event->key.scancode, true);
@@ -983,10 +983,10 @@ static SDL_AppResult appEvent(App* app, SDL_Event* event) {
             app->matchInput.note_joystick_added((int32_t)event->jdevice.which);
             break;
         case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
-            if (ui::bindingCaptureActive() && !ui::bindingCaptureForKeyboard()) {
+            if (ui::bindingCaptureActive()) {
                 const int player = app->matchInput.gamepad_player((int32_t)event->gbutton.which);
                 app->matchInput.suppress_gamepad_button(player,(int)event->gbutton.button);
-                ui::submitBindingInput(false, player, (int)event->gbutton.button);
+                ui::submitBindingInput(false, player, (int)event->gbutton.button, event->gbutton.timestamp);
             } else {
                 app->matchInput.note_pad_button((int32_t)event->gbutton.which, (int)event->gbutton.button, true);
             }
@@ -999,13 +999,13 @@ static SDL_AppResult appEvent(App* app, SDL_Event* event) {
             // is captured, so resting noise cannot bind one.
             const int axis = event->gaxis.axis;
             const bool trigger = axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER || axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER;
-            if (trigger && ui::bindingCaptureActive() && !ui::bindingCaptureForKeyboard() &&
+            if (trigger && ui::bindingCaptureActive() &&
                 event->gaxis.value >= fnd::input::sdl3::kPadTriggerThreshold) {
                 const int player = app->matchInput.gamepad_player((int32_t)event->gaxis.which);
                 const int code = axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER ? fnd::input::sdl3::kPadLeftTrigger
                                                                        : fnd::input::sdl3::kPadRightTrigger;
                 app->matchInput.suppress_gamepad_button(player, code);
-                ui::submitBindingInput(false, player, code);
+                ui::submitBindingInput(false, player, code, event->gaxis.timestamp);
             }
             app->matchInput.note_pad_axis((int32_t)event->gaxis.which, axis, event->gaxis.value);
             break;

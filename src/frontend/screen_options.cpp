@@ -51,6 +51,9 @@ constexpr Words kBindingNames[fnd::input::ActionCount] = {
 class ConfigScreen : public PanelScreen {
 public:
     ConfigScreen(SpriteRenderer& batch, bool keys, std::string& error) : keys_(keys) {
+        // Player 1 on a pad opens on their own pad column, not the keys.
+        const auto& padType = frontendSettings().padTypeForSlot;
+        if (keys && padType && padType(0) >= 0) column_ = 1;
         const bool ok = keys ? uploadBackground(batch, "data/keyconfig/0000", {{240, 8, 320, 56}, {120, 92, 560, 420}}, background_, error)
                              : uploadBackground(batch, "data/config/0001", {{240, 8, 320, 56}, {340, 250, 270, 140}}, background_, error);
         if (ok) loadFace(batch, error);
@@ -213,10 +216,7 @@ private:
         const bool backSelected = row_ == kKeyConfigBackRow;
         if (backSelected) batch.pushSolid({116, backY - 4.f, 568, 28}, kHighlight);
         centred(batch, say({"終了", "BACK"}), 400, backY, 17.f, backSelected ? kWhite : kPale);
-        const char* capturing = bindingCaptureForKeyboard()
-            ? say({"キーを押してください ／ ESC で中止", "Press a key. Esc cancels."})
-            : say({"パッドのボタンを押してください ／ ESC で中止", "Press a pad button or trigger. Esc cancels."});
-        help(batch, bindingCaptureActive() ? capturing
+        help(batch, bindingCaptureActive() ? say({"キーまたはパッドのボタンを押してください ／ ESC で中止", "Press a key, pad button or trigger. Esc cancels."})
                                            : say({"決定で変更 ／ ←→ で列を選択", "Confirm to rebind. Left and right pick the column."}));
     }
     static std::string keyName(int code) {

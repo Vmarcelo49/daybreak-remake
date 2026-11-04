@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <vector>
 #include "audio/audio.h"
@@ -77,10 +78,12 @@ settings::UserSettings toUserSettings(const FrontendSettings& settings);
 // The Controls screen's columns: 0 is the keyboard, 1..4 the pad bindings of players 1..4.
 inline constexpr int kBindingColumns = 5;
 // The SDL event pump supplies physical input while the binding screen is armed. A pad press
-// names the slot of the pad it came from, -1 for a pad that has no slot yet.
-void submitBindingInput(bool keyboard, int padSlot, int code);
+// names the slot of the pad it came from, -1 for a pad that has no slot yet; a key always
+// binds the keys, a pad press a pad's bindings, whatever the column. `pressedAtNs` is the
+// event's SDL timestamp (0: unknown): a press from before the capture was armed is the one
+// that armed it, delivered late, and is ignored.
+void submitBindingInput(bool keyboard, int padSlot, int code, uint64_t pressedAtNs = 0);
 bool bindingCaptureActive();
-bool bindingCaptureForKeyboard();
 void armBindingCapture(int column, int action);
 void cancelBindingCapture();
 }
