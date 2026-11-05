@@ -25,3 +25,20 @@ inline double det_core_pow(double x, double y) {
 #define cos det_core_cos
 #define atan2 det_core_atan2
 #define pow det_core_pow
+
+// SSE's rsqrtss and rcpps are estimates whose returned bits belong to the CPU model rather than to
+// the ISA, so the core's normalise and skinning paths would start from a different value on each
+// machine and the two battles would part (issue #107). Redirected here, at the call sites, for the
+// same reason and in the same way as sin and cos: the vendored headers keep as they are. The
+// intrinsic headers are included first so that these names are the functions, not macros, and the
+// core's own `#include <xmmintrin.h>` then finds the guard already set.
+#include <xmmintrin.h>
+inline __m128 det_core_rsqrt_ss(__m128 v) { return _mm_set_ss(::det_rsqrt(_mm_cvtss_f32(v))); }
+inline __m128 det_core_rcp_ps(__m128 v) {
+    return _mm_set_ps(::det_rcp(_mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(3, 3, 3, 3)))),
+                      ::det_rcp(_mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 2, 2, 2)))),
+                      ::det_rcp(_mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(1, 1, 1, 1)))),
+                      ::det_rcp(_mm_cvtss_f32(v)));
+}
+#define _mm_rsqrt_ss det_core_rsqrt_ss
+#define _mm_rcp_ps det_core_rcp_ps

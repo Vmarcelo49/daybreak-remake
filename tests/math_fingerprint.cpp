@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <xmmintrin.h>
 
 #include "battle/det_math.h"
 
@@ -61,6 +62,37 @@ std::uint64_t ulps(double a, double b) {
     return x > y ? static_cast<std::uint64_t>(x - y) : static_cast<std::uint64_t>(y - x);
 }
 
+// The core's normalise and skinning paths start from a reciprocal square root and a reciprocal.
+// SSE's rsqrtss and rcpps answer with a per-CPU-model estimate, which desynced two machines at
+// frame 181 (issue #107), so det_math answers with the exactly rounded value instead. This holds
+// them to that: any reintroduced estimate, on any machine, disagrees with the correctly rounded
+// result here and fails.
+int check_reciprocals() {
+    int failures = 0;
+    Numbers numbers;
+    unsigned rsqrtDiffer = 0, rcpDiffer = 0, checked = 0;
+    double worstEstimate = 0;
+    for (unsigned i = 0; i < kSamples; ++i) {
+        const float v = numbers.next(i);
+        // Only the positive range a squared length or a homogeneous w can occupy; the smallest
+        // normal float and below is where rsqrtss's estimate underflows and says nothing useful.
+        if (!(v > 1e-30f)) continue;
+        ++checked;
+        const double exactRsqrt = 1.0 / std::sqrt(static_cast<double>(v));
+        const double exactRcp = 1.0 / static_cast<double>(v);
+        if (det_rsqrt(v) != static_cast<float>(exactRsqrt)) ++rsqrtDiffer;
+        if (det_rcp(v) != static_cast<float>(exactRcp)) ++rcpDiffer;
+        // Printed rather than asserted on: it shows how far this machine's hardware estimate
+        // strays, which is the quantity that differs between CPU vendors.
+        const float estimate = _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss(v)));
+        worstEstimate = std::max(worstEstimate, std::fabs(double(estimate) - exactRsqrt) / exactRsqrt);
+    }
+    std::printf("det_rsqrt %u differ, det_rcp %u differ of %u; this CPU's rsqrtss is up to %.3g "
+                "relative error from exact\n", rsqrtDiffer, rcpDiffer, checked, worstEstimate);
+    if (rsqrtDiffer || rcpDiffer) ++failures;
+    return failures;
+}
+
 // det_math is not the C runtime's code, so it must at least agree with it about the answers.
 int check_accuracy() {
     int failures = 0;
@@ -82,7 +114,7 @@ int check_accuracy() {
     compare("sin", [](double y, double) { return det_sin(y); }, [](double y, double) { return std::sin(y); });
     compare("cos", [](double y, double) { return det_cos(y); }, [](double y, double) { return std::cos(y); });
     compare("atan2", [](double y, double x) { return det_atan2(y, x); }, [](double y, double x) { return std::atan2(y, x); });
-    return failures;
+    return failures + check_reciprocals();
 }
 
 }  // namespace
@@ -99,6 +131,8 @@ int main(int argc, char** argv) {
     report("fmod", [](Digest& d, Numbers& n, unsigned i) { const double y = n.next(i); d.add(std::fmod(y, static_cast<double>(n.next(i)))); });
     report("sqrt", [](Digest& d, Numbers& n, unsigned i) { d.add(std::sqrt(static_cast<double>(n.next(i)))); });
     report("sqrtf", [](Digest& d, Numbers& n, unsigned i) { d.add(std::sqrt(n.next(i))); });
+    report("det_rsqrt", [](Digest& d, Numbers& n, unsigned i) { d.add(det_rsqrt(n.next(i))); });
+    report("det_rcp", [](Digest& d, Numbers& n, unsigned i) { d.add(det_rcp(n.next(i))); });
     report("nearbyintf", [](Digest& d, Numbers& n, unsigned i) { d.add(std::nearbyint(n.next(i))); });
     report("lrintf", [](Digest& d, Numbers& n, unsigned i) { const float f = n.next(i); if (std::fabs(f) < 1e9f) d.add(static_cast<double>(std::lrint(f))); });
     // legacy_trig and seven more core headers work in long double, whose result depends on the x87
