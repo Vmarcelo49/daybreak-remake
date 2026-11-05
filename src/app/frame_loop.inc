@@ -166,6 +166,11 @@ static SDL_AppResult tickFrontend(App& state) {
         if (app->netMenu) app->netMenu->linger();
         else app->frontend.online->lobby->poll(16);
     }
+    // While the session owns the socket the lobby cannot poll, so the host would let its room expire
+    // at the server and come back to a new code (issue #110). Here, not in the match tick: this runs
+    // on every frame the match is on screen, including the VS and result screens, and the first one
+    // after it starts. A no-op for a joiner and for a room without a server.
+    if (app->frontend.online) app->frontend.online->lobby->keep_alive(16);
 #endif
     auto anyPressed = [&](fnd::input::Action action) {
         for (const auto& player : app->tickInput) if (player.just_pressed[action]) return true;
