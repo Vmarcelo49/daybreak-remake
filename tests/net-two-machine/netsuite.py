@@ -176,17 +176,19 @@ def shipped_libraries(binary):
 # -- prepare ------------------------------------------------------------------------------
 
 def prepare(remote, rebuild):
-    """Copy the headless peer and the shared libraries it needs, and prove they run there.
+    """Copy the headless peer and the shared libraries it needs, prove they run there, and compare
+    the arithmetic the two machines compute.
 
     The game tree is optional and only matters for the interactive step: `netctl` reads the game
     files through GAME_DIR and needs nothing beside it, so the robustness run must not depend on a
     release package having been built here (building one reconfigures this build tree).
     """
     netctl = os.path.join(REPO, "build", "linux", "netctl")
-    if rebuild or not os.path.exists(netctl):
-        print("[prepare] building netctl", flush=True)
-        built = subprocess.run(["cmake", "--build", "build/linux", "--target", "netctl"], cwd=REPO,
-                               capture_output=True, text=True)
+    math_fingerprint = os.path.join(REPO, "build", "linux", "math_fingerprint")
+    if rebuild or not os.path.exists(netctl) or not os.path.exists(math_fingerprint):
+        print("[prepare] building netctl and math_fingerprint", flush=True)
+        built = subprocess.run(["cmake", "--build", "build/linux", "--target", "netctl",
+                                "math_fingerprint"], cwd=REPO, capture_output=True, text=True)
         if built.returncode != 0:
             fail(2, built.stderr[-1500:])
     machine = Remote(remote)
@@ -220,6 +222,27 @@ def prepare(remote, rebuild):
     if not machine.runs(machine.netctl + " --help >/dev/null"):
         check = machine.run(machine.environment() + " ldd " + machine.netctl, timeout=60)
         fail(2, "netctl does not start there. `ldd` says:\n" + check.stdout[-1200:])
+
+    # Two peers must compute the same floats. The C runtime is one way they can differ, and the CPU
+    # model is another: SSE's rsqrtss and rcpps return a per-model estimate, which desynced the room
+    # on almost every frame at frame 181 before the core stopped using them (issue #107).
+    # math_fingerprint prints one digest per kind of math and needs no game files, so it and this
+    # comparison are the cheap proof, on the real pair, that the two machines agree.
+    machine.copy(math_fingerprint, machine.dir + "/bin")
+    here = subprocess.run([math_fingerprint], capture_output=True, text=True, timeout=120)
+    there = machine.run(machine.dir + "/bin/math_fingerprint", timeout=120)
+    if there.returncode != 0:
+        print("[prepare] math_fingerprint does not run on the other machine; the arithmetic the "
+              "two peers use has not been compared")
+    elif there.stdout == here.stdout:
+        print("[prepare] arithmetic: the two machines compute every kind of math identically",
+              flush=True)
+    else:
+        only_here = set(here.stdout.splitlines()) - set(there.stdout.splitlines())
+        only_there = set(there.stdout.splitlines()) - set(here.stdout.splitlines())
+        print("[prepare] the two machines compute different arithmetic, so a match between them "
+              "would desync. This machine only:\n  " + "\n  ".join(sorted(only_here)) +
+              "\nthe other machine only:\n  " + "\n  ".join(sorted(only_there)))
 
     tree = game_tree()
     if tree:
