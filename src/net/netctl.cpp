@@ -174,6 +174,9 @@ int main(int argc, char** argv) try {
             if (plan.slots[slot].peer == lobby.local_peer())
                 inputs[slot] = busy_hands(static_cast<unsigned>(session->frame()), lobby.local_peer());
         session->run(inputs);
+        // The session owns the socket for the whole match, and the room must still be there after it
+        // (issue #110): a host keeps asking, as the game's frame loop does.
+        lobby.keep_alive(16);
         if (roundOverFrame < 0 && session->round_over_confirmed()) roundOverFrame = session->round_over_frame();
         next += tickLength;
         std::this_thread::sleep_until(next);

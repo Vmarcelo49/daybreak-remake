@@ -166,11 +166,6 @@ static SDL_AppResult tickFrontend(App& state) {
         if (app->netMenu) app->netMenu->linger();
         else app->frontend.online->lobby->poll(16);
     }
-    // While the session owns the socket the lobby cannot poll, so the host would let its room expire
-    // at the server and come back to a new code (issue #110). Here, not in the match tick: this runs
-    // on every frame the match is on screen, including the VS and result screens, and the first one
-    // after it starts. A no-op for a joiner and for a room without a server.
-    if (app->frontend.online) app->frontend.online->lobby->keep_alive(16);
 #endif
     auto anyPressed = [&](fnd::input::Action action) {
         for (const auto& player : app->tickInput) if (player.just_pressed[action]) return true;
@@ -331,6 +326,15 @@ static SDL_AppResult appIterate(App* app) {
     // (the movie, BGM) finish after the gate has already let the front end open, and what
     // drives the match group while the VS presentation plays. Native builds no-op.
     plat::assetClient().poll();
+
+#ifdef DAYBREAK_ONLINE
+    // The room outlives every screen the match goes through (issue #110): the host must keep it alive
+    // at the server, and the one place reached on every such screen is here, once per frame — the
+    // match branch below runs its own tick loop and never calls tickFrontend, and the VS, the pause
+    // and the result screen are not the lobby's poll either. A joiner and a room with no server do
+    // nothing. 16 ms, the step the lobby's own poll uses.
+    if (app->frontend.online) app->frontend.online->lobby->keep_alive(16);
+#endif
 
     const bool capturing = !app->opts.out.empty();
 
