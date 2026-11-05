@@ -91,6 +91,13 @@ def main():
             if not any(" 0 desyncs" in line for line in net):
                 print(f"FAIL: {role} has no clean match report")
                 failed = True
+            # Every panel of a full room is a player, so the core must play none of them. A match
+            # built before the VS hand-off reads no seats and plays all four as COMs, which is
+            # trivially in sync and so passes every check above.
+            seats = re.findall(r"\[menu\] battle seats: (\w+)", out)
+            if not seats or seats[0] != "H" * PLAYERS:
+                print(f"FAIL: {role} played seats {seats[:1]}, wanted {'H' * PLAYERS}")
+                failed = True
     print("online_flow_check: failed" if failed else "online_flow_check: ok")
     return 1 if failed else 0
 
