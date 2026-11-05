@@ -178,6 +178,7 @@ private:
     std::string m_code, m_wantedCode;
     bool m_heardHost = false;
     unsigned m_sinceServer = 0, m_sinceProbe = 0, m_sinceAllReady = 0, m_sinceKeptAlive = 0;
+    bool m_serverAsked = false;  // the first request goes at once, not a second later
     bool m_ready = false;
     Refusal m_refused = Refusal::None;
     unsigned m_sinceSend = 0;

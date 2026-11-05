@@ -566,9 +566,14 @@ void Lobby::poll(unsigned elapsedMs) {
     for (Link& link : m_links) link.sinceHeard += elapsedMs;
     if (m_isHost) m_plan.links[0] = own_links();
 
-    // A host keeps its room alive. A joiner asks until it is answered.
+    // A host keeps its room alive. A joiner asks until it is answered. The first ask goes out on the
+    // first poll, since a player should not wait a second to see a code or to join by one; the timer
+    // counts from there. Reading "first" off the timer itself would depend on the poll's step: with a
+    // constant step the equality that means "just reset" is true on every poll, and a host in a lobby
+    // asked the server every frame (issue #110's review).
     const bool wantServer = m_server.port != 0 && (m_isHost ? !m_plan.started : m_hostCandidates.empty() && m_refused == Refusal::None);
-    if (wantServer && (m_sinceServer >= kServerMs || m_sinceServer == elapsedMs)) {
+    if (wantServer && (m_sinceServer >= kServerMs || !m_serverAsked)) {
+        m_serverAsked = true;
         m_sinceServer = 0;
         send_to_server();
     }

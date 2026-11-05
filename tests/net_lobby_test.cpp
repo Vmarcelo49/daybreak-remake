@@ -126,6 +126,8 @@ public:
         net::parse_address("127.0.0.1:" + std::to_string(m_socket.port()), out);
         return out;
     }
+    unsigned hostRequests() const { return m_hostRequests; }
+    unsigned joinRequests() const { return m_joinRequests; }
     // rooms.find: a code answers only while its room lives.
     bool resolves(const std::string& code) const {
         for (const Room& room : m_rooms)
@@ -140,9 +142,11 @@ public:
         while (m_socket.receive(from, packet)) {
             if (packet.size() != 48 || std::memcmp(packet.data(), "DBR1", 4) != 0) continue;
             if (packet[4] == 'H') {
+                ++m_hostRequests;
                 const std::vector<std::uint8_t> out = answer_hosted(host(requested(packet), now_ms()));
                 m_socket.send(from, out.data(), out.size());
             } else if (packet[4] == 'J') {
+                ++m_joinRequests;
                 if (!resolves(std::string(packet.data() + 17, packet.data() + 21)))
                     m_socket.send(from, kFailNoRoom, sizeof kFailNoRoom);
             }
@@ -196,6 +200,8 @@ private:
     std::string m_error;
     std::vector<Room> m_rooms;  // never erased: an expired room is simply not found
     unsigned m_codes = 0;
+    unsigned m_hostRequests = 0;
+    unsigned m_joinRequests = 0;
 };
 
 // The host asks the server, which answers, over the truly opened sockets. The server looks first, so
@@ -265,6 +271,33 @@ void test_room_survives_a_match() {
         check(!server.resolves(before), "the old code still resolves after expiry: " + before);
         check(server.resolves(after), "the new code does not resolve: " + after);
     }
+}
+
+// Issue #110's review: how often a lobby asks the server. A host keeps its room, so it asks at once
+// and then once a second — not once per poll, which a host in a lobby did when "the first ask" was
+// read off the timer ("m_sinceServer == elapsedMs" is true on every poll of a constant step).
+void test_server_requests_are_paced() {
+    StubRooms server;
+    check(server.open(), "the stub server did not open");
+    net::UdpSocket hostSocket, joinerSocket;
+    std::string error;
+    check(hostSocket.open(0, error) && joinerSocket.open(0, error), "open: " + error);
+
+    // Two seconds of the frame loop's own 16 ms poll.
+    auto host = net::Lobby::host(hostSocket, sample_plan(), 42, server.address());
+    for (int tick = 0; tick < 125; ++tick) {
+        host.poll(16);
+        server.pump();
+    }
+    const unsigned asked = server.hostRequests();
+    check(asked >= 2 && asked <= 3, "the host asked the server " + std::to_string(asked) + " times in 2 s");
+
+    // A joiner is answered no later than its first poll: waiting out the timer would hold up the join.
+    auto joiner = net::Lobby::join_code(joinerSocket, server.address(), "ABCD", 42);
+    const unsigned before = server.joinRequests();
+    joiner.poll(16);
+    server.pump();
+    check(server.joinRequests() == before + 1, "the joiner did not ask on its first poll");
 }
 
 // A joiner and a room without a server have nothing to keep alive.
@@ -417,6 +450,7 @@ int main() {
     test_over_sockets();
     test_room_survives_a_match();
     test_keepalive_is_a_no_op_elsewhere();
+    test_server_requests_are_paced();
     if (failures) {
         std::printf("net_lobby_test: %d failure(s)\n", failures);
         return 1;
