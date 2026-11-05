@@ -28,8 +28,9 @@ struct SessionStats {
     std::chrono::microseconds totalUpdate{0};
 };
 
-// The selection screen's netcode: every peer runs the screen with the same held buttons on the same
-// frame, waiting for everyone's. No rollback, since a menu forgives the wait and has nothing to predict.
+// The menus' netcode: every peer runs the screen with the same held buttons on the same frame,
+// waiting for everyone's. No rollback, since a menu forgives the wait and has nothing to predict.
+// It runs the selection and, after the match, the result screen's beats.
 class MenuLockstep {
 public:
     static constexpr unsigned kInputDelay = 3;
@@ -45,12 +46,20 @@ public:
              const std::function<std::uint32_t()>& hash);
     // Keeps resending what a slower peer has not received, after this one has moved on.
     void linger();
+    // The packet routing is one process-wide adapter, and the battle's session takes it over for the
+    // match. Calling this after that session is gone gives it back, so the result's beats reach the
+    // peers instead of being dropped as another session's packets.
+    void rebind();
     bool peer_left() const { return m_peerLeft; }
     bool desynced() const { return m_desynced; }
 
 private:
     GekkoSession* m_session = nullptr;
-    int m_localPeer = 0, m_peers = 0;
+    UdpSocket* m_socket = nullptr;
+    Lobby* m_lobby = nullptr;
+    MatchPlan m_plan;
+    std::uint8_t m_localPeer = 0;
+    int m_peers = 0;
     bool m_peerLeft = false, m_desynced = false;
 };
 
