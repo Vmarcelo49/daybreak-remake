@@ -271,7 +271,7 @@ if(NOT EMSCRIPTEN)
     endif()
 endif()
 
-add_library(battle_core STATIC
+set(BATTLE_CORE_SOURCES
     src/battle/battle.cpp
     src/battle/core/compiled_native_bodies/dash.cpp
     src/battle/core/compiled_native_bodies/full_charge.cpp
@@ -280,6 +280,7 @@ add_library(battle_core STATIC
     src/battle/core/compiled_native_bodies/shoot.cpp
     src/battle/core/compiled_native_bodies/slot7.cpp
     src/battle/core/compiled_native_bodies/special_strike.cpp)
+add_library(battle_core STATIC ${BATTLE_CORE_SOURCES})
 target_include_directories(battle_core
     PUBLIC src
     PRIVATE src/battle/core src/battle/core/zlib)
@@ -287,14 +288,23 @@ target_include_directories(battle_core
 # declare them, as its own build does.
 target_compile_definitions(battle_core PRIVATE DAYBREAK_COMPILED_NATIVE_BODIES=1)
 # Online peers must compute the same floats: no fused multiply-adds where only some targets have them,
-# and one sin, cos and atan2 instead of each C runtime's.
-add_library(det_math STATIC src/battle/det_math.c)
+# and one sin, cos and atan2 instead of each C runtime's, and one reciprocal and reciprocal square
+# root instead of each CPU model's estimate.
+add_library(det_math STATIC src/battle/det_math.c src/battle/det_estimate.c)
 target_include_directories(det_math PUBLIC src)
 target_compile_options(det_math PRIVATE -w -ffp-contract=off)
 target_link_libraries(battle_core PUBLIC det_math)
 target_compile_options(battle_core PRIVATE -ffp-contract=off)
 target_compile_options(battle_core PRIVATE -w
     "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/battle/core_prelude.h")
+# A force-included header is invisible to the dependency scanner, so without this a change to the
+# prelude would not rebuild the core and its substitutions would silently not apply.
+set(BATTLE_CORE_UNTRACKED_HEADERS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/battle/core_prelude.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/battle/det_math.h)
+foreach(source ${BATTLE_CORE_SOURCES})
+    set_property(SOURCE ${source} APPEND PROPERTY OBJECT_DEPENDS ${BATTLE_CORE_UNTRACKED_HEADERS})
+endforeach()
 target_link_libraries(battle_core PRIVATE battle_core_zlib)
 if(EMSCRIPTEN)
     # Two core headers use SSE intrinsics; Emscripten maps those onto WebAssembly SIMD.
