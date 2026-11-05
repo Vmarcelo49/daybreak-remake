@@ -136,10 +136,9 @@ std::unique_ptr<Session> Session::stress(sim::CoreBattle& battle, unsigned dista
 }
 
 MenuLockstep::MenuLockstep(UdpSocket& socket, Lobby& lobby, const MatchPlan& plan, std::uint8_t localPeer)
-    : m_localPeer(localPeer), m_peers(plan.peerCount) {
+    : m_socket(&socket), m_lobby(&lobby), m_plan(plan), m_localPeer(localPeer), m_peers(plan.peerCount) {
     if (!gekko_create(&m_session, GekkoGameSession)) throw std::runtime_error("net: no session");
-    // Its own token: a late packet of this session must not reach the battle's.
-    begin_adapter(socket, lobby, plan, localPeer, plan.token ^ 0x4d454e55u);
+    rebind();
 
     GekkoConfig config{};
     config.num_players = plan.peerCount;
@@ -159,6 +158,12 @@ MenuLockstep::MenuLockstep(UdpSocket& socket, Lobby& lobby, const MatchPlan& pla
             gekko_add_actor(m_session, GekkoRemotePlayer, &remote);
         }
     }
+}
+
+// Its own token: a late packet of this session must not reach the battle's, and the battle's must
+// not reach this one.
+void MenuLockstep::rebind() {
+    begin_adapter(*m_socket, *m_lobby, m_plan, m_localPeer, m_plan.token ^ 0x4d454e55u);
 }
 
 MenuLockstep::~MenuLockstep() {

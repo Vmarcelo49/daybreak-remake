@@ -13,11 +13,20 @@ static fnd::input::Action menuCancelAction(const App& app, int slot) {
 #ifdef DAYBREAK_ONLINE
 // The selection on every machine at once: one screen update per agreed frame, from everyone's held
 // buttons. Each peer's buttons are that controller's, so the screen plays as with four local pads.
-static SDL_AppResult tickOnlineSelection(App& state) {
+//
+// The result screen rides the same lockstep. Its win text -> report -> done beats advance on a
+// confirm, and a confirm read from this machine's pad alone walked each machine's timeline
+// separately: the one that pressed reached the lobby while the other sat on the report forever
+// (the owner's two-machine report). Sharing the input advances both together, and the last beat
+// puts everyone back in the lobby on the same agreed frame.
+static SDL_AppResult tickOnlineMenus(App& state) {
     App* app = &state;
     ui::OnlineContext& online = *app->frontend.online;
     if (!app->netMenu)
         app->netMenu = std::make_unique<net::MenuLockstep>(online.socket, *online.lobby, online.matchPlan, online.lobby->local_peer());
+    // The battle's session owned the packet routing for the whole match; it is gone by the time the
+    // result screen is driven here, so take the routing back or the beats never reach the peers.
+    if (!app->netSession) app->netMenu->rebind();
 
     enum Bit : std::uint8_t { BitUp = 1, BitDown = 2, BitLeft = 4, BitRight = 8, BitConfirm = 16, BitCancel = 32 };
     std::uint8_t local = 0;
@@ -30,6 +39,13 @@ static SDL_AppResult tickOnlineSelection(App& state) {
         if (player.down[fnd::input::Jump]) local |= BitConfirm;
         if (player.down[menuCancelAction(*app, slot)]) local |= BitCancel;
     }
+
+    // The two screens this drives. Neither is left by backing out: the selection ends by everyone
+    // reaching VS, the result by everyone reaching its last beat.
+    auto sharedScreen = [&] {
+        const ui::ScreenId scene = app->screens.current();
+        return scene == ui::ScreenId::Select || scene == ui::ScreenId::Result;
+    };
 
     SDL_AppResult result = SDL_APP_CONTINUE;
     app->netMenu->run(local,
@@ -63,7 +79,7 @@ static SDL_AppResult tickOnlineSelection(App& state) {
                 app->netMenuHeld[p] = now;
             }
             // Moved on: the frames GekkoNet still hands out belong to a screen that is gone.
-            if (app->screens.current() != ui::ScreenId::Select) return;
+            if (!sharedScreen()) return;
             const SDL_AppResult applied = applyFrontendInput(*app, in);
             if (applied != SDL_APP_CONTINUE) result = applied;
         },
@@ -79,6 +95,16 @@ static SDL_AppResult tickOnlineSelection(App& state) {
         const int localPeer = online.lobby->local_peer();
         ui::onlineHandoff(app->frontend.slots, online.matchPlan, localPeer);
         app->netMenuHeld = {};
+    } else if (now == ui::ScreenId::Result) {
+        // Still the report: its beats are the shared ones, so nothing to leave.
+        return SDL_APP_CONTINUE;
+    } else if (now == ui::ScreenId::NetplayLobby) {
+        // Everyone pressed through the report together, so every machine is on its way back to
+        // the room. The room outlives the match (`endOnlineMatch` already set it up for the next
+        // one); only the lockstep is done with, so the lobby screen runs on its own from here.
+        app->netMenu.reset();
+        app->netMenuHeld = {};
+        return SDL_APP_CONTINUE;
     } else if (now != ui::ScreenId::Select) {
         // Someone backed out, and everyone did on the same frame.
         leaveOnlineSelection(*app, nullptr);
@@ -150,8 +176,13 @@ static SDL_AppResult tickFrontend(App& state) {
         return false;
     };
 #ifdef DAYBREAK_ONLINE
-    if (app->frontend.online && app->screens.current() == ui::ScreenId::Select && app->frontend.online->inMatch)
-        return tickOnlineSelection(*app);
+    // The result screen is driven here too, so its beats land on every machine at once. It has
+    // no `inMatch` (the match is over) but keeps the room, and `endOnlineMatch` leaves `netMenu`
+    // alive for exactly this.
+    const ui::ScreenId scene = app->screens.current();
+    if (app->frontend.online && (scene == ui::ScreenId::Result ||
+                                 (scene == ui::ScreenId::Select && app->frontend.online->inMatch)))
+        return tickOnlineMenus(*app);
 #endif
     syncTextEntry(*app);
     runScheduledTextKeys(*app);
