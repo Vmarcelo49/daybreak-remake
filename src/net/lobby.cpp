@@ -401,7 +401,9 @@ void Lobby::handle_server(const std::vector<std::uint8_t>& packet) {
         else if (packet[2] == 2) m_refused = Refusal::WrongVersion;
         else if (packet[2] == 3) m_refused = Refusal::TooManyTries;
     } else if (m_isHost && kind == kServerHosted && packet.size() == 2 + kRoomCodeLength + 6) {
-        const std::string code(packet.begin() + 2, packet.begin() + 2 + kRoomCodeLength);
+        // The code is copied whole and checked whole: a cached receive buffer outlives its size, and
+        // `string(begin + 2, begin + 2 + n)` reads whatever the previous packet left there.
+        const std::string code(reinterpret_cast<const char*>(packet.data()) + 2, kRoomCodeLength);
         if (std::all_of(code.begin(), code.end(), [](char c) { return c >= '2' && c <= 'Z'; })) m_code = code;
         m_public = get_server_endpoint(packet.data() + 2 + kRoomCodeLength);
         m_plan.publics[0] = m_public;
@@ -538,6 +540,16 @@ void Lobby::handle(const Address& from, const std::vector<std::uint8_t>& packet)
     if (hello.started && m_plan.started) m_acked[known] = true;
     // At once, not on the resend timer, or the joiner's ping would measure the timer.
     send_plan(known);
+}
+
+// Its own timer, not poll()'s: the two never run on the same frames, and sharing one would carry the
+// session's elapsed time into the first poll after the result screen.
+void Lobby::keep_alive(unsigned elapsedMs) {
+    if (!m_isHost || !uses_server()) return;
+    m_sinceKeptAlive += elapsedMs;
+    if (m_sinceKeptAlive < kServerMs) return;
+    m_sinceKeptAlive = 0;
+    send_to_server();
 }
 
 void Lobby::poll(unsigned elapsedMs) {
