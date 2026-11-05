@@ -733,7 +733,9 @@ static bool startCoreBattle(App& app, const MatchSetup& config) {
             app.coreBattle.set_driver(app.netSession.get());
         }
         if (online) {
-            app.netMenu.reset();
+            // NOT here: the selection's lockstep is still unwinding when the VS factory builds the
+            // match, so destroying it now is a use-after-free. `tickOnlineSelection` drops it once
+            // the VS screen has been reached (frame_loop.inc).
             ui::OnlineContext& context = *app.frontend.online;
             const std::uint8_t local = context.lobby->local_peer();
             app.netSession = net::Session::online(app.coreBattle, context.socket, *context.lobby, context.matchPlan, local,

@@ -78,7 +78,11 @@ static SDL_AppResult tickOnlineSelection(App& state) {
         // (issue #106).
         const int localPeer = online.lobby->local_peer();
         ui::onlineHandoff(app->frontend.slots, online.matchPlan, localPeer);
+        // The selection is over. The VS factory built the match on the way here, and it must not
+        // destroy this lockstep itself: this call is the frame that is still inside it.
+        app->netMenu.reset();
         app->netMenuHeld = {};
+        return SDL_APP_CONTINUE;
     } else if (now != ui::ScreenId::Select) {
         // Someone backed out, and everyone did on the same frame.
         leaveOnlineSelection(*app, nullptr);
@@ -479,6 +483,7 @@ static SDL_AppResult appIterate(App* app) {
 #endif
                 app->matchMode = false;
                 app->frontendBattleReady = false;
+                app->frontendBattleBuilt = false;
                 app->versusAudio.clear_music();
                 // The match is over: release every channel the combat layer claimed, so the
                 // result screen's own cues and the next match start from a clean bus
