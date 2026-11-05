@@ -84,6 +84,15 @@ class Remote:
         """True when `command` exits 0 there, with the libraries and the game files in place."""
         return self.run(self.environment() + " " + command, timeout).returncode == 0
 
+    def starts(self, binary, timeout=60):
+        """True when `binary` runs there: it prints the product's usage, which it exits 1 for.
+
+        `netctl --help` exits 0, but the game exits 1 for its usage, so its start cannot be told
+        by the exit code. A missing library never prints `usage:`, which is what separates the two.
+        """
+        out = self.run(self.environment() + " " + binary + " --help 2>&1", timeout).stdout
+        return "usage: daybreak" in out
+
     def run(self, command, timeout=PEER_DEADLINE):
         return subprocess.run(["ssh", self.target, command], capture_output=True, text=True,
                               timeout=timeout)
@@ -248,10 +257,11 @@ def prepare(remote, rebuild):
     if tree:
         machine.copy(tree, machine.dir)          # -> ~/daybreak-net/<packaged tree>
         print("[prepare] game tree: " + os.path.basename(tree), flush=True)
-        if not machine.runs(os.path.join(machine.dir, os.path.basename(tree), "daybreak-bin")
-                            + " --help >/dev/null"):
-            print("[prepare] the packaged game does not start there (its own ldd will say which "
-                  "library is missing); the interactive step needs it, the headless run does not")
+        game = os.path.join(machine.dir, os.path.basename(tree), "daybreak-bin")
+        if not machine.starts(game):
+            check = machine.run(machine.environment() + " ldd " + game, timeout=60)
+            print("[prepare] the packaged game does not start there. `ldd` says:\n" +
+                  check.stdout[-1200:])
             return 2
         print("[prepare] ready: netctl and the game both run on the other machine")
         return 0
