@@ -121,8 +121,12 @@ int main() {
     // panel order, so this machine's own player, on panel 2, is the third entry.
     CHECK(roster[0].remote() && !roster[0].human() && roster[0].controller == 4);
     CHECK(roster[2].local && !roster[2].remote() && roster[2].panel == 2 && roster[2].controller == 0);
-    // A two-player room reads 1P and 2P on both machines, and the unused panels stay COM.
-    for (int i : {0, 2}) CHECK(std::strcmp(ui::participantLabel(roster[i], false), "1P") == 0);
+    // A two-player room reads 1P for peer 0 and 2P for peer 1 on BOTH machines — this is peer 1's,
+    // where the seat's player is on the other machine (panel 0) and this machine's own player is
+    // the local one (panel 2). Naming a local seat by its controller read "1P" for both humans
+    // (issue #106). The unused panels stay COM.
+    CHECK(std::strcmp(ui::participantLabel(roster[0], false), "1P") == 0);
+    CHECK(std::strcmp(ui::participantLabel(roster[2], false), "2P") == 0);
     for (int i : {1, 3}) {
         CHECK(!roster[i].human() && !roster[i].remote() && roster[i].peer < 0);
         CHECK(std::strcmp(ui::participantLabel(roster[i], false), "COM") == 0);
@@ -140,6 +144,7 @@ int main() {
     // The VS caption and the result badge have no battle to ask, so they draw
     // participantLabel(p, false) and seatController(p, false): checked for a remote seat, a local
     // seat and a COM seat, seen from each peer of a two-player room (peers 0 and 1 on panels 0, 2).
+    int seatsSeenBy[2][ui::kParticipantCount] = {};
     for (int localPeer : {0, 1}) {
         ui::FrontendState room;
         room.slots[0] = {0, 1, 0, 0, 0, false};
@@ -152,19 +157,25 @@ int main() {
         CHECK(ui::buildParticipants(room.slots.data(), seats) == 4);
         const ui::Participant& remote = seats[localPeer == 0 ? 2 : 0];
         const ui::Participant& local = seats[localPeer == 0 ? 0 : 2];
+        // Both machines name the same seat the same way: peer 0 is "1P" and peer 1 is "2P",
+        // whether that seat's player is on this machine or the other one. The badge cell follows
+        // the same numbering, and a COM is COM.
         const int remotePeer = 1 - localPeer;
         CHECK(remote.remote() && local.local && local.human());
-        // A remote player is named by the controller they chose there, this machine's player is
-        // its own 1P, and a COM is COM; the badge cell follows the same numbering.
         CHECK(std::strcmp(ui::participantLabel(remote, false), remotePeer == 0 ? "1P" : "2P") == 0);
         CHECK(ui::seatController(remote, false) == remotePeer);
-        CHECK(std::strcmp(ui::participantLabel(local, false), "1P") == 0);
-        CHECK(ui::seatController(local, false) == 0);
+        CHECK(std::strcmp(ui::participantLabel(local, false), localPeer == 0 ? "1P" : "2P") == 0);
+        CHECK(ui::seatController(local, false) == localPeer);
+        for (int i = 0; i < 4; ++i) seatsSeenBy[localPeer][seats[i].panel] = ui::seatCell(seats[i], false);
         for (int com : {1, 3}) {
             CHECK(std::strcmp(ui::participantLabel(seats[com], false), "COM") == 0);
             CHECK(ui::seatController(seats[com], false) == 4);
         }
     }
+    // The screen the play-test caught: on peer 1's machine both humans read "1P". Every seat the
+    // same on both machines is the property that failed — 1P, COM, 2P, COM by panel.
+    for (int panel = 0; panel < 4; ++panel) CHECK(seatsSeenBy[0][panel] == seatsSeenBy[1][panel]);
+    CHECK(seatsSeenBy[1][0] == 0 && seatsSeenBy[1][2] == 1);
 
     std::puts("participant_layout_test: roster, VS slots, and result rows ok");
     return 0;

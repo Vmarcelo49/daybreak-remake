@@ -110,18 +110,23 @@ inline const char* controllerLabel(int controller) {
     }
 }
 
-// The controller that names a seat: this machine's player by its own controller, a player on
-// another machine by the controller they chose there, and COM once the core plays the fighter
-// itself (issue #106). `cpuDriven` is the battle's own answer to that last question — the core
-// replaces a CPU seat's input with its own decision and never replaces a human's — so it is right
-// on the tick it changes, including a player who leaves mid-match and a human slot handed over.
+// The number that names a seat: online — local or remote — the peer index the hand-off recorded,
+// offline a player by its own controller, and COM once the core plays the fighter itself
+// (issue #106). `cpuDriven` is the battle's own answer to that last question — the core replaces a
+// CPU seat's input with its own decision and never replaces a human's — so it is right on the tick
+// it changes, including a player who leaves mid-match and a human slot handed over.
+//
+// The peer index is the only number every machine agrees on: after the hand-off this machine's
+// player always holds controller 0, so naming a local seat by its controller read "1P" for BOTH
+// humans on the joining machine (issue #106's follow-up). Offline `peer` stays -1 — only the
+// hand-off sets it — so a local seat is still named by its own controller, unchanged.
 //
 // One rule for every place that names a fighter — the VS caption, the result badge, the HUD tag
-// and the evidence line — so those four cannot drift apart. A two-player room reads "1P" and "2P"
-// on both machines: the original's own vocabulary, which has no other machine to name (PORT RULE).
+// and the evidence line — so those four cannot drift apart. A two-player room reads "1P" (peer 0)
+// and "2P" (peer 1) on both machines (PORT RULE: the original has no online mode).
 inline int seatController(const Participant& p, bool cpuDriven) {
     if (cpuDriven) return 4;
-    if (p.remote()) return std::clamp(p.peer, 0, 3);
+    if (p.peer >= 0) return std::clamp(p.peer, 0, 3);
     return p.local ? std::clamp(p.controller, 0, 4) : 4;
 }
 

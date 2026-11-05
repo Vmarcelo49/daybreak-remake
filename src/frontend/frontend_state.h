@@ -14,9 +14,10 @@ struct FrontendSlot {
     int character = -1, weapon = 0, hypermode = 0, costume = 0, controller = 4;
     bool ready = false;
     // Online only (issue #106). `peer` is the machine whose player chose this panel, or -1 for a
-    // COM; `local` is whether this is that machine. The VS hand-off rewrites `controller` so the
-    // local player is 1P here and every other seat is COM HERE, which is what the battle needs to
-    // find inputs — so the controller byte alone cannot tell a remote player from a COM.
+    // COM; `local` is whether this is that machine. The VS hand-off rewrites `controller` so this
+    // machine's player holds controller 0 and every other seat the COM sentinel, which is what the
+    // battle needs to find inputs — so the controller byte alone cannot tell a remote player from
+    // a COM, and it is not what a seat is called either: the name is `peer` (participants.h).
     int peer = -1;
     bool local = true;
     // The VS hand-off (src/app/frame_loop.inc), the one place a seat becomes local or remote.

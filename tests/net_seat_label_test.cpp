@@ -36,11 +36,13 @@ std::string find_game() {
     }
 }
 
-// Two humans (slots 0 and 3) and two COMs (slots 1 and 2), as a 2v2 with one person on each side.
+// Two humans and two COMs, as a 2v2 with one person on each side. The human slots are the panels
+// `onlineState` gives the two peers (0 and 2), so a roster entry's `fighter` is its panel and each
+// check below reads the fighter its own seat's player actually holds.
 sim::BattleConfig mixedConfig(const std::string& game) {
     sim::BattleConfig config;
     config.gameDir = game;
-    for (int i = 0; i < 4; ++i) config.slots[i] = {i, 0, i == 1 || i == 2};
+    for (int i = 0; i < 4; ++i) config.slots[i] = {i, 0, i == 1 || i == 3};
     config.timeLimitSeconds = 30;
     return config;
 }
@@ -77,21 +79,32 @@ void test_online_labels(const std::string& game) {
     // made the first cut of this fix label them COM.
     sim::Inputs inputs{};
     inputs[0].buttons = sim::Melee;
-    inputs[3].buttons = sim::Jump;
+    inputs[2].buttons = sim::Jump;
     for (int t = 0; t < 8; ++t) battle.advance(inputs);
 
-    check(battle.fighter(1).cpuDriven() && battle.fighter(2).cpuDriven(),
+    check(battle.fighter(1).cpuDriven() && battle.fighter(3).cpuDriven(),
           "a configured COM is CPU-driven");
-    check(!battle.fighter(0).cpuDriven() && !battle.fighter(3).cpuDriven(),
+    check(!battle.fighter(0).cpuDriven() && !battle.fighter(2).cpuDriven(),
           "a human holding a chord is not CPU-driven");
     check(std::strcmp(ui::participantLabel(roster[0], battle.fighter(0).cpuDriven()), "1P") == 0,
           "a player on another machine keeps their name while they hold a chord here");
-    // A two-player room reads 1P on both human seats: the original's vocabulary has no name for
-    // another machine, which is the label #106 asked to stop being COM.
-    check(std::strcmp(ui::participantLabel(roster[2], battle.fighter(3).cpuDriven()), "1P") == 0,
-          "this machine's player is 1P");
-    check(std::strcmp(ui::participantLabel(roster[3], battle.fighter(2).cpuDriven()), "COM") == 0,
+    // A two-player room names both human seats by their peer, so they read the same on both
+    // machines: peer 0 is 1P and peer 1 (this one) is 2P — the label #106 asked to stop being COM,
+    // and the one the play-test caught reading 1P twice on the joining machine.
+    check(std::strcmp(ui::participantLabel(roster[2], battle.fighter(2).cpuDriven()), "2P") == 0,
+          "this machine's player is 2P");
+    check(std::strcmp(ui::participantLabel(roster[3], battle.fighter(3).cpuDriven()), "COM") == 0,
           "a seat the CPU plays is COM");
+    // The in-battle HUD tag (`match.inc` pass `ui::seatCell`), which the live two-machine test saw
+    // already naming players as players and COMs as COM. Both properties have to hold at once:
+    // every human seat numbered by its peer — 1P and 2P, not 1P twice — and every COM seat still
+    // the COM cell.
+    const char* const seatOfPanel[4] = {"1P", "COM", "2P", "COM"};
+    for (int i = 0; i < count; ++i)
+        check(std::strcmp(ui::participantLabel(roster[i], battle.fighter(roster[i].fighter).cpuDriven()),
+                          seatOfPanel[roster[i].panel]) == 0,
+              std::string("the HUD tag names panel ") + std::to_string(roster[i].panel) + " " +
+                  seatOfPanel[roster[i].panel]);
 
     // Online, a player whose machine drops is handed to the CPU, here and on every peer.
     battle.hand_slot_to_cpu(0);
@@ -99,7 +112,11 @@ void test_online_labels(const std::string& game) {
     check(battle.fighter(0).cpuDriven(), "a human slot handed to the CPU is CPU-driven");
     check(std::strcmp(ui::participantLabel(roster[0], battle.fighter(0).cpuDriven()), "COM") == 0,
           "the seat a departed player leaves behind is named COM");
-    check(!battle.fighter(3).cpuDriven(), "the other human seat is untouched by the hand-off");
+    check(ui::seatCell(roster[0], battle.fighter(0).cpuDriven()) == 4,
+          "and its HUD tag becomes the COM cell");
+    check(!battle.fighter(2).cpuDriven(), "the other human seat is untouched by the hand-off");
+    check(ui::seatCell(roster[2], battle.fighter(2).cpuDriven()) == 1,
+          "so the other human seat keeps its own number through the drop");
 }
 
 // Offline, two people on one machine: the HUD tag must show their own seats, never COM. This is

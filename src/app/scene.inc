@@ -724,6 +724,14 @@ static bool startCoreBattle(App& app, const MatchSetup& config) {
         moves[static_cast<size_t>(i)] = config.moves[i];
         weapons[static_cast<size_t>(i)] = weapon;
     }
+    // Who the core plays, slot by slot (H a player, here or on another machine; C the CPU). The one
+    // line that says whether a launch read the right seats: online it is built from the hand-off's
+    // record, and a build that ran before the hand-off made every seat a CPU (tests/online_flow_check.py).
+    {
+        char seats[5] = {};
+        for (size_t i = 0; i < 4; ++i) seats[i] = core.slots[i].cpu ? 'C' : 'H';
+        std::printf("[menu] battle seats: %s\n", seats);
+    }
     try {
         app.coreBattle.start(core, moves, weapons);
         app.coreBattle.set_rollback_stress(app.opts.rollbackStress);
@@ -733,7 +741,9 @@ static bool startCoreBattle(App& app, const MatchSetup& config) {
             app.coreBattle.set_driver(app.netSession.get());
         }
         if (online) {
-            app.netMenu.reset();
+            // NOT here: the selection's lockstep is still unwinding when the VS factory builds the
+            // match, so destroying it now is a use-after-free. `tickOnlineMenus` drops it once
+            // the VS screen has been reached (frame_loop.inc).
             ui::OnlineContext& context = *app.frontend.online;
             const std::uint8_t local = context.lobby->local_peer();
             app.netSession = net::Session::online(app.coreBattle, context.socket, *context.lobby, context.matchPlan, local,
