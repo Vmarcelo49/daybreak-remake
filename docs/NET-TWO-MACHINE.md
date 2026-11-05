@@ -44,7 +44,8 @@ firewall allows it.
 All of it is one script, `tests/net-two-machine/netsuite.py`. Run it from this machine.
 
 ```bash
-# 1. Copy netctl and the two libraries it needs, and prove it starts there.
+# 1. Copy netctl and the two libraries it needs, prove it starts there, and compare the two
+#    machines' arithmetic — a pair that computes different floats desyncs whatever the network does.
 tests/net-two-machine/netsuite.py prepare --remote USER@HOST
 
 # 2. Rehearse here first: every peer on this machine, so a script bug is not blamed on the network.
@@ -60,6 +61,11 @@ tests/net-two-machine/netsuite.py interactive --remote USER@HOST --host remote
 Step 2 needs no second machine at all; it is worth running before the real one so a failure in
 step 3 means the network or the code, not the harness.
 
+Step 1's arithmetic comparison is the cheap half of step 3: `math_fingerprint` prints one digest
+per kind of math, needs no game data, and runs on both machines in a second. Two peers that
+compute different floats cannot play one match, whatever the network does — that was issue #107 —
+so a disagreement there is a stop, and it names the kinds of math that differ.
+
 ## What step 3 checks, and what a failure means
 
 `netctl` is a headless online peer: real sockets, the real battle, no window and no GPU, so this
@@ -69,7 +75,7 @@ suite asserts five things per network profile:
 | Check | A failure means |
 |---|---|
 | every peer reported | one machine never reached the other: firewall, different network, or a peer crashed. `ssh` working says nothing about UDP — allow `udp/<port>` on the host (or host on the other machine, as above) |
-| no desyncs | the two machines' battles diverged — the hard bug this is for (#107) |
+| no desyncs | the two machines' battles diverged. The first cause found was arithmetic, not the network (#107): `prepare` compares the two machines' math and names what differs |
 | one round, one end frame | the round resolved differently on the two machines |
 | every seat a peer plays is `H` on every machine | a seat one machine plays is being run by the CPU on the other: the slot mapping or the input routing is wrong, and #106's premise would be wrong with it |
 | the logs agree frame by frame | the state hashes disagree at a named frame, with the log kept under `build/net-two-machine/` |
@@ -120,7 +126,7 @@ own, so nobody's real settings are touched.
 | a peer never answers, `ssh` is fine | UDP is not reaching the host. This machine's own firewall drops inbound, so host on the other machine: `--host remote` |
 | `prepare` copies but netctl will not start there | a missing library; `prepare` prints the remote `ldd`, and the two that go along are `libwgpu_native.so` and `libSDL3.so.0` |
 | both peers report but the round never ends | the ticks ran out before the round did; raise `--ticks` or set `--time-limit` |
-| desyncs on both machines but none on loopback | a real cross-machine divergence: keep the logs and treat it as #107. Rerun with `--rehearse` to confirm the harness is not the cause, then read the first disagreeing frame |
+| desyncs on both machines but none on loopback | a real cross-machine divergence. Rerun with `--rehearse` to confirm the harness is not the cause, then read the first disagreeing frame. `prepare` compares the two machines' arithmetic before any room starts, so run it first: #107 was a CPU-model difference in `rsqrtss`, and `prepare` now reports that in one line instead of a 3600-frame desync |
 | `interactive` says there is no packaged tree | staging one needs a build tree configured as a release, which the development one is not; run the game on each machine from a build of this checkout instead |
 
 ## Limits
