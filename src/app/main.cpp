@@ -426,6 +426,17 @@ static void leaveOnlineSelection(App& app, const char* why) {
     app.frontend.online->inMatch = false;
 }
 
+// What the selection decided is the same everywhere, and from here each machine sees it as its own:
+// its player on the first controller, and the others as no controller at all. The hand-off keeps
+// each seat's player, which that second step would otherwise erase (issue #106). Once per match:
+// a second pass would read the rewritten controllers as the seats.
+static void handOffOnlineSeats(App& app) {
+    ui::OnlineContext& online = *app.frontend.online;
+    if (online.handedOff) return;
+    ui::onlineHandoff(app.frontend.slots, online.matchPlan, online.lobby->local_peer());
+    online.handedOff = true;
+}
+
 // The room outlives the match: everyone goes back to its lobby from here.
 static void endOnlineMatch(App& app) {
     if (!app.frontend.online || !app.netSession) return;
@@ -442,6 +453,7 @@ static void endOnlineMatch(App& app) {
 static void leaveBattleTo(App& app, ui::ScreenId next) {
     app.matchMode = false;
     app.frontendBattleReady = false;
+    app.frontendBattleBuilt = false;
     app.versusAudio.clear_music();
     app.screens.request(next);
     app.screensMode = true;
@@ -1629,10 +1641,32 @@ bool initScreens(App& app) {
             return ui::makeUpdateScreen(app.uiRenderer, launch, app.error);
         }
 #endif
-        if (sid == ui::ScreenId::Battle) {
-            // The VS intro has ended and enterFrontendBattle built the match. Nothing holds the
-            // round back: this screen only hands over.
+        // ONLINE ONLY: the VS presentation builds the match, so the net session's handshake runs
+        // while the portraits slide in. Building it only when VS ended left the fighters standing
+        // at their spawns, un-ticked, for as long as the peers took to meet — measured on loopback,
+        // the host waited 348 frames (5.8 s) from the round starting to the core's first tick, now
+        // 263, and the joining peer 56, now 2. What is left is the later machine's own VS, which no
+        // local ordering removes short of holding both peers at the end of the selection.
+        // A local match keeps building the match at Battle: it has no peer to wait for, and moving
+        // its build would shift every scripted run's frame numbering for no gain (it was measured
+        // at one frame of dead time).
+#ifdef DAYBREAK_ONLINE
+        if (sid == ui::ScreenId::VsIntro && app.frontend.online && !app.frontendBattleBuilt) {
+            // The factory runs inside the selection's lockstep frame, before that frame's own
+            // hand-off; the build reads the seats, so they are handed off here first.
+            handOffOnlineSeats(app);
             if (!enterFrontendBattle(app)) return nullptr;
+            app.frontendBattleBuilt = true;
+        }
+#endif
+        if (sid == ui::ScreenId::Battle) {
+            // Built by the VS factory above; a direct --screen=battle still needs it here.
+            if (!app.frontendBattleBuilt) {
+                if (!enterFrontendBattle(app)) return nullptr;
+                app.frontendBattleBuilt = true;
+            }
+            // The VS intro has ended and the match exists. Nothing holds the round back: this
+            // screen only hands over.
             for (int i = 0; i < app.battle->fighter_count(); ++i)
                 app.previousFighter[i] = app.battle->fighter(i).pose();
             app.frontendBattleReady = true;

@@ -102,6 +102,14 @@ def walk(daybreak, install, players, host_presses, join_presses, folder, tag):
         if not any(" 0 desyncs" in line for line in net):
             print(f"FAIL: {role} has no clean match report")
             passed = False
+        # The room fills panels in peer order and leaves the rest to the CPU, so the core must play
+        # exactly the peers' seats as players. A match built before the VS hand-off reads no seats
+        # and plays all four as COMs, which is trivially in sync and so passes every check above.
+        wanted_seats = "H" * players + "C" * (4 - players)
+        seats = re.findall(r"\[menu\] battle seats: (\w+)", out)
+        if not seats or seats[0] != wanted_seats:
+            print(f"FAIL: {role} played seats {seats[:1]}, wanted {wanted_seats}")
+            passed = False
     return passed
 
 

@@ -88,13 +88,13 @@ static SDL_AppResult tickOnlineMenus(App& state) {
 
     const ui::ScreenId now = app->screens.current();
     if (now == ui::ScreenId::VsIntro) {
-        // What the selection decided is the same everywhere, and from here each machine sees it
-        // as its own: its player on the first controller, and the others as no controller at all.
-        // The hand-off keeps each seat's player, which that second step would otherwise erase
-        // (issue #106).
-        const int localPeer = online.lobby->local_peer();
-        ui::onlineHandoff(app->frontend.slots, online.matchPlan, localPeer);
+        // Normally a no-op: the VS factory already handed the seats off, before it built the match.
+        handOffOnlineSeats(*app);
+        // The selection is over. The VS factory built the match on the way here, and it must not
+        // destroy this lockstep itself: this call is the frame that is still inside it.
+        app->netMenu.reset();
         app->netMenuHeld = {};
+        return SDL_APP_CONTINUE;
     } else if (now == ui::ScreenId::Result) {
         // Still the report: its beats are the shared ones, so nothing to leave.
         return SDL_APP_CONTINUE;
@@ -177,8 +177,8 @@ static SDL_AppResult tickFrontend(App& state) {
     };
 #ifdef DAYBREAK_ONLINE
     // The result screen is driven here too, so its beats land on every machine at once. It has
-    // no `inMatch` (the match is over) but keeps the room, and `endOnlineMatch` leaves `netMenu`
-    // alive for exactly this.
+    // no `inMatch` (the match is over) but keeps the room. The selection's lockstep was dropped at
+    // VS, so every peer opens a fresh one here from the same match plan, and so the same token.
     const ui::ScreenId scene = app->screens.current();
     if (app->frontend.online && (scene == ui::ScreenId::Result ||
                                  (scene == ui::ScreenId::Select && app->frontend.online->inMatch)))
@@ -510,6 +510,7 @@ static SDL_AppResult appIterate(App* app) {
 #endif
                 app->matchMode = false;
                 app->frontendBattleReady = false;
+                app->frontendBattleBuilt = false;
                 app->versusAudio.clear_music();
                 // The match is over: release every channel the combat layer claimed, so the
                 // result screen's own cues and the next match start from a clean bus

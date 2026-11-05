@@ -389,6 +389,7 @@ private:
         OnlineContext& online = *state_.online;
         online.matchPlan = online.lobby->plan_for_match();
         online.inMatch = true;
+        online.handedOff = false;
         state_.onlineHumans = online.matchPlan.peerCount;
         state_.randomState = online.matchPlan.seed;
         state_.timeLimit = 0;

@@ -239,6 +239,9 @@ struct App {
     bool                         resultOverScene = false;
     bool                         frontendMatch = false;
     bool                         frontendBattleReady = false;
+    // The VS presentation builds the match as soon as it appears, so the net session's handshake
+    // overlaps the animation instead of leaving the fighters standing un-ticked afterwards.
+    bool                         frontendBattleBuilt = false;
     bool                         rendererReady = false;
     ui::FrontendState            frontend;
 #if !defined(__EMSCRIPTEN__)
