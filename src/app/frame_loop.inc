@@ -72,12 +72,8 @@ static SDL_AppResult tickOnlineSelection(App& state) {
 
     const ui::ScreenId now = app->screens.current();
     if (now == ui::ScreenId::VsIntro) {
-        // What the selection decided is the same everywhere, and from here each machine sees it
-        // as its own: its player on the first controller, and the others as no controller at all.
-        // The hand-off keeps each seat's player, which that second step would otherwise erase
-        // (issue #106).
-        const int localPeer = online.lobby->local_peer();
-        ui::onlineHandoff(app->frontend.slots, online.matchPlan, localPeer);
+        // Normally a no-op: the VS factory already handed the seats off, before it built the match.
+        handOffOnlineSeats(*app);
         // The selection is over. The VS factory built the match on the way here, and it must not
         // destroy this lockstep itself: this call is the frame that is still inside it.
         app->netMenu.reset();

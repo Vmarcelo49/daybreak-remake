@@ -426,6 +426,17 @@ static void leaveOnlineSelection(App& app, const char* why) {
     app.frontend.online->inMatch = false;
 }
 
+// What the selection decided is the same everywhere, and from here each machine sees it as its own:
+// its player on the first controller, and the others as no controller at all. The hand-off keeps
+// each seat's player, which that second step would otherwise erase (issue #106). Once per match:
+// a second pass would read the rewritten controllers as the seats.
+static void handOffOnlineSeats(App& app) {
+    ui::OnlineContext& online = *app.frontend.online;
+    if (online.handedOff) return;
+    ui::onlineHandoff(app.frontend.slots, online.matchPlan, online.lobby->local_peer());
+    online.handedOff = true;
+}
+
 // The room outlives the match: everyone goes back to its lobby from here.
 static void endOnlineMatch(App& app) {
     if (!app.frontend.online || !app.netSession) return;
@@ -1639,10 +1650,15 @@ bool initScreens(App& app) {
         // A local match keeps building the match at Battle: it has no peer to wait for, and moving
         // its build would shift every scripted run's frame numbering for no gain (it was measured
         // at one frame of dead time).
+#ifdef DAYBREAK_ONLINE
         if (sid == ui::ScreenId::VsIntro && app.frontend.online && !app.frontendBattleBuilt) {
+            // The factory runs inside the selection's lockstep frame, before that frame's own
+            // hand-off; the build reads the seats, so they are handed off here first.
+            handOffOnlineSeats(app);
             if (!enterFrontendBattle(app)) return nullptr;
             app.frontendBattleBuilt = true;
         }
+#endif
         if (sid == ui::ScreenId::Battle) {
             // Built by the VS factory above; a direct --screen=battle still needs it here.
             if (!app.frontendBattleBuilt) {

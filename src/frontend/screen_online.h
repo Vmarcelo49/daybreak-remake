@@ -15,6 +15,9 @@ struct OnlineContext {
     std::unique_ptr<net::Lobby> lobby;
     net::MatchPlan matchPlan;  // the match being played, fixed when it starts
     bool inMatch = false;
+    // The VS hand-off has run for this match. It must run exactly once, and before the match is
+    // built: the build reads the seats it records (issue #106).
+    bool handedOff = false;
 };
 
 // Opens a room or joins one, leaving state.online set. False with `error` when the port cannot be

@@ -27,6 +27,7 @@ static void resumeBattle(App& app);
 static void leaveBattleTo(App& app, ui::ScreenId next);
 #ifdef DAYBREAK_ONLINE
 static void endOnlineMatch(App& app);
+static void handOffOnlineSeats(App& app);
 static void leaveOnlineSelection(App& app, const char* why);
 static std::uint32_t onlineSelectionHash(const ui::FrontendState& state);
 #endif

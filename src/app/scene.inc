@@ -724,6 +724,14 @@ static bool startCoreBattle(App& app, const MatchSetup& config) {
         moves[static_cast<size_t>(i)] = config.moves[i];
         weapons[static_cast<size_t>(i)] = weapon;
     }
+    // Who the core plays, slot by slot (H a player, here or on another machine; C the CPU). The one
+    // line that says whether a launch read the right seats: online it is built from the hand-off's
+    // record, and a build that ran before the hand-off made every seat a CPU (tests/online_flow_check.py).
+    {
+        char seats[5] = {};
+        for (size_t i = 0; i < 4; ++i) seats[i] = core.slots[i].cpu ? 'C' : 'H';
+        std::printf("[menu] battle seats: %s\n", seats);
+    }
     try {
         app.coreBattle.start(core, moves, weapons);
         app.coreBattle.set_rollback_stress(app.opts.rollbackStress);
