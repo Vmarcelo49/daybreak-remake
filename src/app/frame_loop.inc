@@ -327,6 +327,15 @@ static SDL_AppResult appIterate(App* app) {
     // drives the match group while the VS presentation plays. Native builds no-op.
     plat::assetClient().poll();
 
+#ifdef DAYBREAK_ONLINE
+    // The room outlives every screen the match goes through (issue #110): the host must keep it alive
+    // at the server, and the one place reached on every such screen is here, once per frame — the
+    // match branch below runs its own tick loop and never calls tickFrontend, and the VS, the pause
+    // and the result screen are not the lobby's poll either. A joiner and a room with no server do
+    // nothing. 16 ms, the step the lobby's own poll uses.
+    if (app->frontend.online) app->frontend.online->lobby->keep_alive(16);
+#endif
+
     const bool capturing = !app->opts.out.empty();
 
     // Render-FPS meter tick (D1): wall-clock frames per second, frozen at 60

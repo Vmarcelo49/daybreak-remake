@@ -95,6 +95,10 @@ public:
     void poll(unsigned elapsedMs);
     // A packet the session passed on, because the lobby's traffic continues after a peer starts.
     void handle(const Address& from, const std::vector<std::uint8_t>& packet);
+    // During a match the session owns the socket, so no poll() runs. A host still has to hold its room
+    // at the server: a minute of silence and the next poll() is answered with a new code (issue #110).
+    // Sends only, never receives, so a session packet is not taken from under the session.
+    void keep_alive(unsigned elapsedMs);
 
     void set_choice(const LocalChoice& choice);
     bool is_host() const { return m_isHost; }
@@ -173,7 +177,8 @@ private:
     std::vector<Address> m_hostCandidates;
     std::string m_code, m_wantedCode;
     bool m_heardHost = false;
-    unsigned m_sinceServer = 0, m_sinceProbe = 0, m_sinceAllReady = 0;
+    unsigned m_sinceServer = 0, m_sinceProbe = 0, m_sinceAllReady = 0, m_sinceKeptAlive = 0;
+    bool m_serverAsked = false;  // the first request goes at once, not a second later
     bool m_ready = false;
     Refusal m_refused = Refusal::None;
     unsigned m_sinceSend = 0;

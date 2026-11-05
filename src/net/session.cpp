@@ -67,6 +67,10 @@ GekkoNetResult** adapter_receive(int* length) {
             if (g_lobby) g_lobby->handle(from, packet);
             continue;
         }
+        // The host keeps its room alive during a match (issue #110), so the server answers here now.
+        // GekkoNet reads any byte as a packet header and would print "dropped packet!" for each: the
+        // answer is no business of the match, and only the lobby it is replying to reads it.
+        if (packet[0] == kServerPacket) continue;
         // Only the match's own peers reach GekkoNet, and only with the match's token.
         if (packet[0] != kGamePacket || packet.size() < kGameHeader) continue;
         if (std::memcmp(packet.data() + 1, &g_token, sizeof g_token) != 0) continue;
