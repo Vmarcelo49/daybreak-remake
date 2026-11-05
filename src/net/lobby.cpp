@@ -401,9 +401,7 @@ void Lobby::handle_server(const std::vector<std::uint8_t>& packet) {
         else if (packet[2] == 2) m_refused = Refusal::WrongVersion;
         else if (packet[2] == 3) m_refused = Refusal::TooManyTries;
     } else if (m_isHost && kind == kServerHosted && packet.size() == 2 + kRoomCodeLength + 6) {
-        // The code is copied whole and checked whole: a cached receive buffer outlives its size, and
-        // `string(begin + 2, begin + 2 + n)` reads whatever the previous packet left there.
-        const std::string code(reinterpret_cast<const char*>(packet.data()) + 2, kRoomCodeLength);
+        const std::string code(packet.begin() + 2, packet.begin() + 2 + kRoomCodeLength);
         if (std::all_of(code.begin(), code.end(), [](char c) { return c >= '2' && c <= 'Z'; })) m_code = code;
         m_public = get_server_endpoint(packet.data() + 2 + kRoomCodeLength);
         m_plan.publics[0] = m_public;
