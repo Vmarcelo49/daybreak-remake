@@ -17,6 +17,24 @@ struct ProjectileAssetFiles {
   throw std::runtime_error("Projectile variant missing");
  }
 };
+// 5f60b0:22-34: before the shot's model is drawn, its material intervals are applied to
+// the shot's own frame counter (+0x154). FUN_00424230 yields each {start, end, period,
+// source, target} record and FUN_0064e820 swaps the texture for that draw, so the
+// window is half-open, a positive period wraps, and the last matching record for one
+// source wins — exactly actor_texture_remaps. The record is the one the variant's phase
+// binds (the same phase-value -> animation-index rule the actor tracks use).
+//
+// An empty target name is authored data (item 41 rows 0/31-36 blink 発信機 -> '' ->
+// 発信機2). What the original binds for it — a null texture, or the model's own — is not
+// recovered, so the entry is returned as authored and the caller leaves the material
+// alone; only a non-empty target is a texture swap.
+inline std::map<std::string,std::string> projectile_texture_remaps(const ProjectileAssetFiles& files,std::int32_t frame){
+ const auto& state=files.selected();
+ if(state.phases.empty())return {};
+ const auto id=state.phases[0].value;
+ if(id>=files.settings.animations.size())return {};
+ return actor_texture_remaps(files.settings.animations[id],frame);
+}
 inline ProjectileAssetFiles load_projectile_asset_files(AssetSearchPath& search,unsigned item,const WeaponBulletData& bullet){
  const auto id=bullet.registration_id();if(id<0)throw std::runtime_error("Negative projectile registration ID");
  ProjectileAssetFiles out;char folder[48],path[64];std::snprintf(folder,sizeof folder,"data/bullet/%03u/",item);std::snprintf(path,sizeof path,"%s%03d.dat",folder,id/10);

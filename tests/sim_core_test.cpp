@@ -463,6 +463,26 @@ void test_saved_combo_plans(const std::string& game) {
         battle.apply_debug_keys(sim::DebugRefillAmmo);
         check(battle.debug_fighter(0).rounds == full, "F5 refills them");
     }
+    {
+        auto config = satoko1_against_idle_enemies(game, 0);
+        config.slots[0] = {14, 0, false, 0, 0};
+        sim::Battle battle(config);
+        const auto plan = saved_plan("hanyuu0-time-stop.plan");
+        bool row = false, active = false, expired = false;
+        unsigned activeTicks = 0;
+        for (unsigned t = 0; t < 2900; ++t) {
+            battle.step(sim::script_inputs(plan, t));
+            if (t == 0) battle.apply_debug_keys(sim::DebugStopCpu);
+            row |= battle.actor(0).state == 350;
+            const bool stopped = battle.time_stop_active();
+            active |= stopped;
+            activeTicks += stopped ? 1u : 0u;
+            if (active && !stopped) expired = true;
+        }
+        check(row, "Hanyuu 0 stage-2 charge enters grounded time-stop row 350");
+        check(active && activeTicks > 16, "Hanyuu 0 time stop remains active beyond the render pass budget");
+        check(expired, "Hanyuu 0 time stop expires");
+    }
     // Friendship swaps each of the four traps for its tagged bullet; FUN_004b4090 tests +0x845.
     for (const unsigned mode : {0u, 1u}) {
         sim::Battle battle(satoko1_against_idle_enemies(game, mode));
@@ -479,6 +499,38 @@ void test_saved_combo_plans(const std::string& game) {
         const std::set<unsigned> expected = mode == 1 ? std::set<unsigned>{1, 3, 5, 7} : std::set<unsigned>{0, 2, 4, 6};
         check(rows == expected, mode == 1 ? "Friendship places the tagged traps" : "Oyashiro places the plain traps");
     }
+}
+
+// Issue #109: a shot's own .dat can remap its material per frame (FUN_005f60b0:22-34).
+// Takano 2, the support transmitter, is the case that made the gap visible: its beacon
+// model is a flash card and every frame remaps it into one of the two lock-site reticles,
+// so a build that drops the remap draws a giant yellow flash stuck on the target instead.
+void test_shot_texture_remaps(const std::string& game) {
+    sim::BattleConfig config;
+    config.gameDir = game;
+    config.seed = 1;
+    // Takano (7) with weapon slot 2, item 41: the support transmitter.
+    for (sim::Slot& slot : config.slots) slot = {7, 2, true};
+    sim::Battle battle(config);
+    std::set<std::string> reticles;
+    int shots = 0;
+    for (unsigned t = 0; t < 600; ++t) {
+        battle.step({});
+        battle.for_each_projectile([&](const sim::ProjectileState& shot) {
+            ++shots;
+            if (shot.item != 41 || shot.row != 17) return;
+            // フラッシュ.bmp and ロックサイト00/01.bmp, as the DAT stores them in CP932.
+            const std::string flash = "\x83\x74\x83\x89\x83\x62\x83\x56\x83\x85.bmp";
+            const std::string prefix = "\x83\x8d\x83\x62\x83\x4e\x83\x54\x83\x43\x83\x67";
+            for (const auto& remap : shot.textureOverrides)
+                if (remap.first == flash && remap.second.rfind(prefix, 0) == 0)
+                    reticles.insert(remap.second);
+        });
+    }
+    check(shots > 0, "the transmitter fires");
+    const std::string prefix = "\x83\x8d\x83\x62\x83\x4e\x83\x54\x83\x43\x83\x67";
+    check(reticles.count(prefix + "00.bmp") != 0, "Takano 2's beacon remaps its flash to the green reticle");
+    check(reticles.count(prefix + "01.bmp") != 0, "Takano 2's beacon remaps its flash to the red reticle");
 }
 
 void test_trig_takes_the_ftol_path() {
@@ -524,6 +576,7 @@ int main() {
     test_round_start(game);
     test_debug_keys(game);
     test_saved_combo_plans(game);
+    test_shot_texture_remaps(game);
     test_hud_state(game);
     test_determinism(game);
     test_input_sensitivity(game);

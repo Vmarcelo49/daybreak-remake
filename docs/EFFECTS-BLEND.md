@@ -66,6 +66,13 @@ foundation parser; texture names below SJIS-decoded where ASCII):
   `Pass::Effect`, and a non-quad mesh in a mode 0/1/3 model stays on `Pass::Opaque`.
   No case turns blending off for the *card* surfaces, which is why the pass is additive
   for every quad (V3-35, V3-38, V3-39).
+  The same draw loop's head (`:22-34`) applies the shot's **material intervals** first:
+  `FUN_00424230` yields each `{start, end, period, source, target}` record and
+  `FUN_0064e820` swaps that texture for the draw, with a half-open window and a
+  `frame % period` wrap. Those intervals are the texture a projectile actually shows —
+  item 41's beacon model is a flash card remapped to the lock-site reticle every frame —
+  so a shot's material cannot be read off its `.x` alone (issue #109,
+  `projectile_texture_remaps`).
   This controls projectile model draws, not the ordinary aura/event-card factor or
   technique binding.
 

@@ -6,6 +6,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace sim {
@@ -134,6 +135,12 @@ struct ProjectileState {
     bool billboard = false;
     int tint = 0;
     int frame = 0;  // the model's animation clock, in original updates
+    // The active material intervals for this frame (FUN_005f60b0:22-34): source texture
+    // name -> replacement, in the .dat's own raw Shift-JIS bytes. Empty when the file
+    // vendors no event or none is active. The shot model keeps its own texture only when
+    // this is empty — item 41's registration 170 is a flash card remapped into the
+    // green lock-site reticle every frame (issue #109).
+    std::vector<std::pair<std::string, std::string>> textureOverrides;
 };
 
 // What the last tick asked the presentation to do, after the core's audibility rules.

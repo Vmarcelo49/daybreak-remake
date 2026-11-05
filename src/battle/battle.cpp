@@ -694,6 +694,10 @@ void Battle::for_each_projectile(const std::function<void(const ProjectileState&
         out.billboard = (frame.flags28 & 0x1000u) != 0;
         out.tint = frame.fields[19];
         out.frame = static_cast<int>(p.state.frame);
+        // The .dat's material intervals, on the same frame clock the model animation uses
+        // (FUN_005f60b0 applies them to +0x154 before the draw).
+        for (const auto& remap : projectile_texture_remaps(*p.assets, static_cast<std::int32_t>(p.state.frame)))
+            out.textureOverrides.emplace_back(remap.first, remap.second);
         visit(out);
     }
 }

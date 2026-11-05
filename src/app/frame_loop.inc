@@ -852,6 +852,7 @@ static SDL_AppResult appIterate(App* app) {
             return SDL_APP_FAILURE;
         }
         if (app->opts.debugPrims || app->matchMode) {
+            app->debugPrims.beginFrame();
             if (app->opts.debugPrims) fillDebugLines(*app);
             else app->debugLines.clear();
             if (app->matchMode) fillMatchCubes(*app);

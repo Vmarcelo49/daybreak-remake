@@ -498,6 +498,16 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_tools_test.py")
         set_tests_properties(check_tools_test PROPERTIES TIMEOUT 300)
 
+        # Issue #108: a live match with Hanyuu's time stop ended with "debug prims frame
+        # overran its 16 per-pass slots". The budget is per process and beginFrame() is
+        # what resets it; every render test takes --out, whose capture hook resets per
+        # frame, so no rendered test can see a missing reset in the live loop. This pins
+        # the structure instead, and its fixtures prove it fails on the pre-fix tree. No
+        # game data, no GPU, no build output.
+        add_test(NAME live_prims_budget_test
+                 COMMAND ${Python3_EXECUTABLE}
+                         "${CMAKE_CURRENT_SOURCE_DIR}/tests/live_prims_budget_test.py")
+        set_tests_properties(live_prims_budget_test PROPERTIES TIMEOUT 120)
 
         add_test(NAME english_captions_test
                  COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tests/english_captions_test.py")
@@ -1294,6 +1304,7 @@ set(DAYBREAK_AREA_RENDER
     toon_ramp character_shadow npr_experiments npr_normals_test lighting_test
     shadow_map_test prims_view_geometry debug_prims_geometry unlit_cube_geometry
     fx_cards_test texture_fallback_check texture_pack_check rollback_pixels_check
+    live_prims_budget_test
 )
 
 set(DAYBREAK_AREA_DATA

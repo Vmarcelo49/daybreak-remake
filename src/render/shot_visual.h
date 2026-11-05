@@ -41,6 +41,15 @@
 // item-001 rules; other handlers still use provisional velocity tuning. Stationary
 // secondary models retain their emission direction and their own rotation.
 //
+// WHAT ELSE THE DRAW DOES — the MATERIAL. Before the model is drawn, FUN_005f60b0:22-34
+// applies the shot's material intervals to its own frame counter: FUN_00424230 yields each
+// {start, end, period, source, target} record and FUN_0064e820 swaps that texture for the
+// draw, half-open and wrapped by a positive period. A shot's material therefore cannot be
+// read off its .x alone: data/bullet/041/01.X is a yellow flash card, and every frame of
+// 017.dat remaps it to ロックサイト00/01 (the green and red lock-site reticle), which is
+// what the transmitter's beacon shows on screen (issue #109). The names travel as
+// ShotView::textureOverrides and the renderer swaps them per instance.
+//
 // glm only: this header is device-free and unit-tested (tests/effect_catalog_test.cpp).
 #include <cmath>
 #include <algorithm>

@@ -339,6 +339,7 @@ void CoreBattle::for_each_shot(const std::function<void(const game::ShotView&)>&
         view.billboard = p.billboard;
         view.tint = p.tint;
         view.animationSeconds = static_cast<float>(p.frame) * kOriginalAnimationTick;
+        view.textureOverrides = p.textureOverrides;
         visit(view);
     });
 }
