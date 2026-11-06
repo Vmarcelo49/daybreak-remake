@@ -9,9 +9,13 @@ more from the PSP data.
 | [RESOURCES.md](RESOURCES.md) | ISO and pack layout, path naming, PSP↔PC numbering, per-character files, 2D art, container formats |
 | [DATA-TABLES.md](DATA-TABLES.md) | `.acs`, `.acv`, `.atp`, `chr.fpd`, bullet tables, row vocabulary |
 | [CODE-MAP.md](CODE-MAP.md) | executable sections, RTTI classes, key functions, tick order, formulas, open questions |
+| [notes/](notes/) | the full study notes these files summarise, the per-row table, the motion-take labels, the named pack entries |
+| [LOCAL-DATA.md](LOCAL-DATA.md) | what was kept on disk, what was tracked, and how to rebuild the rest |
 
 How the port uses this is in [`../../PSP-CHARACTERS-WORKLOG.md`](../../PSP-CHARACTERS-WORKLOG.md) and the
-other files in `docs/psp/`.
+other files in `docs/psp/`. **The port itself is parked** — see the end of that work log for the
+owner's findings and what remains. [`LOCAL-DATA.md`](LOCAL-DATA.md) says which evidence was kept and
+how to regenerate the rest.
 
 ## Evidence tier
 
