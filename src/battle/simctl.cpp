@@ -33,7 +33,8 @@ const char kUsage[] =
     "  --debug-keys K test keys by tick, e.g. f2@0,f4@300 (docs/DEBUG-KEYS.md)\n"
     "  --events FILE  what happened, one line per change: rows, hits, status, new bullets (- for stdout)\n"
     "  --bullets C:W  print the combo's bullets as its data declares them, and exit; names are CP932\n"
-    "  --list         print every legal combo and exit\n";
+    "  --list         print every legal PC combo and exit\n"
+    "  --list-psp     print the three PSP fighters' combos (need psp-data) and exit\n";
 
 std::string find_game(const std::string& explicitDir) {
     if (!explicitDir.empty()) return explicitDir;
@@ -165,7 +166,13 @@ int main(int argc, char** argv) try {
             return argv[i];
         };
         if (arg == "--list") {
-            for (int c = 0; c < sim::character_count() + sim::psp_character_count(); ++c)
+            // The PC roster only: consumers of this list pair it with the install's own item ids.
+            for (int c = 0; c < sim::character_count(); ++c)
+                for (int w = 0; w < sim::weapon_count(c); ++w) std::printf("%s:%d\n", sim::character_name(c).c_str(), w);
+            return 0;
+        } else if (arg == "--list-psp") {
+            // Issue #91: the three PSP fighters' combos, which need the converted tree to load.
+            for (int c = sim::character_count(); c < sim::character_count() + sim::psp_character_count(); ++c)
                 for (int w = 0; w < sim::weapon_count(c); ++w) std::printf("%s:%d\n", sim::character_name(c).c_str(), w);
             return 0;
         } else if (arg == "--roster") {
