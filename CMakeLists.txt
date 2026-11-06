@@ -272,16 +272,21 @@ if(NOT EMSCRIPTEN)
 endif()
 
 # The PSP extractor (docs/psp/README.md): the player's own disc, inflated and checked against
-# assets/psp/manifest.txt, into psp-data/. Native only — the web build has no ISO, no disc and
-# nowhere to write — and kept out of `daybreak`'s own translation unit so a test can drive it
-# without SDL.
+# assets/psp/manifest.txt, into psp-data/, then the GMO -> .X conversion the port's own
+# readers consume. Native only — the web build has no ISO, no disc and nowhere to write — and
+# kept out of `daybreak`'s own translation unit so a test can drive it without SDL.
 if(NOT EMSCRIPTEN)
     add_library(psp_extract STATIC
         src/psp/iso9660.cpp
         src/psp/psp_pack.cpp
         src/psp/psp_manifest.cpp
         src/psp/psp_extract.cpp
-        src/psp/psp_convert.cpp)
+        src/psp/psp_convert.cpp
+        src/psp/gmo.cpp
+        src/psp/gim.cpp
+        src/psp/tga.cpp
+        src/psp/xfile.cpp
+        src/psp/psp_model.cpp)
     # zlib's header lives with its vendored sources (src/battle/core/zlib); SHA-256 is the
     # updater's, so the tree keeps one hash and one inflater instead of two.
     target_include_directories(psp_extract PUBLIC src PRIVATE src/battle/core/zlib)
