@@ -1,8 +1,8 @@
-# PSP frontend art — the select and VS screens
+# PSP frontend art — the select, VS and result screens
 
 The three fighters that only exist in *Higurashi Daybreak Portable Mega Edition* — Satoshi Houjou,
 Miyoko Tanashi and Okonogi — join the remake's roster as indices **16, 17 and 18**. This document
-is the **contract** for the art those two screens read: exactly which files, which sizes and which
+is the **contract** for the art those screens read: exactly which files, which sizes and which
 cell layouts, who writes them, and what the screens do when one is missing.
 
 Companion documents: [`../PSP-CHARACTERS-WORKLOG.md`](../PSP-CHARACTERS-WORKLOG.md) (D-1 and D-3a,
@@ -55,9 +55,9 @@ Mounting is also what turns the three on: `gameplay::rosterCharacterCount()` is 
 data is mounted and 16 otherwise (`gameplay::setPspRosterMounted`, `src/battle/weapon_definition.h`).
 No mount, no new characters, and every screen draws exactly the pixels it drew before.
 
-## 2. The files the two screens read for indices 16–18
+## 2. The files the screens read for indices 16–18
 
-All four families follow the PC sheets they replace, so the screens need no per-character branch:
+All five families follow the PC sheets they replace, so the screens need no per-character branch:
 
 | File | Size | Cells | Read by |
 |---|---|---|---|
@@ -65,9 +65,11 @@ All four families follow the PC sheets they replace, so the screens need no per-
 | `data/select/iNN.cnv` | **256 × 256** | 3 columns × 2 rows of **80 × 128**, cell (col, row) at (col·80, row·128) | the select diamond's chibi icon |
 | `data/select/cosNN.cnv` | **256 × 384** | 3 columns × **3** rows of **80 × 128**, row-major from (0, 0) | the costume icon (cell `costume`, `screen_select.cpp`) |
 | `data/select/wNN.cnv` | **512 × 256** | 4 rows of **256 × 64**, row = weapon slot a–d; two columns of 256 × 64 per row | the weapon row list (column 0) and the plate under it (column 1) |
+| `data/win/NNa.cnv` | **512 × 512** | one winner portrait, figure standing on the sheet's lower area like the PC's `data/win/00a..15a` | the result screen: drawn whole at (144, 60) in a 1v1, at (−32, 60)/(352, 60) in a 2v2, never mirrored; the quote bands cover y ≥ 424 |
 
-`NN` is the two-digit roster index: `16.cnv`, `i16.cnv`, `cos16.cnv`, `w16.cnv`, and the same for
-`17` and `18`.
+`NN` is the two-digit roster index: `16.cnv`, `i16.cnv`, `cos16.cnv`, `w16.cnv`, `win/16a.cnv`,
+and the same for `17` and `18`. **Only the `a` win sheet:** `b` is the Rena/Rika weapon-2 persona
+variant (`resultPersonaId`), and no PSP fighter has one.
 
 **The iNN cell order is the screen's own**, not a new one: cell (0,0) is the settled icon, cells
 (1,0) (2,0) (0,1) (1,1) are the idle cycle a selected character animates, and **cell (2,1) must be
@@ -165,6 +167,7 @@ What it reads, and what it can honestly produce:
 | `iNN.cnv` | `gra/gim/select/icon_on.gim` — 4 × 5 grid of 48 × 48, roster order | the character's cell (index = roster index), isolated specks dropped, resized to ≈64 × 60, drawn on a procedurally drawn green floor tile in each of the five art cells; cell (2,1) filled white |
 | `cosNN.cnv` | the same icon | the same cell, repeated once per costume cell, `kSelectCostumes` cells used |
 | `wNN.cnv` | *(nothing)* | place-holder plates: seven-segment slot letter (A–D) in column 0, the item id in column 1 |
+| `win/NNa.cnv` | `gra/gim/select/bustup_<name>.gim` (224 × 130, two poses) | the **right** half — the second pose, smiling/eyes closed for all three, a natural win face — cropped to its alpha bounds, resized by **one uniform factor** to ≈420 px tall (the PC sheets' figures are 449–459 px), centred, bottom at y 492 |
 
 **The three place-holders are honest limitations, not recovered layout.** The PSP has no chibi
 body, no per-costume picture and no per-weapon picture: its own select screen is a list of text
@@ -198,16 +201,27 @@ sixteen's rule, where one missing sheet refuses the whole screen:
   reported once, clearly, instead of crashing:
   `RESULT: front end: cannot read data/item/101.dat (Satoshi 0)`. The same holds for the fighter's
   own `data/<dir>/0k.dat` and model, which the core reports (Track C/E).
-* The **result screen** refuses for a PSP winner, because `data/win/16a.cnv` … do not exist and
-  have **no PSP source**: `gra/gim/result/` holds only shared UI art (back, button, hanko,
-  key_word), no per-character portrait. The screen reports
-  `data/win/16a.cnv is in no open bundle and on no filesystem path`. A future track can draw those
-  three sheets in the PC style, or compose them from `vs_enter_<name>.gim`; until then a PSP
-  fighter's victory portrait is an explicit, named failure rather than a wrong image.
+* The **result screen never refuses for a PSP winner.** `ui::winnerArt` names each winning
+  slot's sheet and whether it is required: the PC sixteen's `data/win/NN{a,b}` ship with the
+  install and stay required (a missing one is a broken install, as before); `data/win/16a..18a`
+  come from `psp-data` (§2, `build_win`) and are optional — without one the slot draws no
+  portrait, logs `[result] data/win/16a: …`, and the report, titles and statistics are shown and
+  confirm leads back to the selection as for anyone else. The PSP has no per-character result
+  art (`gra/gim/result/` is shared UI: back, button, hanko, key_word), which is why the win
+  sheet is cut from the select bust-up.
 * Win **quotes**: `data/scenario/win/` has scripts only for ids 0–17, and 16/17 are already Rena's
   and Rika's weapon-2 personas. A PSP winner therefore gets **no** script path at all
-  (`planWinnerQuote` returns an empty pair), so a PSP fighter can never be shown another
-  character's line; the result screen reports "no shipped victory quotation resolved".
+  (`planWinnerQuote` returns an empty plan) and `ui::winnerQuoteRequired` is false for any side
+  with a PSP member, so the screen shows no quotation instead of another character's line, and
+  does not refuse. A side of PC fighters still requires its shipped quote, unchanged.
+* The **earned title** and the **statistics** are per panel, not per character: the host reads
+  them off the battle's fighter and the title table (`frame_loop.inc`), so they need nothing new.
+* `tests/psp_result_check.py` opens the real result screen on a finished 1v1 a PSP fighter won
+  (`--screen=result --result-winner=<dir>:<weapon>`, a verification-only flag that writes the
+  same slots and outcome the host writes when a round resolves), with art and without, checks
+  what it draws and that two confirms land on the selection; the PC control must keep its shipped
+  portrait and quote. `result_screen_test` pins `winnerArt`, `winnerQuoteRequired` and the empty
+  plan device-free.
 
 ## 6. Roster policy the screens and the launch follow
 
@@ -221,7 +235,10 @@ sixteen's rule, where one missing sheet refuses the whole screen:
 
 ## 7. Open items
 
-* **Win portraits** for 16–18 have no PSP source (§5). Compose them or draw them in the PC style.
+* **Win portraits** for 16–18 are cut from the select bust-up (§4), the only per-character PSP
+  picture with a winning face; they are head-and-shoulders where the PC's are half-body.
+* **Win quotes and voices** for 16–18 do not exist on PC and are not decoded from the PSP; the
+  result screen shows none (§5).
 * **Weapon, costume and chibi cells** are place-holders (§4) because the PSP ships no such art.
 * **The simultaneous hover bands**: any two icons 48/36 apart share a band where the earlier roster
   index wins. That is the original's own rule and the three new cells avoid it by 60 units; a future

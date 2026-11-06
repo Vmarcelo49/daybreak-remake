@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the select and VS sheets the remake reads for the three PSP fighters.
+"""Build the select, VS and result sheets the remake reads for the three PSP fighters.
 
 WHAT THIS IS
     The reference generator behind docs/psp/FRONTEND-ART.md. It reads the 2D art out of the
@@ -18,6 +18,7 @@ WHAT IT WRITES  (roster indices 16 Satoshi, 17 Miyoko, 18 Okonogi)
     <out>/data/select/iNN.cnv       256x256   3x2 grid of 80x128 chibi cells
     <out>/data/select/cosNN.cnv     256x384   3x3 grid of 80x128 costume cells
     <out>/data/select/wNN.cnv       512x256   4 rows of 256x64, one per weapon slot a..d
+    <out>/data/win/NNa.cnv          512x512   the result screen's winner portrait
 
     Every file is a CNV image (`src/assets/cnv.h`): a 17-byte header — u8 bpp, u32 field1, u32
     height, u32 width, u32 compressed size (0) — then width*height BGRA, top row first. The
@@ -26,6 +27,8 @@ WHAT IT WRITES  (roster indices 16 Satoshi, 17 Miyoko, 18 Okonogi)
 WHERE THE PIXELS COME FROM
 
     gra/gim/select/vs_enter_<name>.gim      176x132   the portrait (one pose)
+    gra/gim/select/bustup_<name>.gim        224x130   two poses side by side; the right one is
+                                                      the smiling/closed-eye pose, the win portrait
     gra/gim/select/icon_on.gim              192x240   4x5 grid of 48x48 head icons, 19 used
 
     The PSP has no chibi body, no per-costume picture and no per-weapon picture: its own select
@@ -68,6 +71,14 @@ PORTRAIT_RECT = (256, 256)     # data/select/NN.cnv
 CHIBI_RECT = (256, 256)        # data/select/iNN.cnv
 COSTUME_RECT = (256, 384)      # data/select/cosNN.cnv
 WEAPON_RECT = (512, 256)       # data/select/wNN.cnv
+WIN_RECT = (512, 512)          # data/win/NNa.cnv
+# The PC win sheets' own framing, measured on this install's data/win/00a and 13a: the figure's
+# alpha bounds are 376x449 at (30,63) and 281x459 at (118,53), i.e. ~450 px tall and reaching the
+# lower edge. A PSP bust-up is a head-and-shoulders crop, so it is set a little shorter (420) and
+# kept off the very edge (bottom 492) so the result screen's quote band (y >= 424 on screen) cuts
+# it at the chest the way it cuts the PC figures.
+WIN_FIGURE_HEIGHT = 420
+WIN_BOTTOM = 492
 CHIBI_CELL = (80, 128)         # every cell family uses the same 80x128 cell
 WEAPONS_PER_SHEET = WEAPON_RECT[1] // 64
 
@@ -612,7 +623,7 @@ def encode_png(canvas):
 
 
 # ============================================================================================
-# Composition: one roster index's four sheets
+# Composition: one roster index's five sheets
 # ============================================================================================
 class Source:
     """Where a pack entry comes from: the pack itself, or a directory of extracted files."""
@@ -720,6 +731,28 @@ def build_costumes(source, roster_index, costumes):
     return canvas
 
 
+def build_win(source, name):
+    """data/win/NNa.cnv: the result screen's winner portrait, 512x512, drawn at (144,60) in a 1v1
+    and at (-32,60)/(352,60) in a 2v2 (screen_result.cpp), never mirrored.
+
+    Source: the RIGHT half of bustup_<name>.gim — the PSP's second pose, smiling or eyes closed,
+    which is a winning face for all three — cut at the sheet's centre, cropped to its own alpha
+    bounds, resized by ONE uniform factor so the figure is about the PC sheets' height, centred and
+    standing on their baseline. Only the 'a' sheet: the 'b' variant is the Rena/Rika weapon-2
+    persona (result_quote.h) and no PSP fighter has one.
+    """
+    sheet = source.image(SELECT_DIR + "bustup_%s.gim" % name)
+    half = sheet.width // 2
+    pose = sheet.crop((half, 0, sheet.width - half, sheet.height))
+    pose = pose.crop(alpha_bounds(pose))
+    scale = min(WIN_FIGURE_HEIGHT / pose.height, (WIN_RECT[0] - 16) / pose.width)
+    width = max(1, int(round(pose.width * scale)))
+    height = max(1, int(round(pose.height * scale)))
+    canvas = Canvas(*WIN_RECT)
+    canvas.blit(scaled(pose, width, height), (WIN_RECT[0] - width) // 2, WIN_BOTTOM - height)
+    return canvas
+
+
 def build_weapons(item_id_first, weapons=WEAPONS_PER_SHEET):
     """data/select/wNN.cnv: 4 rows of 256x64, row = weapon slot, two 256x64 columns.
 
@@ -760,7 +793,8 @@ def main(argv=None):
     source_group.add_argument("--dump", help="a directory of extracted files, at their pack paths "
                                              "(gra/gim/select/*.gim)")
     parser.add_argument("--out", default="psp-data",
-                       help="where to write data/select/*.cnv (default: psp-data)")
+                       help="where to write data/select/*.cnv and data/win/*.cnv "
+                            "(default: psp-data)")
     parser.add_argument("--preview", metavar="DIR",
                        help="also write PNG copies of every sheet there")
     parser.add_argument("--only", type=int, choices=[c[0] for c in CHARACTERS],
@@ -783,20 +817,22 @@ def main(argv=None):
             if args.only is not None and args.only != roster_index:
                 continue
             sheets = {
-                "%02d" % roster_index: build_portrait(source, name),
-                "i%02d" % roster_index: build_chibi(source, roster_index),
-                "cos%02d" % roster_index: build_costumes(source, roster_index, costumes),
-                "w%02d" % roster_index: build_weapons(item_first),
+                "select/%02d" % roster_index: build_portrait(source, name),
+                "select/i%02d" % roster_index: build_chibi(source, roster_index),
+                "select/cos%02d" % roster_index: build_costumes(source, roster_index, costumes),
+                "select/w%02d" % roster_index: build_weapons(item_first),
+                "win/%02da" % roster_index: build_win(source, name),
             }
             for stem, canvas in sheets.items():
-                path = os.path.join(args.out, "data", "select", stem + ".cnv")
+                path = os.path.join(args.out, "data", *stem.split("/")) + ".cnv"
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 with open(path, "wb") as stream:
                     stream.write(encode_cnv(canvas))
                 written.append(path)
                 if args.preview:
                     os.makedirs(args.preview, exist_ok=True)
-                    with open(os.path.join(args.preview, stem + ".png"), "wb") as stream:
+                    preview = stem.replace("/", "-") + ".png"
+                    with open(os.path.join(args.preview, preview), "wb") as stream:
                         stream.write(encode_png(canvas))
     except ArtError as error:
         print("psp_select_art: %s" % error, file=sys.stderr)
