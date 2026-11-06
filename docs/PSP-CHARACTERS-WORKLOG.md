@@ -157,6 +157,99 @@ Raw: `local-data/harness/psp/notes/fighter.md` (945 lines, addressed), `notes/ro
   for index 0x11 (Miyoko).
 - **Unknown:** hit geometry, bullet motion and spawn, `shot_data.bin`, the button layout.
 
+### 2026-11-06 — build tracks dispatched
+
+Three worktrees off `feat/91-psp-characters`, merged back by the coordinator:
+
+| Track | Branch / worktree | Scope |
+|---|---|---|
+| A | `feat/91-psp-a`, `../dbr-psp-a` | `--extract-psp`, hash list, GMO/GIM → binary `.X` + textures under `psp-data/` |
+| B | `feat/91-psp-b`, `../dbr-psp-b` | product roster of 19, `psp-data/` mount in `AssetSource`, select/VS screens and art |
+| C | `feat/91-psp-c`, `../dbr-psp-c` | core: dispatch pair in the action binding, `psp-data/` mount in the core, `.acs/.acv/.atp` → `0W.dat` + item dats, whole-match tests |
+
+Contracts fixed between tracks:
+
+- Indices 16 Satoshi, 17 Miyoko, 18 Okonogi; directories `satoshi`, `miyoko`, `okonogi`.
+- PSP weapon item ids 101–112 (Satoshi a–d 101–104, Miyoko 105–108, Okonogi 109–112).
+- Converted bone names: PSP `root`→`Bip01`, `spine1`→`Bip01_Spine`, `spine2`→`Bip01_Spine1`,
+  `neck`→`Bip01_Neck`, `head`→`Bip01_Head`, limbs → the PC's `Bip01_L_*`/`Bip01_R_*`,
+  `weapon_r`→`Bip01_Prop1`, `weapon_l`→`Bip01_Prop2`; others keep their PSP names. Animation
+  set *i* is PSP take *i*.
+- Follow-up study (hit geometry, bullets, input map) running → `notes/combat.md`.
+
+### 2026-11-06 — combat study (subagent; it failed after writing its deliverable)
+
+Raw: `local-data/harness/psp/notes/combat.md` (668 lines, addressed).
+
+- The hit test is a sphere: attacker weapon/bone node to victim hip bone `<= def[0x40+4i] + 60.0`.
+  The per-combo `def` block is `bin/chr.fpd[(char*4+weapon)*0x170]`.
+- A row's attack record is `atp[acv.S4[row]]`, not `atp[row]`.
+- Damage = `atk[0x00] * atk[0x90] * def[0x28|0x2c] * buffs`. Max HP = `def[0x00]`: Satoshi and
+  Miyoko 8500, Okonogi 11000.
+- Bullets: `shot_data[bullet_attack_data[id][0x90]] = {speed, ±angle}`. The bullet update,
+  magazine numbers, and the physical-button → bit map are **not decoded** (§10).
+
+### 2026-11-06 — Track B: the roster carries 19 on the front end
+
+Branch `feat/91-psp-b`. The three are now *selectable* and *visible*; their combat and their 3D
+model stay with tracks C/E/F, and a launch without their data reports one clear error instead of
+crashing. The contract for their art is [`psp/FRONTEND-ART.md`](psp/FRONTEND-ART.md).
+
+- **Roster (D-1).** `gameplay::kCharacterCount`/`kWeaponSlots`/`kWeaponIds`/`kCharacterDirs` and
+  `sim::character_count()` still mean the PC 16 × 3. The three live in their own table
+  (`kPspRoster`, `PspRosterEntry`) behind `rosterCharacterCount()` (19 while `psp-data` is mounted,
+  16 otherwise), `rosterCharacterDir`, `rosterWeaponCount` (4 for 16..18), `rosterWeaponItemId`,
+  `rosterCharacterIndexForDir`, and `comboSlotLabel`/`weaponSlotForItem` now answer over the whole
+  roster. **Item ids 101–112** (Satoshi a–d 101–104, Miyoko 105–108, Okonogi 109–112) — clear of the
+  PC's shipped 1–46, and the ids Track A/C write `data/item/NNN.dat` at. Dir names `satoshi`,
+  `miyoko`, `okonogi`.
+- **The mount (D-3a).** `fnd::assets::AssetSource::mountDataRoot(dir)` adds a loose-file root
+  consulted after the install's bundles; `read("data/select/16.cnv")` then finds
+  `<root>/data/select/16.cnv`, and `--psp-data=<dir>` names the root. A verification run mounts
+  only the folder it names, so a `psp-data` beside the binary cannot move a capture — measured:
+  `title4p` stays `9ecda8ec…` with `build/linux/psp-data` present.
+- **Select screen.** The four diamond tables are 19 entries; the original sixteen are
+  bit-identical and the three are appended at (−1,7), (1,7) and (0,8), below the diamond's bottom
+  vertex — 60+ units from every other icon, because the recovered 30-unit pass overrides a <50-unit
+  fallback and a lattice-step neighbour keeps the cursor on the earlier index (the art study's
+  (−1,6), (1,6), (2,5) are 36–48 units from one, i.e. inside that band). Costumes 5/7/3. Art for
+  16..18 is optional per file: a missing sheet draws nothing and logs, where the PC sixteen still
+  refuse the screen. Names outside the `p03` 2×8 atlas are drawn with the caption face from
+  `assets/locale/en.txt` (`select/name`), in Japanese from the roster table otherwise.
+- **VS screen.** The portrait is optional for a PSP participant and the name cell is the same
+  caption path (its own 40 px face, so it matches the atlas art's weight).
+- **Launch.** `frontend_launch.cpp`'s hardcoded `16`s and raw `kWeaponIds` indexing are gone;
+  `participants.h`'s unguarded `kWeaponIds` is a bounds-checked roster id. A PSP fighter whose
+  `data/item/NNN.dat` does not exist yet stops the run with
+  `RESULT: front end: cannot read data/item/101.dat (Satoshi 0)`.
+- **Result screen.** Win art for 16–18 has no PSP source (`gra/gim/result/` is shared UI only), so
+  a PSP winner's result screen refuses with the missing path named. Win *scripts* stop at id 17 and
+  16/17 are already Rena's and Rika's personas, so a PSP winner gets **no** script path —
+  `planWinnerQuote` returns empty rather than reading another character's line.
+- **Kept on 16, on purpose.** Random COM fill and the off-diamond random roll (a random seat must
+  not fail a launch on data that does not exist yet), online selection (peers are not guaranteed
+  the same `psp-data`; the bundle hash does not cover it), and story mode.
+- **Art.** `tools/asset-tools/psp_select_art.py` generates the four sheet families from the player's
+  ISO (`psp-data/`, ignored), with the GIM decoder and the padded-pitch rule copied from the art
+  study. Chibi/costume/weapon cells are documented place-holders: the PSP ships no chibi body, no
+  per-costume and no per-weapon picture.
+- **Checks.** `asset_source_mount_test` (new, `data`), `psp_roster_test` and `select_psp_test` (new,
+  `frontend`), `locale_coverage_test` extended for the runtime-text names. Regression unchanged:
+  SIM `746ce7a9cbe6e44a`, `941f3dcd7a679d74`, `f19e8d6d58c37151`; PIX `ff54a85d`, `1fc12c64`,
+  `9ecda8ec`.
+
+### 2026-11-06 — coordinator: Track B merged
+
+- Reviewed captures of the select diamond (19 icons) and the VS screen with Satoshi: both correct.
+- Asked for and merged the result-screen follow-up: win portraits `data/win/16a–18a.cnv` come from
+  the bust-up's second pose. A missing PSP portrait or quote degrades instead of refusing.
+- **D-5 (Track B, accepted).** The three's icons hang below the diamond at (−1,7), (1,7), (0,8),
+  not at the art study's (−1,6), (1,6), (2,5). *Why:* the recovered 30/50-unit selection passes
+  would have kept naming an existing neighbour at those spots, which `select_psp_test` measures.
+- **D-6 (Track B, accepted).** Random COM fill, the off-diamond roll, story mode and online stay
+  on the PC sixteen. *Why:* a random seat must never pick a fighter whose data the player has not
+  extracted, and the online bundle hash does not cover `psp-data/`, so peers could desync.
+
 ### 2026-11-06 — Track C: the three fighters play whole matches (subagent)
 
 **What now exists.** Roster indices 16 Satoshi, 17 Miyoko, 18 Okonogi (four weapons each, item ids
@@ -204,3 +297,24 @@ Dated measurement of the twelve combos is in the track's report; the limits are 
 stay the dispatch combo's; PSP bullet motion is undecoded; the animation per row is a placeholder
 until `FUN_0001a228` is read; the PSP's `maxHp` (8500/11000) is not applied, the core's 10000 is the
 authority. Each is labelled a port rule in COMBAT.md rather than presented as recovered behaviour.
+
+
+### 2026-11-06 — Track C merged with Track B, and the product's match path
+
+Merged `feat/91-psp-characters` (Tracks A/B's work) into `feat/91-psp-c`. One conflict, in this
+file: both sides had appended entries, so both are kept and Track C's sits last. Nothing in
+Track B's source conflicted with Track C's; the seams lined up because both used the same contract
+(`data/item/101..112.dat`, the three directory names, `psp-data/` after the install).
+
+- **The product's match path now plays a PSP fighter.** `startCoreBattle` passes the root its own
+  `AssetSource` mounted into `BattleConfig::pspDataDir`, resolves fighters with
+  `sim::character_index` (19-wide) and resolves weapons with Track B's `roster*` accessors
+  (`rosterCharacterIndexForDir`, `rosterWeaponCount`, `rosterWeaponItemId`) instead of the
+  PC-16-only forms. `--match --psp-data=<psp-data> --sim-roster=<install>/data/satoshi@0,...`
+  reaches `RESULT: ok` over 600 frames (tier 5 capture); without `--psp-data` the same command
+  fails cleanly at the rig load rather than throwing inside the battle.
+- **Two identities, one contract.** The simulation's roster table is
+  `src/battle/core/psp_roster.hpp`; the screens' is `src/battle/weapon_definition.h`'s `kPspRoster`.
+  Both name the same directories and the same item ids, which is now written down in
+  [`docs/psp/COMBAT.md`](psp/COMBAT.md) §4.
+- The full default ctest tier and the six fingerprints were re-run on the merged tree.

@@ -142,9 +142,16 @@ is invented.
 
 `psp-data/` is a second asset directory, mounted **after** the install's archives
 (`AssetSearchPath` reads the mounts first, then indexed directories), so a PC name can never be
-shadowed by the converted tree and the PSP files only fill its gaps. Looked for, in order:
-`BattleConfig::pspDataDir`, `$DAYBREAK_PSP_DATA`, `<install>/psp-data`. The product side passes the
-bundle-adjacent directory; nothing here converts at runtime.
+shadowed by the converted tree and the PSP files only fill its gaps. The simulation looks for it in
+`BattleConfig::pspDataDir`, then `$DAYBREAK_PSP_DATA`, then `<install>/psp-data`; the product sets
+the field from the root its own `AssetSource` mounted (`--psp-data=<dir>`, or `psp-data/` beside the
+executable outside verification runs). Nothing here converts at runtime.
+
+The two halves name the same roster twice, on purpose: the core cannot include the product's tables,
+so `src/battle/core/psp_roster.hpp` holds the indices, the four slots, the item ids and the dispatch
+pairs for the simulation, while `src/battle/weapon_definition.h`'s `kPspRoster` and its
+`roster*` accessors hold the directory names, the display names, the item ids and the
+"is it mounted" gate for the screens. The item range 101..112 is a contract between them.
 
 ## 5. Verification, and what it does not prove
 
@@ -171,3 +178,12 @@ order of what would change the rules most:
 4. **The PSP motion per row** (`FUN_0001a228`), which would make the poses real.
 5. **The render side**: a PSP fighter draws with whatever art Track A/E produce. Nothing in
    `docs/psp/COMBAT.md` covers rendering.
+
+## 6. The product's match path
+
+`startCoreBattle` (`src/app/scene.inc`) hands the simulation the same converted root its
+`AssetSource` mounted, resolves each fighter with `sim::character_index` (19-wide) and each weapon
+with the product's own `roster*` accessors, so `--match --psp-data=<dir>
+--sim-roster=<install>/data/satoshi@0,...` plays a real match with a PSP fighter in it. Verified as
+a capture (tier 5): `RESULT: ok` over 600 frames, and the same command without `--psp-data` fails
+cleanly at the rig load instead of throwing inside the battle.

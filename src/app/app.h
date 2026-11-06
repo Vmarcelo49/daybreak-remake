@@ -134,6 +134,14 @@ struct Options {
     std::string netHost, netJoin;
     // --texture-pack=<folder>: PNGs at the game's paths, replacing its textures at any size.
     std::string texturePack;
+    // --psp-data=<folder>: the converted PSP data (D-3a). Interactive runs also mount one found
+    // beside the executable; a verification run mounts only the folder it names here, so a
+    // psp-data that happens to sit next to the binary cannot change a capture.
+    std::string pspData;
+    // --result-winner=<dir>[:weapon] with --screen=result: open the result screen on a finished
+    // 1v1 that this fighter (blue) won against Rena 0 (red). Verification only — it is how the
+    // post-match screen is checked for a fighter whose battle another track has not built yet.
+    std::string resultWinner;
     // --story-team=N: runs team N's six fights (the team-select scene does this in play).
     int storyTeam = -1;
     // --story-fight=F:P starts that team at fight F, part P (0 before the battle, 1 after).

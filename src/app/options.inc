@@ -102,6 +102,10 @@ void usage() {
         "                     --screen title --title-backdrop=stage03 --dt=0.1 --frames=110\n"
         "  --language=<en|ja|auto>  menu and HUD labels; auto follows the system as a player's first run does\n"
         "  --texture-pack=<dir> PNGs at the game's paths, replacing its textures at any size\n"
+        "  --psp-data=<dir>   the converted PSP data (Satoshi, Miyoko, Okonogi): adds its\n"
+        "                     data/ tree as an asset root and the three to the roster\n"
+        "  --result-winner=<dir>[:weapon]  with --screen=result: a finished 1v1 that this\n"
+        "                     fighter won against Rena 0 (checks the post-match screen)\n"
         "  --story=<D41-0>    the script --screen=storyadv plays\n"
         "  --story-team=<N>   run team N's six fights from --screen=storyadv\n"
         "  --story-fight=<F:P> start that team at fight F, part P (1 is after the battle)\n"
@@ -461,6 +465,8 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--movie=")).empty()) o.movie = v;
         else if (!(v = val("--language=")).empty()) o.language = v;
         else if (!(v = val("--texture-pack=")).empty()) o.texturePack = v;
+        else if (!(v = val("--psp-data=")).empty()) o.pspData = v;
+        else if (!(v = val("--result-winner=")).empty()) o.resultWinner = v;
         else if (!(v = val("--story=")).empty()) o.story = v;
         else if (!(v = val("--story-team=")).empty()) o.storyTeam = std::atoi(v.c_str());
         else if (!(v = val("--story-fight=")).empty()) o.storyFight = v;

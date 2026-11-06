@@ -127,6 +127,13 @@ data/select/p03 | 256 320 256 64 | label | AKANE SONOZAKI
 data/select/p03 | 256 384 256 64 | label | HANYUU
 data/select/p03 | 256 448 256 64 | label | NATSUMI KIMIYOSHI
 
+# The PSP roster's names (indices 16..18). They are outside the p03 atlas's 2x8 cells, so the
+# select and VS screens draw them with the caption face and read the text here
+# (src/frontend/roster_name.h). Without an entry the game's own name is used.
+select/name | 16 0 0 0 | text | SATOSHI HOUJOU
+select/name | 17 0 0 0 | text | MIYOKO TANASHI
+select/name | 18 0 0 0 | text | OKONOGI
+
 # Weapons: name, then two lines of description
 data/select/w00 |   0   0 256 64 | label | TRUSTY CLEAVER
 data/select/w00 | 256   0 256 64 | small | A beloved, blood-rusted cleaver.\nDull edge, but deadly all the same!

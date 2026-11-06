@@ -194,29 +194,15 @@ inline constexpr int kWeaponIds[kCharacterCount][kWeaponSlots] = {
     {9, 23, 39},  {10, 24, 40}, {13, 26, 43},  {14, 25, 44},
     {15, 27, 45}, {16, 28, 46}, {31, 32, 0},  {29, 30, 0},
 };
-// Weapon slot holding an item id in a character's row, or -1. The file-level
-// proof: every data/<char>/NN.dat carries its weapon id at file offset 0x114
-// (FUN_0041e180.c:99-106 reads it on to FUN_00433eb0), NN is the weapon slot,
-// and all 46 files agree with this table exactly.
-inline int weaponSlotForItem(int character, int itemId) {
-    if (character < 0 || character >= kCharacterCount || itemId <= 0) return -1;
-    for (int w = 0; w < kWeaponSlots; ++w)
-        if (kWeaponIds[character][w] == itemId) return w;
-    return -1;
-}
+// These two are defined after the PSP roster below, because both now answer over the roster's
+// whole range; the fixed PC tables above keep their meaning.
+inline int weaponSlotForItem(int character, int itemId);
 // "Rena 1": combo label — capitalized roster name + weapon INDEX, so Rena 1 is
 // her second weapon and Keiichi 1 his Invincible Iron (atlas names in
 // ASSET-CATALOG §3.2). Logs and test messages name combos with both halves,
 // never a bare character.
-inline std::string comboSlotLabel(int character, int slot) {
-    if (character < 0 || character >= kCharacterCount || slot < 0 ||
-        slot >= kWeaponSlots)
-        return "?";
-    std::string name = kCharacterDirs[character];
-    if (!name.empty() && 'a' <= name[0] && name[0] <= 'z')
-        name[0] = static_cast<char>(name[0] - ('a' - 'A'));
-    return name + " " + std::to_string(slot);
-}
+inline std::string comboSlotLabel(int character, int slot);
+
 // Legal weapon count for a character index: 2 for the last two, 3 otherwise.
 inline int weaponCountForCharacter(int character) {
     if (character < 0 || character >= kCharacterCount) return 0;
@@ -225,6 +211,108 @@ inline int weaponCountForCharacter(int character) {
 // False for the sentinel slot, which is why hanyu and natumi have two.
 inline bool weaponSlotIsLegal(int character, int slot) {
     return slot >= 0 && slot < weaponCountForCharacter(character);
+}
+
+// ============================================================================================
+// The PSP roster: Satoshi, Miyoko and Okonogi.
+//
+// WHY a second table instead of kCharacterCount 16 -> 19: the 46 PC combos' regression hashes,
+// sim_core_test's `combos == 46` and every [16][3] table above must stay literally true, so "the
+// PC cast did not move" is checkable rather than argued (D-1, docs/PSP-CHARACTERS-WORKLOG.md).
+// These three are the PSP build's 17th, 18th and 19th fighters (PSP chr17/chr18/chr19), four
+// weapon slots each, and they exist as fighters only while their converted data is mounted.
+//
+// Item ids 101..112: the PC's shipped ids are 1..46 (kWeaponIds), so the new range cannot collide
+// with any data/item/NNN.dat the install has. Track A/C write psp-data/data/item/101.dat.. and that
+// is the whole reason the ids are chosen here (the range is a contract, not a discovery).
+inline constexpr int kPspCharacterCount = 3;
+inline constexpr int kRosterCharacterCount = kCharacterCount + kPspCharacterCount;   // 19
+inline constexpr int kPspWeaponSlots = 4;
+inline constexpr int kPspItemIdFirst = 101;
+
+struct PspRosterEntry {
+    const char* dir;          // data/<dir>/<NN>.dat, and the kCharacterDirs spelling
+    const char* name;         // the game's own name, as the screens show it in Japanese
+    const char* reading;      // romanized, for English menus (assets/locale/en.txt has the same)
+    int itemIds[kPspWeaponSlots];   // weapon slot a..d -> data/item/NNN.dat
+    int pspCharacter;         // the PSP build's own character number (chrNN)
+};
+inline constexpr PspRosterEntry kPspRoster[kPspCharacterCount] = {
+    {"satoshi",  "北条悟史",   "Satoshi Houjou",  {101, 102, 103, 104}, 17},
+    {"miyoko",   "田無美代子", "Miyoko Tanashi",  {105, 106, 107, 108}, 18},
+    {"okonogi",  "小此木",     "Okonogi",         {109, 110, 111, 112}, 19},
+};
+
+// Whether the converted PSP data is mounted (psp-data/, D-3a). The product's AssetSource is the
+// one that mounts it and the app sets this flag when it does; unmounted, the roster is the PC
+// sixteen and nothing else in the game changes. Header-only so the device-free tables below stay
+// usable from a test or a screen without linking anything.
+inline bool& pspRosterMountedFlag() {
+    static bool mounted = false;
+    return mounted;
+}
+inline bool pspRosterMounted() { return pspRosterMountedFlag(); }
+inline void setPspRosterMounted(bool mounted) { pspRosterMountedFlag() = mounted; }
+
+// The entry for a roster index past the PC sixteen, or nullptr for 0..15 and for out-of-range.
+inline const PspRosterEntry* pspRosterEntry(int character) {
+    if (character < kCharacterCount || character >= kRosterCharacterCount) return nullptr;
+    return &kPspRoster[character - kCharacterCount];
+}
+// 19 while the PSP data is mounted, 16 otherwise. Everything that offers a character to a player
+// asks this; the fixed tables above keep meaning the PC sixteen.
+inline int rosterCharacterCount() {
+    return pspRosterMounted() ? kRosterCharacterCount : kCharacterCount;
+}
+// The directory name for any index the tables define (0..18), or nullptr. This is a table lookup,
+// not an availability test: whether a player may pick the three is rosterCharacterCount() below.
+inline const char* rosterCharacterDir(int character) {
+    if (character >= 0 && character < kCharacterCount) return kCharacterDirs[character];
+    const PspRosterEntry* entry = pspRosterEntry(character);
+    return entry ? entry->dir : nullptr;
+}
+// The roster index for a directory basename, PC or PSP ("rena" -> 0, "satoshi" -> 16), or -1.
+// characterIndexForDir() stays the PC-only form because the asset-viewer specs and the story
+// ladder index the fixed PC tables with it.
+inline int rosterCharacterIndexForDir(const std::string& dir) {
+    const int pc = characterIndexForDir(dir);
+    if (pc >= 0) return pc;
+    for (int i = 0; i < kPspCharacterCount; ++i)
+        if (dir == kPspRoster[i].dir) return kCharacterCount + i;
+    return -1;
+}
+// Legal weapon count: the PC's 2 or 3 (weaponCountForCharacter) or 4 for the PSP three.
+inline int rosterWeaponCount(int character) {
+    return pspRosterEntry(character) ? kPspWeaponSlots : weaponCountForCharacter(character);
+}
+// The item id a roster pair names, or 0 when the pair is not one the tables define. Bounds-checked
+// on purpose: participants.h builds the VS caption and the launch's id from it before any battle
+// validates the pair.
+inline int rosterWeaponItemId(int character, int slot) {
+    if (slot < 0) return 0;
+    if (character >= 0 && character < kCharacterCount)
+        return slot < kWeaponSlots ? kWeaponIds[character][slot] : 0;
+    const PspRosterEntry* entry = pspRosterEntry(character);
+    return entry != nullptr && slot < kPspWeaponSlots ? entry->itemIds[slot] : 0;
+}
+// Weapon slot holding an item id in a character's row, or -1. The file-level
+// proof: every data/<char>/NN.dat carries its weapon id at file offset 0x114
+// (FUN_0041e180.c:99-106 reads it on to FUN_00433eb0), NN is the weapon slot,
+// and all 46 files agree with this table exactly. The PSP three answer from their own row, so a
+// caller that only has an id (the asset viewer, the battle's DAT lookup) needs no branch.
+inline int weaponSlotForItem(int character, int itemId) {
+    if (itemId <= 0) return -1;
+    for (int w = 0; w < rosterWeaponCount(character); ++w)
+        if (rosterWeaponItemId(character, w) == itemId) return w;
+    return -1;
+}
+inline std::string comboSlotLabel(int character, int slot) {
+    const char* dir = rosterCharacterDir(character);
+    if (!dir || slot < 0 || slot >= rosterWeaponCount(character)) return "?";
+    std::string name = dir;
+    if (!name.empty() && 'a' <= name[0] && name[0] <= 'z')
+        name[0] = static_cast<char>(name[0] - ('a' - 'A'));
+    return name + " " + std::to_string(slot);
 }
 
 }  // namespace gameplay

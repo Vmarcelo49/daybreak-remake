@@ -10,16 +10,24 @@ namespace {
 // The roster order lives with the weapon table it indexes
 // (gameplay::kCharacterDirs); one copy for selection and simulation.
 bool choice(const FrontendSlot& slot,std::string& character,std::string& weapon,int& id,std::string& error) {
-    if(slot.character<0 || slot.character>=16 || slot.weapon<0 ||
-       slot.weapon>=gameplay::weaponCountForCharacter(slot.character)) {
+    // The whole roster, PC sixteen plus the PSP three while their data is mounted
+    // (gameplay::rosterCharacterCount). A selection the roster does not offer is a bad choice,
+    // never an out-of-range index into the fixed tables.
+    const char* dir = gameplay::rosterCharacterDir(slot.character);
+    if(!dir || slot.character>=gameplay::rosterCharacterCount() || slot.weapon<0 ||
+       slot.weapon>=gameplay::rosterWeaponCount(slot.character)) {
         error="front end: invalid character or weapon choice"; return false;
     }
-    character=std::string("data/")+gameplay::kCharacterDirs[slot.character]+":"+std::to_string(slot.costume);
-    id=gameplay::kWeaponIds[slot.character][slot.weapon];
+    character=std::string("data/")+dir+":"+std::to_string(slot.costume);
+    id=gameplay::rosterWeaponItemId(slot.character,slot.weapon);
     char path[64]; std::snprintf(path,sizeof(path),"data/item/%03d.dat",id);
     std::vector<uint8_t> bytes;
     if(!fnd::assets::assetSource().read(path,bytes)) {
-        error=std::string("front end: cannot read ")+path; return false;
+        // Named, not just spelled: this is the message a player sees when the converted PSP data
+        // has the fighter but not yet its weapon (rule 7 — never a bare fighter).
+        error=std::string("front end: cannot read ")+path+" ("+
+              gameplay::comboSlotLabel(slot.character,slot.weapon)+")";
+        return false;
     }
     // The item's first non-empty attachment mesh, through the real parser (no second copy
     // of the slot layout). FUN_00433eb0:90-116 walks every slot and skips the empty names
@@ -40,7 +48,10 @@ bool choice(const FrontendSlot& slot,std::string& character,std::string& weapon,
     return true;
 }
 }
-const char* frontendCharacterDirectory(int index) { return index >= 0 && index < 16 ? gameplay::kCharacterDirs[index] : nullptr; }
+const char* frontendCharacterDirectory(int index) {
+    return index >= 0 && index < gameplay::rosterCharacterCount()
+               ? gameplay::rosterCharacterDir(index) : nullptr;
+}
 bool frontendLaunch(const FrontendState& state,FrontendLaunch& out,std::string& error,uint32_t seed) {
     out = {};
     seed ^= 0x9e3779b9u;

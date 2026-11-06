@@ -3,8 +3,10 @@
 #include <deque>
 #include <string>
 #include <vector>
+#include "battle/weapon_definition.h"
 #include "frontend/screen.h"
 #include "frontend/frontend_state.h"
+#include "ui/text.h"
 
 namespace ui {
 // FUN_00409340: controller state differs from the selected panel's stored choices.
@@ -19,17 +21,57 @@ struct SelectTransition {
     SelectPhase to = SelectPhase::Team;
     bool entered(SelectPhase phase) const { return to == phase && from != phase; }
 };
-inline constexpr int kSelectRosterX[16] = {0,-2,-1,0,1,-1,-1,-2,0,1,2,2,1,0,3,-3};
-inline constexpr int kSelectRosterY[16] = {6,4,5,4,5,3,1,2,2,3,4,2,1,0,3,3};
-inline constexpr int kSelectRosterOrder[16] = {14,15,13,12,6,11,8,7,9,5,10,3,1,4,2,0};
-inline constexpr int kSelectCostumes[16] = {5,5,3,5,5,5,2,4,2,2,3,3,1,2,4,5};
+// The diamond's own size: the PC sixteen plus the PSP three (weapon_definition.h), so the
+// tables below cover every index the roster can offer while entries 0..15 stay exactly what the
+// original's scene has (D-1: the PC cast does not move).
+inline constexpr int kSelectRosterCount = gameplay::kRosterCharacterCount;
+inline constexpr int kSelectRosterX[kSelectRosterCount] = {
+    0,-2,-1,0,1,-1,-1,-2,0,1,2,2,1,0,3,-3,
+    // 16..18 — the PSP three, hanging BELOW the diamond's bottom vertex (0,6) in the empty middle
+    // column between the two lower panels. A PORT EXTENSION: the original's diamond has 16 cells.
+    // Each of the three is 60 units or more from every other icon, which the recovered passes need
+    // — the 30-unit pass is the override and the <50-unit pass beside it the fallback
+    // (FUN_00409340:272-286), so two icons one lattice step apart would leave a band where the
+    // cursor keeps naming the earlier roster index. The art study suggested (-1,6),(1,6),(2,5);
+    // those sit 36-48 units from an existing icon ((0,6) twice, then (2,4) and (1,5)) and inside
+    // that band. docs/psp/FRONTEND-ART.md §3 has every distance and the capture.
+    -1,1,0,
+};
+inline constexpr int kSelectRosterY[kSelectRosterCount] = {
+    6,4,5,4,5,3,1,2,2,3,4,2,1,0,3,3,
+    7,7,8,   // inside the free cursor's own clamp (y*36 <= 300), so the stick can sit on each
+};
+// The reveal order (FUN_004090a0:24-26's per-slot ramp is applied in roster-index order; this is
+// the DRAW order). The PC sixteen keep their own order untouched and the three are appended, so
+// the originals are drawn first and nothing about their reveal timing moves: slot i still takes
+// its first 0.1 step on tick i+6.
+inline constexpr int kSelectRosterOrder[kSelectRosterCount] = {
+    14,15,13,12,6,11,8,7,9,5,10,3,1,4,2,0,
+    16,17,18,
+};
+// Costume cells per character. 16..18 are the PSP's own model counts (formats study: chr170..174,
+// chr180..186, chr190..192), which is what the extractor writes as data/<dir>/0N.dat; see
+// docs/psp/FRONTEND-ART.md §2 for the 3x3 cos sheet Miyoko's seven cells need.
+inline constexpr int kSelectCostumes[kSelectRosterCount] = {
+    5,5,3,5,5,5,2,4,2,2,3,3,1,2,4,5,
+    5,7,3,
+};
+
+// Which characters this selection OFFERS. Online, every peer must have the same psp-data before a
+// shared roster can carry the three (the plan's step 7 keeps online out until the bundle hash
+// covers them), so online keeps the PC sixteen; offline they are offered exactly while their
+// converted data is mounted.
+inline int selectableRosterCount(const FrontendState& state) {
+    return state.onlineHumans > 0 ? gameplay::kCharacterCount : gameplay::rosterCharacterCount();
+}
 
 // The select scene's ENTRY reveal (issue #43). FUN_004090a0:24-26 ramps each of the 16 roster
 // slots' float at scene+0x3d50+i*4 from 0 to 1 in steps of 0.1 — the same loop also stands in
 // FUN_0041bae0:37-40 — and slot i may only start once the scene tick has passed i+5: the
 // constructor zeroes the array and the tick (FUN_00408330:0x408c96/0x408eff), so slot i takes
 // its first step on tick i+6, the slots start one tick apart, and the last of them settles on
-// tick 30.
+// tick 30. The PSP three at 16..18 run the same ramp by the same rule — a PORT EXTENSION, since
+// the recovered loop covers the original's sixteen and slot 18 therefore settles on tick 33.
 //
 // The draw consumes it at FUN_0040b2b0:96-104 as a PAIR: FUN_0040da60 @0x40da60 (value[i],
 // 2.0-value[i]) writes sprite+0x84 and sprite+0x88, and the sprite quad builder FUN_00655830
@@ -52,7 +94,7 @@ struct SelectReveal {
     // One fixed tick of the scene's per-frame update. `sceneTick` is the scene's own counter
     // (SelectScreen::frames_), incremented before this runs exactly as FUN_004090a0:9 does.
     void tick(int sceneTick) {
-        for (int i = 0; i < 16; ++i)
+        for (int i = 0; i < kSelectRosterCount; ++i)
             if (value[(size_t)i] < kSettled && i + kStagger < sceneTick) value[(size_t)i] += kStep;
     }
     float scaleX(int slot) const { return value[(size_t)slot]; }
@@ -60,7 +102,7 @@ struct SelectReveal {
     // The draw's own `bVar1` (FUN_0040b2b0:100): this slot is still mid-reveal. It picks the
     // flashing cell below and is the same test the ramp's guard uses.
     bool revealing(int slot) const { return value[(size_t)slot] < kSettled; }
-    std::array<float, 16> value{};
+    std::array<float, kSelectRosterCount> value{};
 };
 
 // The cell FUN_0040b2b0's roster loop draws a chibi from, as (column, row) of the `i%02d`
@@ -248,7 +290,20 @@ private:
     SelectMenu menu_;
     SpriteRenderer& batch_;
     std::unique_ptr<Screen> stage_;
-    int shared_[10]{}, portraits_[16]{}, chibi_[16]{}, costumes_[16]{}, weapons_[16]{};
+    int shared_[10]{};
+    int portraits_[kSelectRosterCount]{}, chibi_[kSelectRosterCount]{},
+        costumes_[kSelectRosterCount]{}, weapons_[kSelectRosterCount]{};
+    // The OFFERED prefix of the roster (selectableRosterCount, read once at construction): art for
+    // [0, offered_) is loaded and drawn, the rest is absent, which is how a checkout without
+    // psp-data draws exactly the pixels it always did.
+    int offered_ = gameplay::kCharacterCount;
+    // Name plates for the indices outside data/select/p03's 2x8 atlas (16..18): the caption face
+    // instead of a 256x64 cell. A missing font only drops the text. See rosterNameLayout().
+    TextLayer nameText_;
+    TextLayout nameLayout_[kSelectRosterCount];
+    float nameScale_[kSelectRosterCount]{};
+    int nameSlot_ = -1;
+    mutable int nameBitmap_ = -1;
     // FUN_004090a0:24-26 scales the 16 roster icons in as the scene opens; frames_ IS the
     // scene's tick counter (the draw's chibi idle cycle is the original's tick % 40 / 10).
     SelectReveal reveal_;

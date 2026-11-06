@@ -531,6 +531,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                          "$<TARGET_FILE:daybreak>" "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak")
         set_tests_properties(locale_screen_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
+        # Issue #91: a PSP fighter's finished match reaches the result screen and leaves it, with
+        # and without the converted art, and the PC winner is unchanged (tests/psp_result_check.py).
+        add_test(NAME psp_result_check
+                 COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tests/psp_result_check.py"
+                         "$<TARGET_FILE:daybreak>" "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak")
+        set_tests_properties(psp_result_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 LABELS asset)
+
         add_test(NAME hud_cell_scale
                  COMMAND ${Python3_EXECUTABLE}
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/hud_cell_scale.py"
@@ -1165,8 +1172,23 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(participant_layout_test PRIVATE ui glm)
     add_test(NAME participant_layout_test COMMAND participant_layout_test)
 
+    # The PSP roster (issue #91, D-1): the extra asset root, the three-fighter roster and its
+    # launch identity, and the select diamond's three appended cells. psp_roster_test's launch half
+    # reads a real data/item/NNN.dat, so it skips itself (exit 77) without a game install.
+    add_executable(asset_source_mount_test tests/asset_source_mount_test.cpp)
+    # assets' include dirs are exported as src/assets only, so the test names the path the rest of
+    # the tree does.
+    target_include_directories(asset_source_mount_test PRIVATE src)
+    target_link_libraries(asset_source_mount_test PRIVATE assets glm)
+    add_test(NAME asset_source_mount_test COMMAND asset_source_mount_test)
+    set_tests_properties(asset_source_mount_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
+    add_executable(psp_roster_test tests/psp_roster_test.cpp)
+    target_link_libraries(psp_roster_test PRIVATE ui gameplay assets glm)
+    add_test(NAME psp_roster_test COMMAND psp_roster_test)
+    set_tests_properties(psp_roster_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
+
     foreach(frontend_test select_menu_test stage_vs_test frontend_config_test result_screen_test
-                         select_cursor_test select_row_slidein_test)
+                         select_cursor_test select_row_slidein_test select_psp_test)
         add_executable(${frontend_test} tests/${frontend_test}.cpp)
         # gameplay: frontend_launch.cpp reads the item's attachment meshes
         # through gameplay::WeaponDefinition (issue #23's gear-up fix).
@@ -1295,7 +1317,8 @@ set(DAYBREAK_AREA_FRONTEND
     title_camera_test screen_stack_test frontend_config_test frontend_lifecycle_test
     result_title_test result_screen_test participant_layout_test select_menu_test
     update_notice_test update_screens_test
-    select_cursor_test select_row_slidein_test stage_vs_test story_dialogue_test
+    select_cursor_test select_row_slidein_test select_psp_test psp_roster_test psp_result_check
+    stage_vs_test story_dialogue_test
     story_script_test sim_frontend_flow online_flow_check online_join_feedback
     pause_overlay_panel pause_overlay_layout_test
 )
@@ -1329,7 +1352,7 @@ set(DAYBREAK_AREA_RENDER
 )
 
 set(DAYBREAK_AREA_DATA
-    dat_bundle_bytes web_catalog_order web_assets_test web_delivery_test
+    dat_bundle_bytes asset_source_mount_test web_catalog_order web_assets_test web_delivery_test
     web_match_group_check web_frontend_tree_check texture_fallback_check texture_pack_check
     env_spawn_test unicode_path_check
 )

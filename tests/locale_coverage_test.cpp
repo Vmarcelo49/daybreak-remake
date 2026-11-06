@@ -11,6 +11,7 @@
 
 #include "battle/weapon_definition.h"
 #include "frontend/result_title.h"
+#include "frontend/roster_name.h"
 #include "frontend/screen_title.h"
 #include "ui/sheet_locale.h"
 
@@ -32,6 +33,10 @@ int main() {
         if (!expected.emplace(sheet, x, y, w, h).second) manifestDuplicate = true;
     };
     for (int i = 0; i < gameplay::kResultTitleCount; ++i) add("result/title", i, 0, 0, 0);
+    // The PSP roster's names: the select and VS plates read them through localeText() because
+    // those three cells are outside the p03 atlas (frontend/roster_name.h).
+    for (int i = gameplay::kCharacterCount; i < gameplay::kRosterCharacterCount; ++i)
+        add(ui::kRosterNameKey, i, 0, 0, 0);
     // TitleScreen::draw uses this cell stride for all selected/unselected rows.
     for (int y = 0; y < ui::kTitleItemCount; ++y) for (int x = 0; x < 2; ++x)
         add("data/title/title", x * (int)ui::kTitleItemSrc.w, y * (int)ui::kTitleItemStride,
@@ -80,7 +85,10 @@ int main() {
             std::fprintf(stderr, "unused locale key: %s %d %d %d %d\n", label.sheet.c_str(), label.x, label.y, label.w, label.h);
             return 1;
         }
-        CHECK((label.sheet == "result/title") == (label.style == "text"));
+        // Runtime text carries no sheet rectangle, so it is exactly the keys a screen reads with
+        // localeText(): the earned titles and the roster names.
+        CHECK((label.style == "text") ==
+              (label.sheet == "result/title" || label.sheet == ui::kRosterNameKey));
         CHECK(!label.text.empty());
         for (unsigned char c : label.text) CHECK(c >= 32 && c < 127);
     }
