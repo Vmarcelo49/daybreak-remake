@@ -11,6 +11,7 @@ in [`../../docs/decisions.md`](../../docs/decisions.md) D1.
 | `cnv_convert.py` | `.cnv` → `.bmp` / `.wav` (header sniffing: audio vs image). |
 | `cnv_pack.py` | Reverse: `.bmp` / `.wav` → `.cnv` (rejects compressed BMP, promotes 24bpp to 32bpp). |
 | `texture_pack.py` | Extract the 3D textures for upscaling, and check a pack. See [`../../docs/TEXTURE-PACKS.md`](../../docs/TEXTURE-PACKS.md). |
+| `psp_select_art.py` | Build the PSP fighters' select/VS/result sheets (`psp-data/data/select/*.cnv`, `data/win/*.cnv`) from the player's own PSP ISO, pack or extracted dump. See [`docs/psp/FRONTEND-ART.md`](../../docs/psp/FRONTEND-ART.md). |
 | `gen_sjis_table.py` | Regenerate `foundation/src/assets/sjis_table.h`; `--full` uses Python's CP932 codec. Asset-scanning mode imports `x2txt.py`, which is absent from the current tree. |
 
 Usage details are in each script's header. These offline utilities are optional:

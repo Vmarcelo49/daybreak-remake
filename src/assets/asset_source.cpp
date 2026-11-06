@@ -1,6 +1,7 @@
 // assets/asset_source.cpp — see asset_source.h for why this seam exists.
 #include "asset_source.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -112,6 +113,18 @@ void AssetSource::closeInstall() {
     bundles_ = DatBundleSet{};
     installDir_.clear();
     bundlesOpen_ = false;
+}
+
+bool AssetSource::mountDataRoot(const std::string& dir) {
+    if (dir.empty()) return false;
+    std::error_code ec;
+    const std::string root = normalize(dir);
+    const fs::path path = fs::u8path(root);
+    if (!fs::is_directory(path, ec)) return false;
+    for (const std::string& mounted : dataRoots_)
+        if (mounted == root) return true;             // mounting twice is not an error
+    dataRoots_.push_back(root);
+    return true;
 }
 
 std::string AssetSource::findInstallDir(const std::string& path) {
@@ -240,30 +253,49 @@ bool AssetSource::exists(const std::string& path) const {
             return true;
     }
     std::error_code ec;
+    // u8path THROWS on a name that is not valid UTF-8, and an unresolved Shift-JIS name is a
+    // normal event rather than a broken install (see cnv.h's TextureCache), so the probe stays a
+    // miss on every platform instead of escaping as an exception.
+    const auto onDisk = [&](const std::string& file) {
 #if defined(_WIN32)
-    try { return fs::exists(fs::u8path(path), ec); }
-    catch (const fs::filesystem_error&) { return false; }
+        try { return fs::exists(fs::u8path(file), ec); }
+        catch (const fs::filesystem_error&) { return false; }
 #else
-    return fs::exists(fs::path(path), ec) || (!bundlesOpen_ && !foldedPath(path).empty());
+        return fs::exists(fs::path(file), ec);
 #endif
+    };
+    if (onDisk(path)) return true;
+#if !defined(_WIN32)
+    if (!bundlesOpen_ && !foldedPath(path).empty()) return true;
+#endif
+    // A mounted root holds the game's own paths, so it answers to the same key the bundles do.
+    const std::string key = toKey(path);
+    if (key.empty()) return false;
+    for (const std::string& root : dataRoots_)
+        if (onDisk(root + "/" + key)) return true;
+    return false;
 }
 
 bool AssetSource::read(const std::string& path, std::vector<uint8_t>& out) const {
-    if (bundlesOpen_) {
-        const std::string key = toKey(path);
-        if (!key.empty()) {
-            // Exact first, then the exe's own comparison: its bundle index folds case
-            // (__stricmp at 0x00663c20) and the shipped tables are inconsistent about it
-            // — "collision_camera.X" on 11 stages and ".x" on two, rena/00.dat naming
-            // "00.x" while the entry is "00.X". Without the fold, a bundle-only install
-            // silently loads a partial stage.
-            const DatBundle* owner = nullptr;
-            const DatEntry*  entry = bundles_.find(key, &owner);
-            if (!entry) entry = bundles_.findAsciiCaseInsensitive(key, &owner);
-            if (entry && owner && owner->read(*entry, out)) return true;
-        }
+    const std::string key = toKey(path);
+    if (bundlesOpen_ && !key.empty()) {
+        // Exact first, then the exe's own comparison: its bundle index folds case
+        // (__stricmp at 0x00663c20) and the shipped tables are inconsistent about it
+        // — "collision_camera.X" on 11 stages and ".x" on two, rena/00.dat naming
+        // "00.x" while the entry is "00.X". Without the fold, a bundle-only install
+        // silently loads a partial stage.
+        const DatBundle* owner = nullptr;
+        const DatEntry*  entry = bundles_.find(key, &owner);
+        if (!entry) entry = bundles_.findAsciiCaseInsensitive(key, &owner);
+        if (entry && owner && owner->read(*entry, out)) return true;
     }
     if (readFile(path, out)) return true;
+    // A mounted root is extra game data at the game's own paths, so it answers to the install-relative
+    // key rather than to a second spelling of `path`.
+    if (!dataRoots_.empty() && !key.empty()) {
+        for (const std::string& root : dataRoots_)
+            if (readFile(root + "/" + key, out)) return true;
+    }
 #if !defined(_WIN32)
     if (!bundlesOpen_) {
         const std::string folded = foldedPath(path);
@@ -281,28 +313,40 @@ std::string AssetSource::resolve(const std::vector<std::string>& candidates) con
 
 std::vector<std::string> AssetSource::listDir(const std::string& dir) const {
     std::vector<std::string> names;
-    if (!bundlesOpen_) return names;
-
-    std::string key = toKey(dir);
+    const std::string key = toKey(dir);
     if (key.empty()) return names;
-    const std::string prefix = key + "/";
 
     // Bundle order, first match wins: the same rule find() uses, so a name present in two
     // bundles is listed once, pointing at the copy the loader would actually read.
-    for (const DatBundle& b : bundles_.bundles()) {
-        if (!b.isOpen()) continue;
-        for (const DatEntry& e : b.entries()) {
-            if (e.name.size() <= prefix.size()) continue;
-            if (e.name.compare(0, prefix.size(), prefix) != 0) continue;
-            if (e.name.find('/', prefix.size()) != std::string::npos) continue;   // nested
-            bool seen = false;
-            for (const std::string& s : names)
-                if (s == e.name) {
-                    seen = true;
-                    break;
-                }
-            if (!seen) names.push_back(e.name);
+    if (bundlesOpen_) {
+        const std::string prefix = key + "/";
+        for (const DatBundle& b : bundles_.bundles()) {
+            if (!b.isOpen()) continue;
+            for (const DatEntry& e : b.entries()) {
+                if (e.name.size() <= prefix.size()) continue;
+                if (e.name.compare(0, prefix.size(), prefix) != 0) continue;
+                if (e.name.find('/', prefix.size()) != std::string::npos) continue;   // nested
+                if (std::find(names.begin(), names.end(), e.name) == names.end())
+                    names.push_back(e.name);
+            }
         }
+    }
+
+    // Mounted roots after the bundles, and only names the bundles do not already have: every
+    // entry a caller reads back is `read()`-able, and the copy `read()` would pick is the one
+    // listed. Sorted inside a root, because directory_iterator's order differs per filesystem.
+    const std::string prefix = key + "/";
+    for (const std::string& root : dataRoots_) {
+        std::error_code ec;
+        std::vector<std::string> found;
+        for (fs::directory_iterator it(fs::u8path(root + "/" + key), ec), end; !ec && it != end;
+             it.increment(ec)) {
+            if (!it->is_regular_file(ec)) continue;
+            found.push_back(prefix + it->path().filename().u8string());
+        }
+        std::sort(found.begin(), found.end());
+        for (const std::string& name : found)
+            if (std::find(names.begin(), names.end(), name) == names.end()) names.push_back(name);
     }
     return names;
 }
