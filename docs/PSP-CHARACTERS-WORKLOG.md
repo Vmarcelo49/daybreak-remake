@@ -176,3 +176,15 @@ Contracts fixed between tracks:
   `weapon_r`→`Bip01_Prop1`, `weapon_l`→`Bip01_Prop2`; others keep their PSP names. Animation
   set *i* is PSP take *i*.
 - Follow-up study (hit geometry, bullets, input map) running → `notes/combat.md`.
+
+### 2026-11-06 — combat study (subagent; it failed after writing its deliverable)
+
+Raw: `local-data/harness/psp/notes/combat.md` (668 lines, addressed).
+
+- The hit test is a sphere: attacker weapon/bone node to victim hip bone `<= def[0x40+4i] + 60.0`.
+  The per-combo `def` block is `bin/chr.fpd[(char*4+weapon)*0x170]`.
+- A row's attack record is `atp[acv.S4[row]]`, not `atp[row]`.
+- Damage = `atk[0x00] * atk[0x90] * def[0x28|0x2c] * buffs`. Max HP = `def[0x00]`: Satoshi and
+  Miyoko 8500, Okonogi 11000.
+- Bullets: `shot_data[bullet_attack_data[id][0x90]] = {speed, ±angle}`. The bullet update,
+  magazine numbers, and the physical-button → bit map are **not decoded** (§10).
