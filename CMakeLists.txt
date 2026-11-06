@@ -286,7 +286,8 @@ if(NOT EMSCRIPTEN)
         src/psp/gim.cpp
         src/psp/tga.cpp
         src/psp/xfile.cpp
-        src/psp/psp_model.cpp)
+        src/psp/psp_model.cpp
+        src/psp/psp_select_art.cpp)
     # zlib's header lives with its vendored sources (src/battle/core/zlib); SHA-256 is the
     # updater's, so the tree keeps one hash and one inflater instead of two.
     target_include_directories(psp_extract PUBLIC src PRIVATE src/battle/core/zlib)
