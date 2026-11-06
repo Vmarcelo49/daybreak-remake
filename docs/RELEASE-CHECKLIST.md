@@ -65,12 +65,15 @@ data. It is also registered in the host suite (`ctest -R launcher_test`). (Issue
 extended this suite and `user_settings_test` — no suite was added, which is why the
 §2 count below is unchanged.)
 
-## 2. Host suite (the CI job runs exactly this)
+## 2. Host suite (the CI job runs the same set)
 
 ```bash
-ctest --test-dir build/linux --output-on-failure          # the default tier
-ctest --test-dir build/linux -L slow --output-on-failure  # required before a release
+ctest --test-dir build/linux -LE slow --output-on-failure  # the per-change tier
+ctest --test-dir build/linux -L slow --output-on-failure   # the slow tier; a release adds it
 ```
+
+A bare `ctest` with no label filter runs both tiers in one pass; it is the union of the two
+commands above, not the cheap one, so it takes as long as the release gate does.
 
 The suite is split by the wall time a test structurally needs (`slow` labels, set beside
 the tests in `CMakeLists.txt`). The default tier is the per-change set. The `slow` tier is
@@ -144,13 +147,16 @@ gate runs both.** Every test has a hard timeout, so a hang fails rather than hol
   asset-backed sweep), so the denominator is unchanged at 57 and the with-install count
   above is re-measured.
 
-**There is no CI.** The GitHub workflows were removed on 2026-10-29 (owner
-decision: nothing is being shipped yet, and every push bought a hosted run).
-`ctest` is something a person runs before a commit, not something a runner
-enforces, so the checklist above is the gate. The Windows and Web matrices that
-the old `gate` job drove are likewise manual: build them with
-`./build.sh windows` / `web` when one of those targets is
-actually being touched.
+**CI runs on a `VERSION` change, and nowhere else.** The workflows that ran on every push
+were removed on 2026-10-29 (owner decision: every push bought a hosted run). The two that
+remain are the release pipeline: `.github/workflows/build.yml` builds, tests and packages
+Linux and Windows and then builds the update manifest, and `determinism.yml` compares the
+math digests of a Linux build and a Windows one on real runners. Both trigger on a `VERSION`
+change on `main` (`gh workflow run build.yml` runs one by hand), so an ordinary push costs
+nothing. `ctest` is still something a person runs before a commit, and the runners have no
+game data — every asset-backed test skips there — so the checklist above is the gate. The
+Web matrix the old `gate` job drove went with the old workflows: build it with
+`./build.sh web` when that target is actually being touched.
 
 ## 2b. Automated gates (run these before claiming the section below)
 
