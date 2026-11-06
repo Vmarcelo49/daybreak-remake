@@ -104,15 +104,21 @@
 
 #if !defined(__EMSCRIPTEN__)
 #include <atomic>
+#include <iostream>
 #include <mutex>
 #include <thread>
 #include "update/updater.h"
+#include "psp/psp_extract.h"
+#include "psp/psp_manifest.h"
 #endif
 
 namespace {
 #include "app.h"
 #include "app_forward.inc"
 #include "options.inc"
+#if !defined(__EMSCRIPTEN__)
+#include "psp.inc"
+#endif
 #include "scene.inc"
 #include "combat_audio.inc"
 #include "match.inc"
@@ -2011,6 +2017,15 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
         usage();
         return SDL_APP_FAILURE;
     }
+#if !defined(__EMSCRIPTEN__)
+    if (!app->opts.extractPsp.empty()) {
+        if (!runPspExtraction(app->opts, app->error)) {
+            std::fprintf(stderr, "%s\n", app->error.c_str());
+            return SDL_APP_FAILURE;
+        }
+        return SDL_APP_SUCCESS;
+    }
+#endif
 #if !defined(__EMSCRIPTEN__)
 #ifdef DAYBREAK_UPDATE_TEST_BUILD
     // Tests never open a browser (issue #100); the live demo passes --open-urls to see the
