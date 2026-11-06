@@ -32,22 +32,65 @@ struct DispatchCombo {
     std::vector<std::uint8_t> weapon_item;  // data/item/NNN.dat, as read from the install
 };
 
+// ---------------------------------------------------------------- animation plan
+// A PC phase names one animation set; a PSP take is a whole move (docs/psp/COMBAT.md §3.1). So
+// every phase of a PC state is pointed at a slice of the one take that state plays
+// (psp_take_table.h), and the slices become extra animation sets the model converter appends
+// after the 76 takes. Sets 0..75 stay exactly PSP take 0..75.
+//
+// A derived set is a span of one take's key frames, and it carries the animation settings (blend,
+// hold, texture events) of the PC set it replaces, so the borrowed row code keeps its timing
+// behaviour: the row timer advances a phase when the phase's tick counter passes its set's length.
+struct DerivedSet {
+    unsigned take = 0;           // PSP take index the keys are taken from
+    unsigned from = 0, to = 0;   // key frames, inclusive, 30 Hz PSP frames
+    unsigned pc_set = 0;         // the dispatch combo's set whose settings this one copies
+};
+struct AnimationPlan {
+    unsigned take_count = 0;              // the model's own takes, 0..take_count-1
+    std::vector<DerivedSet> derived;      // set take_count + i is derived[i]
+    // Per state record of the dispatch table, in file order, per phase: the set index the phase
+    // plays. By record, not by id: a table may repeat an id (Satoko 0 has two 311 and two 331
+    // records; the core keeps the last, battle_actor_assets.hpp), and each record is rewritten.
+    std::vector<std::vector<unsigned>> phases;
+    std::string report;
+};
+
+// The facts about the fighter's own model the plan needs: each take's key-frame count (30 Hz PSP
+// frames + 1; 1 or 2 for a take with no curves) and whether it moves at all.
+struct TakeInfo {
+    unsigned frames = 0;   // last key frame, 30 Hz; 0 for a take with no motion
+    bool usable = false;   // animated, and not one of the table's unusable placeholders
+};
+
+// Plans one fighter's animation (roster character 16..18) over the dispatch frame table. The
+// table's own phases, settings and state ids are read, and `dispatch_set_frames` (the dispatch PC
+// model's registered_animation_frame_counts) gives each phase its share of the take; nothing is
+// written. Throws when a phase cannot be given a valid set, which a match would otherwise find at
+// runtime.
+AnimationPlan plan_psp_animation(unsigned character, const std::vector<std::uint8_t>& dispatch_frame_table,
+                                 const std::vector<unsigned>& dispatch_set_frames,
+                                 const std::vector<TakeInfo>& takes);
+
+// The settings section a fighter's frame table carries: one record per set, takes first (default
+// blend, no hold, no events) and then each derived set's copy of its PC set's record.
+std::vector<std::uint8_t> plan_animation_settings(const AnimationPlan& plan,
+                                                  const std::vector<std::uint8_t>& dispatch_frame_table);
+
 struct ConvertRequest {
     RawMoveset moveset;
     DispatchCombo dispatch;
     std::string character;       // data/ directory name: "satoshi", "miyoko", "okonogi"
     unsigned weapon = 0;         // PSP weapon slot, 0..3 = a..d
     unsigned item_id = 101;      // written into the frame table's parameters[3]
-    // Registration index space of the 00.X this table will pair with: the count of AnimationSet
-    // children with tracks, in the order battle_actor_assets registers them (reverse document
-    // order, empty sets skipped). A phase value the model does not have is remapped inside it.
-    // 0 leaves every phase value untouched.
-    unsigned take_count = 0;
-    // Length of each registered animation set, in PC frames, in the same index space as
-    // take_count (registered_animation_frame_counts). The row timer advances a phase once the tick
-    // counter passes this length, so a hit window timed beyond it never fires; the converted times
-    // are scaled inside it. Empty leaves the dispatch combo's own timing untouched.
-    std::vector<unsigned> take_frames;
+    // The fighter's animation plan, from the same model the table will be paired with. Without
+    // one (a dispatch PC model stands in for the fighter's own), every phase keeps the dispatch
+    // combo's set index and its settings section, which is valid for that model.
+    const AnimationPlan* plan = nullptr;
+    // Length of each set the plan names, in PC frames (registered_animation_frame_counts of the
+    // final model). The row timer advances a phase once the tick counter passes this length, so a
+    // hit window timed beyond it never fires; the converted times are scaled inside it.
+    std::vector<unsigned> set_frames;
     std::string model = "00.X";  // the model file name the frame table names
 };
 
@@ -74,13 +117,10 @@ inline constexpr std::pair<unsigned, unsigned> kMoveRows[] = {
 // no unit change: both casts are authored at 1 unit = 1 cm (PC character top 177-182).
 inline constexpr unsigned kAttackSphereRadius = 110;
 
-// Number of AnimationSets battle_actor_assets would register from a model's token stream, i.e. the
-// exclusive upper bound of a valid phase value. Exposed because the extractor and the tests need
-// the same number the load path will use.
-unsigned registered_animation_set_count(const std::vector<std::uint8_t>& model);
-
-// The same registration order, as each set's length in PC frames — the number the row timer
-// compares a phase's tick counter against (battle_actor_assets' animation_durations_).
+// Each AnimationSet battle_actor_assets would register from a model's token stream, in its order
+// (reverse document order, empty sets skipped), as the set's length in PC frames — the number the
+// row timer compares a phase's tick counter against (battle_actor_assets' animation_durations_).
+// Its size is the exclusive upper bound of a valid phase value.
 std::vector<unsigned> registered_animation_frame_counts(const std::vector<std::uint8_t>& model);
 
 ConvertResult convert_psp_moveset(const ConvertRequest& request);
@@ -93,11 +133,21 @@ struct TreeRequest {
     std::string install_dir;  // holds daybreak00.dat; supplies the dispatch combos' own files
     std::string raw_dir;      // the PSP .acs/.acv/.atp files
     std::string output_dir;   // psp-data to write
-    // Until Track A's converted 00.X exists, a fighter's own model is not available, so the
-    // dispatch combo's PC model is copied under its name. The simulation needs only a skeleton
-    // and animation sets; the renderer needs the real one.
+    // Without a converted 00.X (the model converter has not run), the dispatch combo's PC model is
+    // copied under the fighter's name and the tables keep its set indices: a simulation-only
+    // stand-in. With one, `plan_for` must supply each fighter's plan, which the model converter
+    // also used to append the derived sets; the extractor passes the plans it built.
     bool copy_dispatch_model = true;
+    // The plans the model converter appended derived sets for, one per fighter (16, 17, 18 in
+    // order). Required when a converted 00.X is present: a plan is a contract between the model's
+    // set list and the tables' phase values, so both sides must use the same one.
+    const std::vector<AnimationPlan>* plans = nullptr;
 };
+
+// Plans all three fighters from the install and each fighter's raw motion facts (in roster
+// order). The model converter appends each plan's derived sets; the tree uses the same plans.
+std::vector<AnimationPlan> plan_psp_animations(const std::string& install_dir,
+                                               const std::vector<std::vector<TakeInfo>>& takes);
 struct TreeResult {
     std::vector<std::string> written;
     std::string report;
