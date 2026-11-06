@@ -541,3 +541,26 @@ not the PSP's own row→motion selection, which is still undecoded (`FUN_0001a22
 - **D-13 (Track C, accepted).** Take choices are label judgements, not the PSP's own row→motion
   selection (`FUN_0001a228` stays undecoded). Each row of the tracked table says which label it
   came from and its confidence.
+
+### 2026-11-06 — coordinator verification on the merged branch
+
+All tracks merged into `feat/91-psp-characters`. Verified on the merged tree, with the extractor
+run from the owner's ISO into `psp-data/`:
+
+| Check | Result |
+|---|---|
+| Extraction | 143 raw files hash-verified, 114 converted (models, textures, sheets, 24 moveset files), ~0.6 s |
+| Default ctest (`-LE slow`) | 94/95 pass; the one failure is the local `build/package/` leftovers, see below |
+| PSP suites with data | `psp_match_test` 178/178, `psp_model_test` and `psp_select_art_test` pass with the ISO |
+| Fingerprints | SIM `746ce7a9cbe6e44a`, `941f3dcd7a679d74`, `f19e8d6d58c37151`; PIX `ff54a85d`, `1fc12c64`, `9ecda8ec` — exact |
+| Product match, each fighter | all three reach `roundOver=1` with a winner in a CPU-vs-CPU match |
+| Product match, all 12 weapons | all twelve launch and play (fixed the `--sim-roster …@slot` parse for the PSP roster) |
+
+- `update_crosscheck_test` fails only because `build/package/` still holds three 0.1.0 zips with no
+  `package-manifest.txt` at their root: the Python tool refuses them, the C++ reader accepts them.
+  With an empty artifact root the same test passes 41/41, and no update code changed on this branch.
+- **D-14 (accepted limitation).** The four weapon slots of a PSP fighter differ in their converted
+  frame tables and take plan, but play *almost* identically today: the item file is the dispatch
+  combo's (cloned under the PSP id) and the PSP's weapon-specific `.atp` rows land in states the
+  borrowed body rarely enters. The slots are selectable and playable; the differences are in
+  animation and in a handful of hit records. Named as a D-2 cost, not hidden.

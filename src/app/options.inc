@@ -364,11 +364,13 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
                 // <dir>/<name>[:costume][@weaponSlot]
                 const size_t at = spec.find('@');
                 if (at != std::string::npos) {
-                    const int character = gameplay::characterIndexForDir(charDirForSpec(spec.substr(0, at)));
+                    // Issue #91: the roster is 19 wide here, so a PSP fighter's four items resolve
+                    // through the same accessors the selection uses (kWeaponIds stays 16x3).
+                    const int character = gameplay::rosterCharacterIndexForDir(charDirForSpec(spec.substr(0, at)));
                     const int slot = std::atoi(spec.c_str() + at + 1);
-                    if (character >= 0 && slot >= 0 && slot < gameplay::weaponCountForCharacter(character)) {
+                    if (character >= 0 && slot >= 0 && slot < gameplay::rosterWeaponCount(character)) {
                         char item[32];
-                        std::snprintf(item, sizeof item, "data/bullet/%03d", gameplay::kWeaponIds[character][slot]);
+                        std::snprintf(item, sizeof item, "data/bullet/%03d", gameplay::rosterWeaponItemId(character, slot));
                         o.battleWeapons[count] = item;
                     }
                     spec.resize(at);
