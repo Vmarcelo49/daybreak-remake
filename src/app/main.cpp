@@ -1716,6 +1716,28 @@ bool initScreens(App& app) {
         app.frontend.story.fight = fight;
         app.frontend.story.part = part;
     }
+    if (!app.opts.resultWinner.empty()) {
+        // A synthetic finished 1v1 (see Options::resultWinner): the slots and the outcome the host
+        // would have written when the round resolved, and nothing else.
+        if (id != ui::ScreenId::Result) {
+            app.error = "--result-winner needs --screen=result";
+            return false;
+        }
+        const std::string& spec = app.opts.resultWinner;
+        const size_t colon = spec.find(':');
+        const int character = gameplay::rosterCharacterIndexForDir(spec.substr(0, colon));
+        const int weapon = colon == std::string::npos ? 0 : std::atoi(spec.c_str() + colon + 1);
+        if (character < 0 || weapon < 0 || weapon >= gameplay::rosterWeaponCount(character)) {
+            app.error = "--result-winner: no roster fighter " + spec;
+            return false;
+        }
+        app.frontend.slots[0].character = character;
+        app.frontend.slots[0].weapon = weapon;
+        app.frontend.slots[0].controller = 0;
+        app.frontend.slots[2].character = 0;
+        app.frontend.slots[2].controller = 4;
+        app.frontend.resultWinner = 0;
+    }
     if (!loadMenuScript(app, app.error)) return false;
     if (!app.screens.begin(id, factory, app.error)) return false;
     auto& settings = ui::frontendSettings();

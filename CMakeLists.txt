@@ -517,6 +517,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                          "$<TARGET_FILE:daybreak>" "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak")
         set_tests_properties(locale_screen_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
+        # Issue #91: a PSP fighter's finished match reaches the result screen and leaves it, with
+        # and without the converted art, and the PC winner is unchanged (tests/psp_result_check.py).
+        add_test(NAME psp_result_check
+                 COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tests/psp_result_check.py"
+                         "$<TARGET_FILE:daybreak>" "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak")
+        set_tests_properties(psp_result_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 LABELS asset)
+
         add_test(NAME hud_cell_scale
                  COMMAND ${Python3_EXECUTABLE}
                          "${CMAKE_CURRENT_SOURCE_DIR}/tests/hud_cell_scale.py"
@@ -1289,7 +1296,7 @@ set(DAYBREAK_AREA_FRONTEND
     title_camera_test screen_stack_test frontend_config_test frontend_lifecycle_test
     result_title_test result_screen_test participant_layout_test select_menu_test
     update_notice_test update_screens_test
-    select_cursor_test select_row_slidein_test select_psp_test psp_roster_test
+    select_cursor_test select_row_slidein_test select_psp_test psp_roster_test psp_result_check
     stage_vs_test story_dialogue_test
     story_script_test sim_frontend_flow online_flow_check online_join_feedback
     pause_overlay_panel pause_overlay_layout_test
