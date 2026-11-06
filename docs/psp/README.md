@@ -83,7 +83,7 @@ Shared: `activity/static_param.bin`, `bin/{bullet_attack_data,com_param,gauge_da
 ## What the port does with it
 
 ```
-player's ISO ──> daybreak --extract-psp <iso>  ──> psp-data/
+player's ISO ──> daybreak --extract-psp=<iso>  ──> psp-data/
                     │  raw files, hash-checked        psp/<pack path>   as the pack stores it
                     │  converters                     data/<name>/…     the remake's own formats
                     ▼
@@ -91,9 +91,10 @@ player's ISO ──> daybreak --extract-psp <iso>  ──> psp-data/
 ```
 
 ```bash
-# everything at once: the raw files, the converted models, and the frame tables
-daybreak --extract-psp /path/to/Higurashi_Daybreak_Portable.iso \
-         --psp-data /somewhere/psp-data --install /path/to/Higurashi-Daybreak
+# everything at once: the raw files, the converted models, the front-end sheets and the frame
+# tables. Every value joins its flag with '=' — `--extract-psp <iso>` is not accepted.
+daybreak --extract-psp=/path/to/Higurashi_Daybreak_Portable.iso \
+         --psp-data=/somewhere/psp-data --install=/path/to/Higurashi-Daybreak
 ```
 
 `--install` is what the moveset converter needs: it starts from the PC dispatch combo's own
@@ -108,6 +109,11 @@ psp-data/
   data/item/1NN.dat          the weapon item
   data/select/, data/win/    the front-end sheets (`FRONTEND-ART.md`)
 ```
+
+Three converters run in that order (models, select art, movesets): the model conversion, the
+front-end sheets the select, VS and result screens read, and the frame tables and weapon items.
+All of them read only `psp-data/psp/`, so a run that fails one still leaves the others' files
+where they are.
 
 Nothing is converted at run time, so every file is inspectable and diffable, and the
 simulation and the renderer read the same bytes off the same mount.
@@ -133,6 +139,10 @@ are kept locally and are not tracked.
 ```bash
 # tier 4: the whole conversion, every file through both readers, all 76 sets sampled
 DAYBREAK_PSP_ISO=/path/to/the.iso ctest --test-dir build/linux -R psp_model_test --output-on-failure
+
+# tier 4: the front-end sheets — sizes, cell grids, the reveal's white cell, the alpha each cell
+# the screens draw from has to carry
+DAYBREAK_PSP_ISO=/path/to/the.iso ctest --test-dir build/linux -R psp_select_art_test --output-on-failure
 
 # tier 5: what a converted fighter looks like, beside a PC one
 daybreak --headless --no-audio --install=<game> --model=<psp-data>/data/okonogi/00.X \

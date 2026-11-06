@@ -76,6 +76,10 @@ struct Options {
     // --extract-psp=<iso>: collect the PSP version's files into psp-data/ and exit
     // (docs/psp/README.md). It writes where --psp-data points, or beside the executable.
     std::string extractPsp;
+    // -h / --help: print the usage text and exit 0. Its own flag rather than an "unknown
+    // option" line, because the PSP extraction run is a player's first command, not a
+    // developer's, and the options it takes are in that text.
+    bool        help = false;
     bool        noCameraClamp = false;   // A/B switch for the arena eye clamp
     bool        noTextures = false;
     bool        fog        = false;   // opt-in: the DX9 reference renders unfogged

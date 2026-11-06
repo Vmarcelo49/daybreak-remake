@@ -1,14 +1,18 @@
 // psp/psp_convert.cpp — the one place the converter list is spelled out.
 //
 // A converter reads only <psp-data>/psp/ and the PC install, and writes the remake's own
-// formats under <psp-data>/. Order is the order they run in, and it matters:
+// formats under <psp-data>/. Order is the order they run in:
 //
-//   1. models    PSP GMO -> data/<name>[_B..]/00.X and its textures (this track).
-//   2. movesets  the frame tables and weapon items (data/<name>/0W.dat, data/item/1NN.dat) from
-//                the PSP .acs/.acv/.atp, built on the PC dispatch combo's own table. It reads
-//                the converted model first, for the take count and each take's length, and only
-//                falls back to copying the dispatch combo's PC model when there is none — so
-//                running models first is what makes the two agree.
+//   1. models      PSP GMO -> data/<name>[_B..]/00.X and its textures (Track A).
+//   2. select art  the select, VS and result sheets (data/select/*.cnv, data/win/NNa.cnv) from
+//                  gra/gim/select/*.gim, at the sizes and cell grids docs/psp/FRONTEND-ART.md
+//                  fixes (Track D). Independent of the other two, which is why it sits between
+//                  them: a moveset conversion that fails cannot cost the screens their art.
+//   3. movesets    the frame tables and weapon items (data/<name>/0W.dat, data/item/1NN.dat)
+//                  from the PSP .acs/.acv/.atp, built on the PC dispatch combo's own table
+//                  (Track C). It reads the converted model for the take count and each take's
+//                  length, and only falls back to copying the dispatch combo's PC model when
+//                  there is none — so running models first is what makes the two agree.
 #include <ostream>
 #include <string>
 #include <vector>
@@ -16,6 +20,7 @@
 #include "psp/psp_extract.h"
 #include "psp/psp_model.h"
 #include "psp/psp_moveset.h"
+#include "psp/psp_select_art.h"
 
 namespace psp {
 
@@ -26,6 +31,10 @@ void registerAllPspConverters() {
 
     registerPspConverter("models", [](const PspConverterContext& context) {
         return convertPspFighters(context.dataDir, *context.log);
+    });
+
+    registerPspConverter("select art", [](const PspConverterContext& context) {
+        return convertPspSelectArt(context.dataDir, *context.log);
     });
 
     registerPspConverter("movesets", [](const PspConverterContext& context) {

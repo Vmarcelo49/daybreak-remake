@@ -286,7 +286,8 @@ if(NOT EMSCRIPTEN)
         src/psp/gim.cpp
         src/psp/tga.cpp
         src/psp/xfile.cpp
-        src/psp/psp_model.cpp)
+        src/psp/psp_model.cpp
+        src/psp/psp_select_art.cpp)
     # zlib's header lives with its vendored sources (src/battle/core/zlib); SHA-256 is the
     # updater's, so the tree keeps one hash and one inflater instead of two.
     target_include_directories(psp_extract PUBLIC src PRIVATE src/battle/core/zlib)
@@ -860,6 +861,15 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME psp_model_test COMMAND psp_model_test
         ${CMAKE_CURRENT_SOURCE_DIR}/assets/psp/manifest.txt)
     set_tests_properties(psp_model_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS data)
+
+    # The front-end sheets the same run writes for the select, VS and result screens: their sizes,
+    # their cell grids, the reveal's white cell and the alpha every drawn cell must carry
+    # (docs/psp/FRONTEND-ART.md §2). Skips without DAYBREAK_PSP_ISO, like the conversion above.
+    add_executable(psp_select_art_test tests/psp_select_art_test.cpp)
+    target_link_libraries(psp_select_art_test PRIVATE psp_extract assets)
+    add_test(NAME psp_select_art_test COMMAND psp_select_art_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/psp/manifest.txt)
+    set_tests_properties(psp_select_art_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300 LABELS data)
 
     # M4's first risk: the core's bones against our own rig sampling, per animation set.
     add_executable(sim_pose_test tests/sim_pose_test.cpp)

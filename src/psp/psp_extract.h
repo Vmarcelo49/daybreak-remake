@@ -1,5 +1,5 @@
 #pragma once
-// psp/psp_extract.h — `daybreak --extract-psp <iso>`: the player's disc into psp-data/.
+// psp/psp_extract.h — `daybreak --extract-psp=<iso>`: the player's disc into psp-data/.
 //
 // Two stages, in this order, so a later track can add a converter without touching this
 // one:

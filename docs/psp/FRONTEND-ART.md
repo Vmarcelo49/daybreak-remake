@@ -10,8 +10,9 @@ the binding decisions), [`../PSP-CHARACTERS-PLAN.md`](../PSP-CHARACTERS-PLAN.md)
 and the raw studies in ignored `local-data/harness/psp/notes/` (`art.md` §2–§7 for the PSP side,
 `integration.md` §4 for every product site that assumed sixteen characters).
 
-Nothing here is tracked: the art belongs to the rights holders. The extractor and this document's
-reference generator read the player's own copy and write beside the executable.
+Nothing here is tracked: the art belongs to the rights holders. The extractor reads the player's
+own copy and writes beside the executable. `tools/asset-tools/psp_select_art.py` is the reference
+implementation of §4 — the C++ converter is its port, and the two write byte-identical sheets.
 
 ---
 
@@ -133,7 +134,8 @@ moves (slot *i* still takes its first 0.1 step on tick *i*+6; the three follow t
 port extension, so slot 18 settles on tick 33 instead of 30).
 
 **Captures.** `tests/scripts/psp-select.txt` drives one 1v1 selection onto Satoshi and starts a
-match, which is how the screens were inspected:
+match, which is how the screens were inspected. `--psp-data` names the tree the extractor wrote
+(§4) — a verification run mounts only the folder it names, never one beside the binary:
 
 ```bash
 ./build/linux/daybreak --headless --no-audio --install=Higurashi-Daybreak \
@@ -142,11 +144,35 @@ match, which is how the screens were inspected:
 ./build/linux/daybreak ... --frames=800 --size=800x600 --out=vs.ppm   # the VS screen
 ```
 
-## 4. Generating the art: `tools/asset-tools/psp_select_art.py`
+Both captures in the Track D log were made from a tree `daybreak --extract-psp` alone produced, so
+the sheets, the models and the frame tables came out of one command.
 
-The reference generator. It reads the PSP's own 2D art and writes the files in §2 as CNV images
-(`src/assets/cnv.h`: 17-byte header, then BGRA rows top-down — the product's one texture container,
-so no PNG path and no texture pack is involved).
+## 4. Generating the art: the extractor's `select art` converter
+
+**The extractor writes these sheets** (`src/psp/psp_select_art.cpp`, the `select art` converter
+`psp/psp_convert.cpp` registers), in the same run that converts the models and the frame tables:
+
+```bash
+daybreak --extract-psp=<Higurashi PSP.iso> --psp-data=<dir> --install=<game folder>
+```
+
+It reads the PSP's own 2D art out of `psp-data/psp/gra/gim/select/` and writes the files in §2 as
+CNV images (`src/assets/cnv.h`: 17-byte header, then BGRA rows top-down — the product's one
+texture container, so no PNG path and no texture pack is involved). Its log names every sheet it
+writes and where its pixels came from, e.g.
+
+```
+psp: data/select/16.cnv 256x256 <- gra/gim/select/vs_enter_satoshi.gim
+psp: data/select/i16.cnv 256x256 <- gra/gim/select/icon_on.gim cell 16 (place-holder: the PSP ships no chibi art)
+psp: data/select/w16.cnv 512x256 <- place-holder plate: slot letters A-D and item ids 101..104 (the PSP ships no per-weapon art)
+psp: data/win/16a.cnv 512x512 <- gra/gim/select/bustup_satoshi.gim right half (the smiling pose)
+```
+
+`tools/asset-tools/psp_select_art.py` is the **reference implementation**: it defined these sheets
+before the extractor could write them, it is what the C++ converter was ported from, and it stays
+in the tree for two things the extractor has no use for — `--dump=<dir>` (build from an already
+extracted tree, with no ISO) and `--preview=<dir>` (PNG copies for the eye). It is not required to
+play: a player has no Python, and the extractor is the supported path.
 
 ```bash
 python3 tools/asset-tools/psp_select_art.py --iso=<Higurashi PSP.iso> --out=psp-data
@@ -154,10 +180,20 @@ python3 tools/asset-tools/psp_select_art.py --pack=<PSP_GAME/USRDIR/_pack/gzpack
 python3 tools/asset-tools/psp_select_art.py --dump=<dir of extracted gra/gim/select/*.gim>
 ```
 
-`--preview=<dir>` also writes PNG copies for the eye; `--only=17` builds one character. The dump
-studied for the PSP notes has ISO sha256 `170b8a8e1aa546f549809243d68dd4c34e33f69e682ab669e82018
-0830a7160c`, but the tool only needs *a* good dump: the pack is resolved by the ISO's own directory
-tree, and entries by `crc32(path, 0xFFFFFFFF)`.
+**The two agree byte for byte**, which is measured rather than assumed: on the dump studied below,
+all fifteen sheets from `daybreak --extract-psp` and from the Python tool are byte-identical
+(0 differing bytes; max diff 0, mean diff 0.000000). That is why the resampling is described as the
+reference's filter rather than "some good filter": it is a premultiplied-alpha box average with
+integer division, in double precision, and the C++ reproduces its arithmetic — including the
+round-half-to-even, the reference's neighbour count in `denoise_alpha` (which reads the buffer it is
+already modifying) and the two truncating `int()` casts. A change to one of them is a change to the
+sheets, so it belongs in both.
+
+The pack is resolved by the ISO's own directory tree, and entries by `crc32(path, 0xFFFFFFFF)`. The
+dump studied for the PSP notes has ISO sha256 `170b8a8e1aa546f549809243d68dd4c34e33f69e682ab669e82018
+0830a7160c`, but the generator only needs *a* good dump: every file it reads is in
+`assets/psp/manifest.txt` with its size and SHA-256, so the extractor refuses a damaged or
+re-encoded ISO before any of this runs.
 
 What it reads, and what it can honestly produce:
 
@@ -169,12 +205,18 @@ What it reads, and what it can honestly produce:
 | `wNN.cnv` | *(nothing)* | place-holder plates: seven-segment slot letter (A–D) in column 0, the item id in column 1 |
 | `win/NNa.cnv` | `gra/gim/select/bustup_<name>.gim` (224 × 130, two poses) | the **right** half — the second pose, smiling/eyes closed for all three, a natural win face — cropped to its alpha bounds, resized by **one uniform factor** to ≈420 px tall (the PC sheets' figures are 449–459 px), centred, bottom at y 492 |
 
+The sizes in that table are the decoded ones, which is the padded-pitch rule
+([`research/RESOURCES.md`](research/RESOURCES.md) §8): `vs_enter_satoshi` declares 168 columns and
+`bustup_satoshi` declares 220, and both carry live art in the padding, so the decoded width is
+`align(width, 16)`. `psp::decodeGim` applies that rule (`src/psp/gim.cpp`); decoding at the declared
+width keeps the picture but cuts the last 8 or 4 columns, where a shoulder and a sleeve live.
+
 **The three place-holders are honest limitations, not recovered layout.** The PSP has no chibi
 body, no per-costume picture and no per-weapon picture: its own select screen is a list of text
 names beside those 48 × 48 icons (`gra/gim/select/costume.gim` and `weapon.gim` are text atlases).
 So the PC's chibi/costume/weapon cells cannot be reproduced from PSP art at all. Each generated
-cell says so where it is drawn in the tool, and Track A may replace any of them: the contract is
-the size and the cell grid, not the picture.
+cell says so where it is drawn in the converter, and a later track may replace any of them: the
+contract is the size and the cell grid, not the picture.
 
 The portrait *is* the PSP's own art and needs no disclaimer: `vs_enter_<name>.gim` is the image the
 PSP's versus screen shows for that character.
@@ -246,3 +288,7 @@ sixteen's rule, where one missing sheet refuses the whole screen:
 * **`psp-data` beside the executable** is the non-verification path and is exercised by an
   interactive launch (the `psp-data : <dir> (3 extra fighter(s))` startup line). Every capture in
   this document names the folder explicitly instead.
+* **Two implementations of §4.** The C++ converter is the supported one and the Python tool is the
+  reference; they are byte-identical today, and keeping them so is manual. Nothing checks it
+  automatically, because that would need Python on a player's machine. A change to either has to be
+  made in both, or the Python tool becomes history and only the C++ remains.

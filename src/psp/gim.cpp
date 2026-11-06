@@ -106,6 +106,12 @@ RgbaImage decodePicture(const std::vector<std::uint8_t>& bytes, const Block& blo
     if (order == 1) pitch = (pitch + 15) & ~15u;
     else if (align) pitch = (pitch + align - 1) & ~(align - 1);
     if (!pitch) throw std::runtime_error("gim: zero row pitch");
+    // The padded row pitch is the real row, not the header's width: the art continues into the
+    // padding, so the decoded width is the pitch in texels. Measured on the select family
+    // (docs/psp/research/RESOURCES.md §8): vs_enter_satoshi declares 168 and is 176 wide,
+    // bustup_satoshi declares 220 and is 224. Decoding at the declared width keeps the picture
+    // but cuts the last 8 or 4 columns, which is where a shoulder and a sleeve live.
+    const std::uint32_t decodedWidth = pitch * 8 / bits;
 
     std::vector<std::uint8_t> rows;
     if (order == 1) {
@@ -152,13 +158,13 @@ RgbaImage decodePicture(const std::vector<std::uint8_t>& bytes, const Block& blo
     }
 
     RgbaImage image;
-    image.width = width;
+    image.width = decodedWidth;
     image.height = height;
-    image.rgba.assign((std::size_t)width * height * 4, 0);
+    image.rgba.assign((std::size_t)decodedWidth * height * 4, 0);
     for (std::uint32_t y = 0; y < height; ++y) {
         const std::uint8_t* line = rows.data() + (std::size_t)y * pitch;
-        for (std::uint32_t x = 0; x < width; ++x) {
-            std::uint8_t* out = image.rgba.data() + ((std::size_t)y * width + x) * 4;
+        for (std::uint32_t x = 0; x < decodedWidth; ++x) {
+            std::uint8_t* out = image.rgba.data() + ((std::size_t)y * decodedWidth + x) * 4;
             if (kind == 3) {
                 std::memcpy(out, line + x * 4, 4);
             } else if (kind == 5) {

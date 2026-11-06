@@ -85,6 +85,34 @@ keeps itself up to date.
 Everyone needs the same version of this remake and the same game data. Other players in your room can see your IP
 address.
 
+## PSP characters
+
+The PSP version, *Higurashi Daybreak Portable Mega Edition*, has three fighters the PC game does not: **Satoshi
+Houjou**, **Miyoko Tanashi** and **Okonogi**. If you own that version too, the remake can add them.
+
+Run this once, from the folder the remake is in, pointing at your own PSP ISO and at your Higurashi Daybreak folder:
+
+```
+# Linux
+./daybreak --extract-psp=/home/you/psp-daybreak.iso --install=/home/you/Higurashi-Daybreak
+# Windows
+DaybreakRemake.exe --extract-psp=C:\roms\psp-daybreak.iso --install=C:\games\Higurashi-Daybreak
+```
+
+It takes a moment, checks every file it reads against a list of hashes, and writes a `psp-data` folder next to the
+game. The three then appear on the character select, with their own models and their own art, and can be played in
+offline matches. Pass `--psp-data=<folder>` if you want that folder somewhere else; the game then needs the same
+flag on every start.
+
+What to expect:
+
+- Their moves are borrowed from the PC fighter with the closest moveset, so they play close to the PSP version
+  rather than exactly like it.
+- The chibi, costume and weapon pictures are place-holders: the PSP game ships no such art.
+- Online play stays on the PC fighters for now, so everyone in a room uses the same data.
+
+Nothing from the PSP game is included here. Delete `psp-data` at any time and the remake runs as it did before.
+
 ## Found a problem?
 
 [Open a test report](https://github.com/Vmarcelo49/daybreak-remake/issues/new?template=test-report.md) and attach
