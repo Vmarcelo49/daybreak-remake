@@ -384,3 +384,23 @@ Commits: the extractor, the GMO→`.X` conversion, the two-reader test, then the
   every state, in `psp_moveset.cpp`.
 - Also unchanged and still true: the 46 PC combos did not move. The six fingerprints on the
   merged tree are the values in `AGENTS.md`.
+
+### 2026-11-06 — coordinator: Track A merged; integration status
+
+Merged `feat/91-psp-a` (`d702d463`). On the integration branch, `daybreak --extract-psp=<iso>
+--psp-data=<dir> --install=<game>` writes the raw files, 15 converted costumes (`.X` + `.cnv`
+textures), `data/<name>/0W.dat` and `data/item/101–112.dat`. Reviewed captures: the three
+fighters are correctly skinned beside PC Keiichi at plan scale, and Satoshi fights in a match.
+
+Remaining gaps against the success criteria, in order:
+
+1. **Animation index remap** (Track C, in progress). With the real 76-take model, states that
+   kept the dispatch rig's index (350/360/400–412/450/460) throw, so shot rows are unreachable.
+2. **Which PSP take plays for which PC state.** A per-set similarity study failed its own
+   known-answer test: a PC set is a *phase* (median 0.25 s) while a PSP take is a *move*
+   (median 1.0 s). Same take index ≈ same move across PSP characters (31/40, 24/37, 14/39 vs 2.5%
+   chance). Next step: label the takes visually (subagent running) and map at the **move** level,
+   PC state → PSP take.
+3. **Front-end art from the C++ extractor.** Today only `tools/asset-tools/psp_select_art.py`
+   makes the select/VS/win sheets. A player has no Python, so the extractor must write them.
+4. Weapons in hand (unweighted GMO vertex type), voices (VAG), expressions: polish, not criteria.
