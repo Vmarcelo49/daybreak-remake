@@ -1,0 +1,305 @@
+rig	take_index	take_name	start	end	frames	curves	rot_bones	dx	dy	dz	px	py	pz	path_fwd	path_up	z0	y0	root_keys	translate_bones
+chrm17	0	Take 001	0.0	63.0	64	60	51	0.0000	0.0000	0.0000	16.544	131.526	16.812	88.524	397.440	0.71	77.65	64	leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	1	Take 001-0000	0.0	23.0	24	61	51	0.0000	0.0000	0.0000	0.092	17.109	15.941	32.335	56.248	0.71	77.65	24	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	2	Take 001-0001	0.0	22.0	23	61	51	0.0000	0.0000	0.0000	10.870	23.996	38.955	85.674	48.574	0.71	77.65	23	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	3	Take 001-0002	0.0	93.0	94	61	51	0.0000	0.0000	0.0000	3.568	119.897	45.676	91.949	320.443	0.71	77.65	86	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	4	Take 001-0003	0.0	20.0	21	61	51	0.0000	0.0000	0.0000	13.131	8.634	38.724	91.793	25.929	0.71	77.65	21	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	5	Take 001-0004	0.0	49.0	50	60	51	0.0107	-66.3004	-21.2546	0.011	84.677	32.349	72.085	342.321	17.73	78.14	48	leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	6	Take 001-0005	0.0	59.0	60	61	51	-0.0776	-65.3887	-13.4302	0.254	102.978	18.789	23.723	186.235	0.71	77.65	55	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	7	Take 001-0006	0.0	34.0	35	61	51	-0.0812	-35.6506	11.4419	0.254	63.227	11.521	18.015	111.623	0.71	77.65	35	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	8	Take 001-0007	0.0	10.0	11	60	55	0.0000	0.0000	0.0000	6.931	0.000	7.092	21.690	0.000	-0.27	79.43	11	facechange,leftbackskirt1,leftbackskirt2,rightbackskirt1,root
+chrm17	9	Take 001-0008	0.0	36.0	37	61	51	1.1755	-64.8813	-62.1354	32.393	67.794	69.182	149.026	132.426	0.71	77.65	37	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	10	Take 001-0009	0.0	30.0	31	61	51	0.0000	0.0000	0.0000	1.072	27.563	42.113	89.706	103.439	0.71	77.65	31	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	11	Take 001-0010	0.0	33.0	34	65	55	-1.3846	-2.3715	-1.1382	1.736	18.333	11.549	45.023	58.968	7.49	72.34	21	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	12	Take 001-0011	0.0	22.0	23	61	51	-0.0007	66.6477	29.2415	0.072	66.648	63.191	152.050	159.765	-22.01	10.52	23	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	13	Take 001-0012	0.0	49.0	50	56	55	0.0059	0.0208	-0.0115	0.956	1.201	0.951	2.951	2.379	0.71	77.65	50	root
+chrm17	14	Take 001-0013	0.0	15.0	16	61	51	0.0032	-5.2760	-6.3539	0.083	16.228	16.061	56.717	57.648	-1.63	73.59	16	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	15	Take 001-0014	0.0	11.0	12	61	51	0.0050	-7.5107	-7.3404	0.083	15.540	16.339	56.401	52.186	-1.63	73.59	12	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	16	Take 001-0015	0.0	23.0	24	62	55	-0.2953	-5.6085	2.8917	1.860	34.523	32.216	82.736	84.041	0.71	77.65	22	facechange,leftbackskirt2,leftfrontskirt1,rightbackskirt1,rightbackskirt2,rightfrontskirt1,root
+chrm17	17	Take 001-0016	0.0	24.0	25	59	51	-0.7994	-2.4652	0.1120	32.541	38.587	4.519	69.316	122.210	0.71	77.65	21	facechange,leftbackskirt2,leftfrontskirt1,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	18	Take 001-0017	0.0	24.0	25	61	51	0.0475	-2.4817	2.5934	23.411	31.580	12.897	64.242	101.891	0.71	77.65	25	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	19	Take 001-0018	0.0	9.0	10	56	51	2.6009	4.0512	2.3322	2.601	17.569	20.516	39.267	30.857	-1.63	73.59	10	facechange,leftbackskirt1,leftfrontskirt1,rightfrontskirt1,root
+chrm17	20	Take 001-0019	0.0	53.0	54	61	51	0.0000	0.0000	0.0000	3.719	67.707	13.374	36.743	272.538	0.71	77.65	54	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	21	Dummy	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	22	Take 001-0020	0.0	17.0	18	61	51	0.0381	-17.3916	9.7436	2.512	19.175	10.096	11.940	20.689	-0.40	96.38	18	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	23	Dummy-0000	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	24	Take 001-0021	0.0	24.0	25	58	51	0.0000	0.0000	0.0000	2.479	10.510	21.333	45.963	25.401	0.71	77.65	25	facechange,leftbackskirt1,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightfrontskirt1,root
+chrm17	25	Take 001-0022	0.0	20.0	21	61	51	2.8960	8.5440	10.5949	4.767	8.545	11.963	19.892	8.545	-9.89	69.10	21	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	26	Take 001-0023	0.0	40.0	41	61	51	0.0000	0.0000	0.0000	8.352	30.679	43.578	109.906	97.820	0.71	77.65	41	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	27	Take 001-0024	0.0	36.0	37	61	51	-1.4546	20.7419	-32.3253	1.543	34.754	43.499	57.263	83.174	33.03	56.90	37	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	28	Take 001-0025	0.0	31.0	32	61	51	-1.5412	30.6139	-43.0362	6.196	92.614	43.036	59.861	211.273	43.74	47.03	32	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	29	Take 001-0026	0.0	44.0	45	61	51	2.6009	4.0512	2.3322	6.182	81.440	21.762	113.885	220.602	-1.63	73.59	40	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	30	Take 001-0027	0.0	34.0	35	61	51	0.0000	0.0000	0.0000	4.065	12.111	32.032	67.414	24.213	0.71	77.65	35	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	31	Take 001-0028	0.0	37.0	38	61	51	2.5946	12.4253	9.8885	2.595	71.708	61.983	133.978	154.994	-9.18	65.22	33	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	32	Take 001-0029	0.0	52.0	53	61	51	0.0000	0.0000	0.0000	57.051	20.455	58.020	337.194	57.385	0.71	77.65	52	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	33	Take 001-0030	0.0	36.0	37	61	51	0.1240	0.9691	1.5147	3.965	15.336	13.057	29.297	29.710	-0.40	96.38	36	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	34	Take 001-0031	0.0	20.0	21	59	49	0.1240	0.9691	1.5147	2.519	18.492	16.760	34.502	48.014	-0.40	96.38	20	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	35	Take 001-0032	0.0	37.0	38	61	51	0.0000	0.0000	0.0000	3.529	17.024	26.329	65.085	74.376	0.71	77.65	36	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	36	Take 001-0033	0.0	24.0	25	61	51	0.0000	0.0000	0.0000	7.659	29.438	29.544	68.151	58.880	0.71	77.65	25	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	37	Take 001-0034	0.0	31.0	32	61	51	0.0000	0.0000	0.0000	3.950	30.278	53.003	113.848	77.864	0.71	77.65	32	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	38	Take 001-0035	0.0	34.0	35	61	51	0.0000	0.0000	0.0000	3.586	11.769	31.841	105.830	33.090	0.71	77.65	35	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	39	Dummy-0001	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	40	Dummy-0002	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	41	Take 001-0036	0.0	70.0	71	59	51	0.0000	0.0000	0.0000	10.979	8.857	9.311	50.795	28.897	0.71	77.65	52	facechange,leftbackskirt1,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightfrontskirt1,rightfrontskirt2,root
+chrm17	42	Dummy-0003	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	43	Take 001-0037	0.0	110.0	111	61	51	-0.5395	-0.9296	16.2481	11.370	29.251	36.675	128.864	126.011	4.29	73.62	107	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	44	Dummy-0004	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	45	Take 001-0038	0.0	40.0	41	60	51	0.0000	0.0000	0.0000	5.414	18.244	36.037	101.245	50.167	0.71	77.65	41	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,root
+chrm17	46	Dummy-0005	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	47	Dummy-0006	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	48	Take 001-0039	0.0	24.0	25	56	55	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	facechange
+chrm17	49	Take 001-0040	0.0	45.0	46	59	51	0.0000	0.0000	0.0000	7.481	25.800	40.120	84.350	71.980	0.71	77.65	44	facechange,leftbackskirt2,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	50	Dummy-0007	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	51	Take 001-0041	0.0	36.0	37	61	51	0.1240	0.9691	1.5147	3.965	15.337	14.758	32.494	29.726	-0.40	96.38	36	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	52	Take 001-0042	0.0	30.0	31	52	51	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	facechange
+chrm17	53	Take 001-0043	0.0	30.0	31	52	51	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	facechange
+chrm17	54	Take 001-0044	0.0	30.0	31	52	51	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	facechange
+chrm17	55	Take 001-0045	0.0	30.0	31	52	51	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	facechange
+chrm17	56	Take 001-0046	0.0	30.0	31	52	51	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	facechange
+chrm17	57	Take 001-0047	0.0	30.0	31	52	51	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	facechange
+chrm17	58	Take 001-0048	0.0	30.0	31	52	51	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	facechange
+chrm17	59	Take 001-0049	0.0	30.0	31	52	51	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	facechange
+chrm17	60	Take 001-0050	0.0	30.0	31	52	51	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	facechange
+chrm17	61	Take 001-0051	0.0	50.0	51	61	51	0.0000	0.0000	0.0000	3.319	38.958	15.357	54.575	110.596	0.71	77.65	41	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm17	62	Dummy-0008	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	63	Dummy-0009	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	64	Dummy-0010	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	65	Dummy-0011	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	66	Dummy-0012	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	67	Dummy-0013	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	68	Dummy-0014	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	69	Dummy-0015	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	70	Dummy-0016	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	71	Dummy-0017	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	72	Dummy-0018	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	73	Dummy-0019	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	74	Dummy-0020	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm17	75	Dummy-0021	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	0	Take 001	0.0	63.0	64	58	52	-8.8527	-0.0364	4.1704	17.870	131.523	15.662	69.411	395.462	-1.47	69.05	61	facechange,leftbackskirt1,leftfrontskirt1,rightbackskirt1,rightfrontskirt1,root
+chrm18	1	Take 001-0000	0.0	23.0	24	61	51	-3.6134	-3.1059	13.3188	3.652	20.371	16.168	22.123	37.494	-8.56	75.40	17	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm18	2	Take 001-0001	0.0	20.0	21	59	51	0.1880	3.4629	-8.3772	0.216	12.133	25.685	57.042	22.507	16.33	63.64	15	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,rightbackskirt1,rightbackskirt2,rightfrontskirt1,root
+chrm18	3	Take 001-0002	0.0	89.0	90	57	51	0.3182	-4.5052	14.0113	4.197	119.867	29.702	45.567	307.601	-14.41	69.15	68	facechange,leftbackskirt1,leftfrontskirt1,rightbackskirt1,rightfrontskirt1,root
+chrm18	4	Take 001-0003	0.0	19.0	20	57	51	-6.0330	-19.5277	0.6566	7.752	20.808	32.237	64.527	21.768	23.17	78.15	14	facechange,leftbackskirt1,leftfrontskirt2,rightbackskirt1,rightfrontskirt2,root
+chrm18	5	Take 001-0004	0.0	49.0	50	57	51	0.0122	-66.2904	-21.2548	0.012	79.386	32.348	71.555	298.668	17.73	78.13	39	facechange,leftbackskirt1,leftfrontskirt1,rightbackskirt1,rightfrontskirt1,root
+chrm18	6	Take 001-0005	0.0	54.0	55	57	51	0.0007	-90.0707	-11.4279	0.022	102.982	11.428	12.025	144.386	-1.30	102.33	50	facechange,leftbackskirt1,leftfrontskirt1,rightbackskirt1,rightfrontskirt1,root
+chrm18	7	Take 001-0006	0.0	34.0	35	57	51	-0.0030	-60.3474	4.7517	0.003	63.224	5.031	5.296	66.468	7.39	102.34	30	facechange,leftbackskirt1,leftfrontskirt1,rightbackskirt1,rightfrontskirt1,root
+chrm18	8	Take 001-0007	0.0	10.0	11	56	51	1.3912	0.0000	-0.6510	3.432	0.000	3.000	8.615	0.000	3.64	79.45	10	facechange,leftbackskirt1,leftfrontskirt2,rightbackskirt1,root
+chrm18	9	Take 001-0008	0.0	36.0	37	57	51	-14.8620	-63.2114	-53.5308	15.281	65.919	60.577	78.595	123.887	-7.90	75.97	33	facechange,leftbackskirt1,leftfrontskirt1,rightbackskirt1,rightfrontskirt1,root
+chrm18	10	Take 001-0009	0.0	30.0	31	54	51	-0.2051	-12.5521	11.2028	1.071	16.383	18.608	32.369	45.959	-25.80	81.71	22	leftfrontskirt1,rightbackskirt1,root
+chrm18	11	Take 001-0010	0.0	32.0	33	61	51	-1.3846	-2.3718	-1.1372	1.736	18.329	11.550	46.872	61.608	7.49	72.33	21	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm18	12	Take 001-0011	0.0	21.0	22	57	51	0.0591	47.0317	17.6389	0.059	49.734	63.180	142.357	150.880	-22.01	10.52	19	facechange,leftbackskirt1,leftfrontskirt1,rightbackskirt1,rightfrontskirt1,root
+chrm18	13	Take 001-0012	0.0	64.0	65	58	51	0.0000	0.0000	0.0000	2.322	0.438	5.969	13.889	0.874	4.91	78.90	65	leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightfrontskirt1,root
+chrm18	14	Take 001-0013	0.0	15.0	16	57	51	0.0040	3.7036	0.0214	0.035	14.487	5.343	10.560	52.839	17.32	64.92	16	facechange,leftbackskirt1,leftfrontskirt1,rightbackskirt1,rightfrontskirt1,root
+chrm18	15	Take 001-0014	0.0	32.0	33	58	51	2.9220	0.3724	-7.3389	9.134	16.698	50.134	130.625	96.899	4.91	78.90	34	facechange,leftbackskirt1,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightfrontskirt1,root
+chrm18	16	Take 001-0015	0.0	20.0	21	53	51	2.9748	-1.5199	-2.2610	7.111	12.272	29.291	61.080	36.085	4.91	78.90	22	facechange,root
+chrm18	17	Take 001-0016	0.0	24.0	25	53	51	0.0000	0.0000	0.0000	36.485	19.180	21.179	103.027	61.772	4.91	78.90	25	facechange,root
+chrm18	18	Take 001-0017	0.0	24.0	25	53	51	0.0000	0.0000	0.0000	51.494	23.107	19.420	121.814	74.479	4.91	78.90	25	facechange,root
+chrm18	19	Dummy	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	20	Take 001-0018	0.0	60.0	61	61	51	0.0000	0.0000	0.0000	7.562	43.628	12.779	46.439	193.836	4.91	78.90	61	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm18	21	Dummy-0000	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	22	Take 001-0019	0.0	18.0	19	61	51	2.9157	-20.7685	9.1988	2.920	21.679	9.199	10.407	22.196	-0.32	91.24	9	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm18	23	Dummy-0001	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	24	Take 001-0020	0.0	20.0	21	56	51	1.6033	-4.7030	-7.0666	3.983	27.792	29.696	57.275	51.969	4.91	78.90	20	facechange,leftbackskirt1,leftfrontskirt2,rightfrontskirt1,root
+chrm18	25	Take 001-0021	0.0	20.0	21	61	51	-19.5356	12.9256	45.9422	19.913	12.927	47.905	60.998	12.929	-41.04	65.98	15	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm18	26	Take 001-0022	0.0	25.0	26	61	51	0.0000	0.0000	0.0000	7.614	18.151	48.350	98.793	36.293	4.91	78.90	26	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm18	27	Take 001-0023	0.0	25.0	26	61	51	-7.6139	13.1198	-21.0806	7.614	15.987	41.534	92.864	40.183	25.99	65.78	26	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm18	28	Take 001-0024	0.0	52.0	53	62	52	0.0000	0.0000	0.0000	4.380	40.921	35.703	74.678	93.705	4.91	78.90	51	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm18	29	Take 001-0025	0.0	39.0	40	55	51	0.0000	0.0000	0.0000	7.210	26.098	10.689	31.234	70.339	4.91	78.90	39	facechange,leftbackskirt1,leftfrontskirt2,root
+chrm18	30	Take 001-0026	0.0	41.0	42	61	51	-3.8870	1.6238	-14.1555	4.500	71.706	82.956	151.585	144.657	18.59	76.76	39	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm18	31	Take 001-0027	0.0	26.0	27	53	49	0.0000	0.0000	0.0000	8.632	13.584	40.407	103.960	39.752	-11.22	70.92	27	facechange,leftbackskirt1,rightbackskirt1,root
+chrm18	32	Take 001-0028	0.0	20.0	21	61	51	-0.0335	1.6040	1.4495	0.034	2.455	4.996	11.138	6.488	-0.32	91.25	19	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm18	33	Take 001-0029	0.0	53.0	54	55	49	-0.5857	-25.4602	-10.8212	7.372	101.323	50.140	184.122	309.408	-0.40	96.38	52	facechange,leftbackskirt1,leftfrontskirt1,rightbackskirt1,rightfrontskirt1,root
+chrm18	34	Take 001-0030	0.0	28.0	29	61	51	0.0000	0.0000	0.0000	7.872	12.342	20.815	54.654	25.845	4.91	78.90	29	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm18	35	Take 001-0031	0.0	20.0	21	61	51	-7.4618	11.1144	-18.4999	7.462	17.882	25.654	45.060	31.673	23.41	67.79	21	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm18	36	Take 001-0032	0.0	34.0	35	53	51	0.0000	0.0000	0.0000	17.937	14.850	22.001	84.428	29.199	4.91	78.90	35	facechange,root
+chrm18	37	Take 001-0033	0.0	41.0	42	61	51	0.0405	0.0017	-0.1786	4.265	40.835	18.051	55.031	81.572	4.91	78.90	43	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm18	38	Dummy-0002	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	39	Take 001-0034	0.0	34.0	35	61	51	0.0000	0.0000	0.0000	17.912	16.134	22.001	75.449	31.847	-0.32	91.25	35	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm18	40	Dummy-0003	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	41	Take 001-0035	0.0	45.0	46	61	51	0.0000	0.0000	0.0000	9.039	41.319	11.609	45.836	82.555	4.91	78.90	46	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm18	42	Dummy-0004	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	43	Take 001-0036	0.0	45.0	46	60	51	0.0000	0.0000	0.0000	4.464	16.764	53.507	130.377	80.246	4.91	78.90	45	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightfrontskirt1,rightfrontskirt2,root
+chrm18	44	Dummy-0005	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	45	Take 001-0037	0.0	25.0	26	61	51	-4.7919	14.2818	-0.3438	4.792	62.900	37.864	76.273	112.303	5.25	64.62	26	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm18	46	Dummy-0006	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	47	Dummy-0007	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	48	Dummy-0008	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	49	Dummy-0009	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	50	Dummy-0010	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	51	Dummy-0011	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	52	Dummy-0012	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	53	Dummy-0013	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	54	Dummy-0014	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	55	Dummy-0015	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	56	Dummy-0016	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	57	Dummy-0017	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	58	Dummy-0018	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	59	Dummy-0019	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	60	Dummy-0020	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	61	Dummy-0021	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	62	Dummy-0022	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	63	Dummy-0023	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	64	Dummy-0024	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	65	Dummy-0025	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	66	Dummy-0026	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	67	Dummy-0027	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	68	Dummy-0028	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	69	Dummy-0029	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	70	Dummy-0030	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	71	Dummy-0031	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	72	Dummy-0032	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	73	Dummy-0033	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	74	Dummy-0034	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm18	75	Dummy-0035	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	0	Take 001	0.0	63.0	64	55	53	-7.7867	-4.5488	6.2847	16.679	118.365	15.660	71.317	356.998	-1.47	77.92	61	facechange,root
+chrm19	1	Take 001-0000	0.0	23.0	24	56	54	0.0198	-18.3073	13.4421	0.045	20.750	15.158	16.845	23.108	-10.03	87.13	13	facechange,root
+chrm19	2	Take 001-0001	0.0	20.0	21	54	52	-6.4113	4.3191	-7.6714	8.931	8.143	22.655	43.091	11.696	37.60	62.36	14	facechange,root
+chrm19	3	Take 001-0002	0.0	89.0	90	54	52	5.7484	4.2538	29.1172	7.234	119.866	37.987	49.461	291.080	-14.73	71.74	67	facechange,root
+chrm19	4	Take 001-0003	0.0	20.0	21	54	52	2.2951	-10.6668	2.8001	4.580	12.637	4.333	8.896	14.505	-13.84	78.14	11	facechange,root
+chrm19	5	Take 001-0004	0.0	52.0	53	54	52	0.0138	-68.3471	-16.7550	0.078	74.307	32.262	77.474	312.728	17.72	80.18	47	facechange,root
+chrm19	6	Take 001-0005	0.0	59.0	60	54	52	0.0014	-90.0727	-11.4308	0.022	102.984	12.358	13.399	146.075	-1.30	102.33	49	facechange,root
+chrm19	7	Take 001-0006	0.0	34.0	35	54	52	-0.0026	-60.3395	4.7525	0.003	63.218	5.031	5.293	66.456	7.40	102.34	28	facechange,root
+chrm19	8	Take 001-0007	0.0	10.0	11	54	52	0.0000	0.0000	0.0000	2.969	0.000	2.978	13.805	0.000	3.64	76.31	11	facechange,root
+chrm19	9	Take 001-0008	0.0	36.0	37	54	52	-14.8619	-67.8846	-53.5312	15.282	67.885	60.576	78.536	129.370	-7.90	79.59	33	facechange,root
+chrm19	10	Take 001-0009	0.0	30.0	31	54	52	10.5801	-10.5023	4.4209	11.639	15.319	11.518	30.128	42.718	-6.16	84.55	22	facechange,root
+chrm19	11	Take 001-0010	0.0	33.0	34	54	52	-0.9657	-9.9321	4.9287	6.042	18.447	10.413	45.997	67.113	7.47	75.91	22	facechange,root
+chrm19	12	Take 001-0011	0.0	22.0	23	54	52	1.5289	43.4592	23.5244	1.531	52.009	56.385	135.951	144.332	-22.01	10.52	18	facechange,root
+chrm19	13	Take 001-0012	0.0	49.0	50	55	54	0.0000	0.1463	0.0000	0.000	4.251	0.000	0.000	8.626	1.00	79.39	49	root
+chrm19	14	Take 001-0013	0.0	15.0	16	54	52	0.0010	-2.6388	-2.9230	0.011	8.118	7.390	26.105	28.827	2.75	81.03	16	facechange,root
+chrm19	15	Take 001-0014	0.0	30.0	31	54	52	0.0000	0.0000	0.0000	0.862	15.174	20.423	69.609	77.154	1.00	79.39	31	facechange,root
+chrm19	16	Take 001-0015	0.0	25.0	26	54	52	0.0000	0.0000	0.0000	0.320	30.966	28.019	55.497	99.243	1.00	79.39	26	facechange,root
+chrm19	17	Take 001-0016	0.0	22.0	23	54	52	0.0000	0.0000	0.0000	47.331	35.581	0.630	94.601	108.060	1.00	79.39	23	facechange,root
+chrm19	18	Take 001-0017	0.0	22.0	23	54	52	0.0000	0.0000	0.0000	59.976	35.574	0.637	119.779	109.364	1.00	79.39	23	facechange,root
+chrm19	19	Dummy	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	20	Take 001-0018	0.0	62.0	63	54	52	0.0000	0.0000	0.0000	14.926	47.046	14.898	76.751	184.902	1.00	79.39	61	facechange,root
+chrm19	21	Dummy-0000	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	22	Take 001-0019	0.0	18.0	19	54	52	3.1080	-23.2570	7.8817	3.122	24.166	8.242	9.982	24.681	0.38	96.38	19	facechange,root
+chrm19	23	Dummy-0001	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	24	Take 001-0020	0.0	24.0	25	54	52	0.0000	0.0000	0.0000	10.013	18.060	37.752	87.187	39.158	1.00	79.39	25	facechange,root
+chrm19	25	Take 001-0021	0.0	20.0	21	54	52	4.9300	18.3520	55.0819	9.036	19.555	57.090	63.296	21.598	-54.08	61.04	20	facechange,root
+chrm19	26	Take 001-0022	0.0	40.0	41	62	52	0.0000	0.0000	0.0000	15.066	51.833	61.254	230.929	152.625	1.00	79.39	38	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm19	27	Take 001-0023	0.0	25.0	26	62	52	-0.5066	27.4309	-22.4302	2.171	27.431	43.785	75.127	53.191	23.43	51.96	25	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm19	28	Take 001-0024	0.0	35.0	36	62	52	-1.8772	24.1884	-37.7988	13.372	30.139	37.799	75.557	57.473	38.80	55.21	36	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm19	29	Take 001-0025	0.0	38.0	39	54	52	0.0000	0.0000	0.0000	11.494	34.965	36.638	150.093	106.495	1.00	79.39	37	facechange,root
+chrm19	30	Take 001-0026	0.0	37.0	38	54	52	0.0000	0.0000	0.0000	31.639	32.897	36.909	120.721	97.093	1.00	79.39	37	facechange,root
+chrm19	31	Take 001-0027	0.0	38.0	39	54	52	0.0000	0.0000	0.0000	16.768	15.335	33.204	110.848	31.104	1.00	79.39	39	facechange,root
+chrm19	32	Dummy-0002	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	33	Take 001-0028	0.0	37.0	38	54	52	-0.0005	0.9515	1.5111	3.198	25.898	30.916	63.062	74.269	-0.39	91.90	36	facechange,root
+chrm19	34	Dummy-0003	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	35	Take 001-0029	0.0	25.0	26	54	52	0.0000	0.0000	0.0000	5.924	24.347	45.564	93.858	49.054	1.00	79.39	26	facechange,root
+chrm19	36	Take 001-0030	0.0	30.0	31	54	52	-1.4520	12.7843	-29.6618	1.452	86.041	35.540	114.830	186.461	30.66	66.61	31	facechange,root
+chrm19	37	Take 001-0031	0.0	15.0	16	54	52	0.0000	0.0000	0.0000	1.763	5.503	11.542	31.473	20.687	1.00	79.39	16	facechange,root
+chrm19	38	Take 001-0032	0.0	15.0	16	54	52	0.0000	5.5032	4.3024	0.000	5.503	19.624	39.783	6.832	-3.30	73.89	15	facechange,root
+chrm19	39	Take 001-0033	0.0	33.0	34	54	52	0.0000	4.0327	2.4186	10.856	16.737	34.266	75.192	39.600	-1.42	75.36	34	facechange,root
+chrm19	40	Dummy-0004	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	41	Take 001-0034	0.0	30.0	31	62	52	0.0000	0.0000	0.0000	4.931	40.092	63.031	142.988	80.184	1.00	79.39	31	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm19	42	Dummy-0005	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	43	Take 001-0035	0.0	31.0	32	62	52	0.0000	0.0000	0.0000	8.644	31.835	56.568	116.412	71.401	1.00	79.39	32	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root
+chrm19	44	Dummy-0006	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	45	Dummy-0007	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	46	Take 001-0036	0.0	30.0	31	54	52	0.0000	0.0000	0.0000	2.831	2.390	7.845	20.312	7.395	1.00	79.39	31	facechange,root
+chrm19	47	Take 001-0037	0.0	26.0	27	54	52	48.7215	2.5961	-0.1318	65.764	68.269	9.381	93.111	141.479	1.13	76.80	27	facechange,root
+chrm19	48	Take 001-0038	0.0	26.0	27	54	52	-59.5884	1.2434	-3.9264	70.785	73.520	14.229	97.239	150.553	4.93	78.15	27	facechange,root
+chrm19	49	Take 001-0039	0.0	30.0	31	54	52	1.9210	0.8563	0.5551	3.932	3.402	9.465	23.465	8.560	-0.62	98.43	30	facechange,root
+chrm19	50	Take 001-0040	0.0	43.0	44	54	52	0.0000	0.0000	0.0000	9.205	1.251	45.709	99.001	3.211	1.00	79.39	42	facechange,root
+chrm19	51	Dummy-0008	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	52	Dummy-0009	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	53	Dummy-0010	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	54	Dummy-0011	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	55	Dummy-0012	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	56	Dummy-0013	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	57	Dummy-0014	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	58	Dummy-0015	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	59	Dummy-0016	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	60	Dummy-0017	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	61	Dummy-0018	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	62	Dummy-0019	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	63	Dummy-0020	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	64	Dummy-0021	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	65	Dummy-0022	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	66	Dummy-0023	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	67	Dummy-0024	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	68	Dummy-0025	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	69	Dummy-0026	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	70	Dummy-0027	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	71	Dummy-0028	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	72	Dummy-0029	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	73	Dummy-0030	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	74	Dummy-0031	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm19	75	Dummy-0032	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	0	Take 001	0.0	63.0	64	62	55	0.0000	0.0000	0.0000	16.610	132.989	17.649	92.296	429.296	5.27	69.89	64	facechange,leftbackskirt1,leftfrontskirt1,rightbackskirt1,rightfrontskirt1,root,wapon_controll_r
+chrm02	1	Take 001-0000	0.0	23.0	24	57	55	0.0000	0.0000	0.0000	0.099	13.732	16.600	33.935	40.963	5.27	69.89	24	facechange,root
+chrm02	2	Take 001-0001	0.0	22.0	23	58	55	0.0000	0.0000	0.0000	10.871	16.258	34.387	76.750	33.099	5.27	69.89	23	facechange,root,wapon_controll_r
+chrm02	3	Take 001-0002	0.0	93.0	94	60	55	0.0000	0.0000	0.0000	3.787	119.867	47.964	96.594	326.508	5.27	69.89	86	facechange,leftfrontskirt1,rightfrontskirt1,root,wapon_controll_r
+chrm02	4	Take 001-0003	0.0	20.0	21	59	55	0.0000	0.0000	0.0000	13.132	7.282	41.043	98.914	16.238	5.27	69.89	21	facechange,leftfrontskirt2,root,wapon_controll_r
+chrm02	5	Take 001-0004	0.0	49.0	50	58	55	0.0122	-66.2904	-21.2548	0.019	84.677	32.348	72.096	342.309	17.73	78.13	48	facechange,root,wapon_controll_r
+chrm02	6	Take 001-0005	0.0	59.0	60	66	55	-0.0835	-57.6361	-17.9961	0.259	102.982	18.789	19.166	188.826	5.27	69.89	55	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root,wapon_controll_r
+chrm02	7	Take 001-0006	0.0	34.0	35	66	55	-0.0873	-27.8955	6.8760	0.259	63.224	10.142	14.841	114.678	5.27	69.89	35	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root,wapon_controll_r
+chrm02	8	Take 001-0007	0.0	10.0	11	59	55	0.0000	0.0000	0.0000	6.971	0.000	7.130	21.794	0.000	-0.26	79.43	11	facechange,leftbackskirt1,rightbackskirt1,root
+chrm02	9	Take 001-0008	0.0	36.0	37	66	55	1.1684	-57.1370	-66.6981	32.354	67.805	73.745	152.830	133.734	5.27	69.89	37	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root,wapon_controll_r
+chrm02	10	Take 001-0009	0.0	30.0	31	66	55	0.0000	0.0000	0.0000	1.071	27.577	42.112	89.955	87.974	5.27	69.89	31	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root,wapon_controll_r
+chrm02	11	Take 001-0010	0.0	33.0	34	66	55	0.0000	0.0000	0.0000	0.095	18.564	21.783	83.639	105.450	5.27	69.89	34	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root,wapon_controll_r
+chrm02	12	Take 001-0011	0.0	22.0	23	58	55	-0.0010	66.6418	29.2415	0.061	66.642	63.180	152.021	159.741	-22.01	10.52	23	facechange,root,wapon_controll_r
+chrm02	13	Take 001-0012	0.0	42.0	43	57	55	0.0000	0.0000	0.0000	1.548	3.729	2.941	6.884	7.437	5.27	69.89	43	facechange,root
+chrm02	14	Take 001-0013	0.0	15.0	16	58	55	0.0033	-5.2763	-6.3524	0.069	16.238	16.067	56.721	57.652	-1.63	73.59	17	facechange,leftfrontskirt1,root
+chrm02	15	Take 001-0014	0.0	10.0	11	57	55	0.0000	0.0000	0.0000	0.069	10.272	16.164	61.415	38.147	-1.63	73.59	11	facechange,root
+chrm02	16	Take 001-0015	0.0	23.0	24	57	55	0.0000	0.0000	0.0000	6.630	39.866	32.218	81.143	121.173	5.27	69.89	22	facechange,root
+chrm02	17	Take 001-0016	0.0	24.0	25	57	55	0.0000	0.0000	0.0000	32.530	39.495	11.361	73.583	124.929	5.27	69.89	20	facechange,root
+chrm02	18	Take 001-0017	0.0	24.0	25	57	55	0.0000	0.0000	0.0000	23.414	46.141	8.360	57.900	138.229	5.27	69.89	25	facechange,root
+chrm02	19	Take 001-0018	0.0	9.0	10	57	55	2.6070	-3.7013	6.9009	2.607	13.520	20.520	35.049	23.377	-1.63	73.59	10	facechange,root
+chrm02	20	Take 001-0019	0.0	53.0	54	57	55	0.0000	0.0000	0.0000	3.718	67.707	13.374	40.351	263.295	5.27	69.89	54	facechange,root
+chrm02	21	Dummy	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	22	Take 001-0020	0.0	17.0	18	66	55	0.0340	-17.4055	9.7483	2.514	19.188	10.108	11.956	20.703	-0.40	96.38	18	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root,wapon_controll_r
+chrm02	23	Dummy-0000	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	24	Take 001-0021	0.0	24.0	25	66	55	0.0000	0.0000	0.0000	2.481	6.600	21.364	45.890	14.733	5.27	69.89	25	facechange,leftbackskirt1,leftbackskirt2,leftfrontskirt1,leftfrontskirt2,rightbackskirt1,rightbackskirt2,rightfrontskirt1,rightfrontskirt2,root,wapon_controll_r
+chrm02	25	Take 001-0022	0.0	20.0	21	58	55	2.9037	0.7905	15.1490	4.775	0.792	16.517	23.139	0.799	-9.88	69.10	21	facechange,root,wapon_controll_r
+chrm02	26	Take 001-0023	0.0	40.0	41	57	55	0.0000	0.0000	0.0000	8.349	37.705	44.765	119.111	104.727	5.27	69.89	41	facechange,root
+chrm02	27	Take 001-0024	0.0	36.0	37	57	55	-1.4470	20.0180	-27.7491	6.700	29.657	37.285	62.469	76.135	33.02	49.87	28	facechange,root
+chrm02	28	Take 001-0025	0.0	31.0	32	58	55	-1.5236	26.1591	-37.2794	3.534	72.973	42.842	112.340	187.881	42.55	43.73	32	facechange,leftfrontskirt1,root
+chrm02	29	Take 001-0026	0.0	32.0	33	58	55	0.0000	0.0000	0.0000	6.550	35.852	29.445	61.857	97.900	5.27	69.89	32	facechange,rightfrontskirt1,root
+chrm02	30	Take 001-0027	0.0	34.0	35	57	55	0.0000	0.0000	0.0000	4.024	19.384	35.278	72.282	38.729	5.27	69.89	35	facechange,root
+chrm02	31	Take 001-0028	0.0	24.0	25	58	55	0.0000	0.0000	0.0000	7.915	32.772	58.054	144.211	65.545	5.27	69.89	23	facechange,leftfrontskirt1,root
+chrm02	32	Take 001-0029	0.0	37.0	38	57	55	0.0000	0.0000	0.0000	18.719	13.316	24.140	81.102	44.604	5.27	69.89	36	facechange,root
+chrm02	33	Take 001-0030	0.0	36.0	37	57	55	0.1237	0.9667	1.5115	3.962	15.323	13.038	29.265	29.688	-0.40	96.38	36	facechange,root
+chrm02	34	Take 001-0031	0.0	20.0	21	59	55	0.1237	0.9667	1.5115	2.516	18.520	16.722	34.427	48.086	-0.40	96.38	20	facechange,rightfrontskirt1,root,wapon_controll_r
+chrm02	35	Take 001-0032	0.0	21.0	22	58	55	0.0000	0.0000	0.0000	2.227	31.884	47.617	95.178	69.215	5.27	69.89	22	facechange,leftfrontskirt1,root
+chrm02	36	Take 001-0033	0.0	26.0	27	59	55	2.2267	14.4280	-41.7011	13.579	21.585	41.701	85.227	32.422	46.97	55.46	27	facechange,root,wapon_controll_l,wapon_controll_r
+chrm02	37	Take 001-0034	0.0	31.0	32	57	55	0.0000	0.0000	0.0000	3.945	27.201	61.238	123.488	62.453	5.27	69.89	32	facechange,root
+chrm02	38	Dummy-0001	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	39	Dummy-0002	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	40	Dummy-0003	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	41	Take 001-0035	0.0	30.0	31	60	55	-2.6620	0.7294	16.0402	12.056	8.499	34.038	61.333	26.913	-10.77	69.16	31	facechange,leftbackskirt1,leftfrontskirt1,root,wapon_controll_l
+chrm02	42	Dummy-0004	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	43	Take 001-0036	0.0	31.0	32	60	56	0.0000	0.0000	0.0000	0.054	9.473	20.484	40.875	24.990	5.27	69.89	32	facechange,leftdownhair1,root,wapon_controll_l
+chrm02	44	Dummy-0005	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	45	Take 001-0037	0.0	35.0	36	58	55	0.0000	0.0000	0.0000	2.406	13.639	19.383	51.242	34.493	5.27	69.89	36	facechange,leftdownhair1,root
+chrm02	46	Dummy-0006	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	47	Dummy-0007	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	48	Take 001-0038	0.0	24.0	25	56	55	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	facechange
+chrm02	49	Dummy-0008	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	50	Dummy-0009	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	51	Dummy-0010	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	52	Dummy-0011	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	53	Dummy-0012	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	54	Dummy-0013	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	55	Dummy-0014	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	56	Dummy-0015	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	57	Dummy-0016	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	58	Dummy-0017	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	59	Dummy-0018	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	60	Dummy-0019	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	61	Dummy-0020	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	62	Dummy-0021	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	63	Dummy-0022	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	64	Dummy-0023	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	65	Dummy-0024	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	66	Dummy-0025	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	67	Dummy-0026	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	68	Dummy-0027	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	69	Dummy-0028	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	70	Dummy-0029	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	71	Dummy-0030	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	72	Dummy-0031	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	73	Dummy-0032	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	74	Dummy-0033	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	
+chrm02	75	Dummy-0034	0.0	0.0	1	0	0	0.0000	0.0000	0.0000	0.000	0.000	0.000	0.000	0.000	0.00	0.00	0	

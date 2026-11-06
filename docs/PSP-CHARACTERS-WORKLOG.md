@@ -592,3 +592,50 @@ flash cell in the 3×2 layout, and 4 costume cells) that sit convincingly beside
 the owner stopped the run and will continue it. Turning it into shipped art needs two decisions
 from the owner: whether AI-made art is tracked in `assets/psp/chibi/` (or generated once into
 `psp-data/`), and which pose set to keep.
+
+---
+
+# PARKED (owner, 2026-11-06)
+
+The owner played the build and the result is not good enough to ship. **This branch is parked for
+the future; do not continue the port here without a new order.** The branch is pushed so the work
+is not lost. Everything below this line is the state as handed over.
+
+## The owner's findings, from playing the build
+
+1. **Shadows are wrong: the new characters render black.** The PC cast receives the stage's
+   lighting and shadowing normally, the three do not. Not investigated. The first places to look:
+   the converted model's normals and how the mesh is bound (`src/psp/psp_model.cpp`, the
+   `xm::Model` it writes), the skinned-normal path, and the outline/NPR passes in
+   `src/render/npr_normals.h` and `shadow_map.h` — the converted `.X` is the only model in the
+   build that did not come from the original data, so it is the first suspect.
+2. **The animations are wrong.** The owner's read is that the PSP's animation indexing is different
+   or that we interpreted it wrongly. This matches what the study found: the PSP's row→motion
+   selection (`FUN_0001a228`) was never decoded, so `src/psp/psp_take_table.h` maps PC state → PSP
+   take from *visual labels*, not from the game's own rule. The labels are honest but the mapping is
+   a hand judgement (tier 6), so wrong takes in the wrong states are expected. Fixing this properly
+   means decoding that function, not re-labelling.
+3. **Okonogi holds the wrong weapon: a camera instead of the scissors.** This is the documented
+   D-14 limit showing: the hand prop comes from the *borrowed* combo's item — Okonogi borrows
+   Tomitake, whose weapon is the camera. The PSP weapon models were never converted (their GMO
+   vertex type `0x180011a3` has no reader), so no PSP weapon can be drawn in the hand at all.
+
+## What remains to be done, in the order that would matter
+
+1. Decode the PSP's row→motion selection, then rebuild `psp_take_table.h` from it instead of labels.
+2. Find and fix the black shading: normals/skinning in the converted model, or the shadow pass's
+   treatment of it.
+3. Convert the PSP weapon GMOs (add the unweighted vertex type to the GMO→`.X` converter) and hang
+   them on the PROPS bones; Miyoko needs a decision (she has no weapon model in the PSP data).
+4. Then, and only then, the rest: voices (VAG), expressions (the head atlas), the real PSP item
+   data (today every PSP weapon wears the dispatch combo's item), and the 12 combos' differentiation
+   (D-14).
+
+## What was saved
+
+- `docs/psp/research/` — the PSP version map (resources, data tables, code map) and, in
+  [`notes/`](psp/research/notes/), the complete study notes, the per-row table, the take labels and
+  the 7305 named pack entries.
+- `tools/asset-tools/psp-research/` — the Python readers that produced all of it.
+- [`psp/research/LOCAL-DATA.md`](psp/research/LOCAL-DATA.md) — what was left on disk, where, and
+  how to regenerate it.

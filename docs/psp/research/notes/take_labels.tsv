@@ -1,0 +1,305 @@
+fighter	take_index	take_name	frames	root_dx	root_dy	root_dz	label	confidence	notes
+17	0	Take 001	64	0.00	0.00	0.00	jump (full arc)	high	airborne ~38 frames, root peaks ~132 units up, arms up at apex; same on all 4 rigs
+17	1	Take 001-0000	24	0.00	0.00	0.00	bow/bend forward	medium	bends 60-72 deg forward and returns to the start pose; same shape on all 4 rigs
+17	2	Take 001-0001	23	0.00	0.00	0.00	crouch	medium	root drops 20-24 units, knees bend, hands toward the ground, returns to idle
+17	3	Take 001-0002	94	0.00	0.00	0.00	knockdown+down+getup	high	90-94 frames: falls, lies, kip-up through 160 deg pitch, stands; all 4 rigs
+17	4	Take 001-0003	21	0.00	0.00	0.00	duck/dodge	medium	20-21 frames, crouches with a leg lift, returns to idle
+17	5	Take 001-0004	50	0.01	-66.30	-21.25	knockdown (launched, on back)	high	ends lying (root -66 y), body flips through ~168 deg, travels -21 z; all 4 rigs
+17	6	Take 001-0005	60	-0.08	-65.39	-13.43	down (stays down, KO candidate)	medium	ends lying at ~100 deg pitch with no getup inside the take; 55-60 frames
+17	7	Take 001-0006	35	-0.08	-35.65	11.44	knockdown (to knees/sit)	medium	root falls 28-60 units, ends at ~48 deg pitch, still partly upright
+17	8	Take 001-0007	11	0.00	0.00	0.00	turn 180	high	11 frames, no travel; the root bone rotates a full 180 deg (measured on chrm17)
+17	9	Take 001-0008	37	1.18	-64.88	-62.14	knockdown (face down, slides)	high	root travels -53..-67 z and -57..-68 y, ends face down at ~104-116 deg
+17	10	Take 001-0009	31	0.00	0.00	0.00	melee swing	medium	an arm swings across the body and returns; hands reach 46-59 units forward
+17	11	Take 001-0010	34	-1.38	-2.37	-1.14	run cycle	medium	forward lean 27-46 deg, knees high, zero net root travel
+17	12	Take 001-0011	23	-0.00	66.65	29.24	getup	high	starts on the ground at ~96-155 deg pitch, ends standing; root rises 43-67 units
+17	13	Take 001-0012	50	0.01	0.02	-0.01	idle/stand	high	the only long take with no root and no foot motion (43-65 frames)
+17	14	Take 001-0013	16	0.00	-5.28	-6.35	run cycle	medium	16-frame cycle, 19-45 deg lean; half the length of 11, so twice the cadence
+17	15	Take 001-0014	12	0.01	-7.51	-7.34	walk cycle	medium	11-33 frame locomotion cycle with less lean than 14
+17	16	Take 001-0015	24	-0.30	-5.61	2.89	jump/leap (airborne pose)	medium	air 9 frames, body angled with legs trailing
+17	17	Take 001-0016	25	-0.80	-2.47	0.11	run cycle	low	air 8 frames, crouch start, run stride
+17	18	Take 001-0017	25	0.05	-2.48	2.59	run cycle	low	air 8 frames, same family as 17
+17	19	Take 001-0018	10	2.60	4.05	2.33	stop/brake from run	medium	10 frames: starts in a running stride at 39 deg lean, ends standing
+17	20	Take 001-0019	54	0.00	0.00	0.00	run cycle	low-medium	54 frames, air 34, starts and ends on the same pose, no travel
+17	21	Dummy	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	22	Take 001-0020	18	0.04	-17.39	9.74	air fall/dive	medium	airborne all 18 frames, body horizontal, drifts +10 z and -17 y
+17	23	Dummy-0000	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	24	Take 001-0021	25	0.00	0.00	0.00	taunt/gesture	low	25 frames in place, arms move, legs still, loops
+17	25	Take 001-0022	21	2.90	8.54	10.59	dash/lunge forward	low	travels +11 z, rises 9 y, ends standing
+17	26	Take 001-0023	41	0.00	0.00	0.00	melee lunge/thrust	medium	41 frames: deep forward lunge with an arm out, returns to idle
+17	27	Take 001-0024	37	-1.45	20.74	-32.33	drift back and rise	low	starts crouched at 39 deg, rises, travels -32 z
+17	28	Take 001-0025	32	-1.54	30.61	-43.04	hit reaction (flail)	low	fastest hand travel in the whole table (105 units/frame), +31 y, -43 z
+17	29	Take 001-0026	45	2.60	4.05	2.33	dive/roll and get up	medium	45 frames: run, dive, lie, get up; pitch reaches 106 deg
+17	30	Take 001-0027	35	0.00	0.00	0.00	in-place motion, unidentified	low	35 frames in place, feet planted, loops
+17	31	Take 001-0028	38	2.59	12.43	9.89	dive/roll and get up	low	38 frames, air 16, pitch reaches 129 deg
+17	32	Take 001-0029	53	0.00	0.00	0.00	side step/flip (lateral)	medium	the only take with large lateral travel (57 units on X) and no net forward travel
+17	33	Take 001-0030	37	0.12	0.97	1.51	air attack (jump kick)	medium	airborne all 37 frames, legs kick, starts and ends in the air
+17	34	Take 001-0031	21	0.12	0.97	1.51	air attack (jump kick)	low	airborne all 21 frames, same air start pose
+17	35	Take 001-0032	38	0.00	0.00	0.00	taunt/gesture	low	38 frames in place, arms up then down, loops
+17	36	Take 001-0033	25	0.00	0.00	0.00	in-place motion, unidentified	low	25 frames in place, feet planted
+17	37	Take 001-0034	32	0.00	0.00	0.00	bow/bend forward	low	32 frames, bends to 55 deg, returns
+17	38	Take 001-0035	35	0.00	0.00	0.00	in-place motion, unidentified	low	35 frames in place, loops
+17	39	Dummy-0001	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	40	Dummy-0002	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	41	Take 001-0036	71	0.00	0.00	0.00	in-place motion, unidentified	low	71 frames, loops; taunt or intro-like
+17	42	Dummy-0003	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	43	Take 001-0037	111	-0.54	-0.93	16.25	in-place motion, unidentified	low	111 frames, the longest take; intro / victory / hypermode candidate
+17	44	Dummy-0004	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	45	Take 001-0038	41	0.00	0.00	0.00	in-place motion, unidentified	low	41 frames in place
+17	46	Dummy-0005	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	47	Dummy-0006	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	48	Take 001-0039	25	0.00	0.00	0.00	upper-body pose (legs static)	medium	no root curve, feet static, only arms and torso; carries a facechange key
+17	49	Take 001-0040	46	0.00	0.00	0.00	in-place motion, unidentified	low	46 frames in place, arms and torso
+17	50	Dummy-0007	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	51	Take 001-0041	37	0.12	0.97	1.51	air attack (jump kick)	low	airborne all 37 frames, same air start pose
+17	52	Take 001-0042	31	0.00	0.00	0.00	static placeholder (no motion)	high	identical to 53-60 in every curve; 31 frames, no root curve
+17	53	Take 001-0043	31	0.00	0.00	0.00	static placeholder (no motion)	high	identical to 52 and 54-60
+17	54	Take 001-0044	31	0.00	0.00	0.00	static placeholder (no motion)	high	identical to 52-53 and 55-60
+17	55	Take 001-0045	31	0.00	0.00	0.00	static placeholder (no motion)	high	identical to 52-54 and 56-60
+17	56	Take 001-0046	31	0.00	0.00	0.00	static placeholder (no motion)	high	identical to 52-55 and 57-60
+17	57	Take 001-0047	31	0.00	0.00	0.00	static placeholder (no motion)	high	identical to 52-56 and 58-60
+17	58	Take 001-0048	31	0.00	0.00	0.00	static placeholder (no motion)	high	identical to 52-57 and 59-60
+17	59	Take 001-0049	31	0.00	0.00	0.00	static placeholder (no motion)	high	identical to 52-58 and 60
+17	60	Take 001-0050	31	0.00	0.00	0.00	static placeholder (no motion)	high	identical to 52-59
+17	61	Take 001-0051	51	0.00	0.00	0.00	in-place motion, unidentified	low	51 frames in place, bends to 55 deg
+17	62	Dummy-0008	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	63	Dummy-0009	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	64	Dummy-0010	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	65	Dummy-0011	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	66	Dummy-0012	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	67	Dummy-0013	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	68	Dummy-0014	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	69	Dummy-0015	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	70	Dummy-0016	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	71	Dummy-0017	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	72	Dummy-0018	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	73	Dummy-0019	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	74	Dummy-0020	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+17	75	Dummy-0021	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	0	Take 001	64	-8.85	-0.04	4.17	jump (full arc)	high	airborne ~38 frames, root peaks ~132 units up, arms up at apex; same on all 4 rigs
+18	1	Take 001-0000	24	-3.61	-3.11	13.32	bow/bend forward	medium	bends 60-72 deg forward and returns to the start pose; same shape on all 4 rigs
+18	2	Take 001-0001	21	0.19	3.46	-8.38	crouch	medium	root drops 20-24 units, knees bend, hands toward the ground, returns to idle
+18	3	Take 001-0002	90	0.32	-4.51	14.01	knockdown+down+getup	high	90-94 frames: falls, lies, kip-up through 160 deg pitch, stands; all 4 rigs
+18	4	Take 001-0003	20	-6.03	-19.53	0.66	duck/dodge	medium	20-21 frames, crouches with a leg lift, returns to idle
+18	5	Take 001-0004	50	0.01	-66.29	-21.25	knockdown (launched, on back)	high	ends lying (root -66 y), body flips through ~168 deg, travels -21 z; all 4 rigs
+18	6	Take 001-0005	55	0.00	-90.07	-11.43	down (stays down, KO candidate)	medium	ends lying at ~100 deg pitch with no getup inside the take; 55-60 frames
+18	7	Take 001-0006	35	-0.00	-60.35	4.75	knockdown (to knees/sit)	medium	root falls 28-60 units, ends at ~48 deg pitch, still partly upright
+18	8	Take 001-0007	11	1.39	0.00	-0.65	turn 180	high	11 frames, no travel; the root bone rotates a full 180 deg (measured on chrm17)
+18	9	Take 001-0008	37	-14.86	-63.21	-53.53	knockdown (face down, slides)	high	root travels -53..-67 z and -57..-68 y, ends face down at ~104-116 deg
+18	10	Take 001-0009	31	-0.21	-12.55	11.20	melee swing	medium	an arm swings across the body and returns; hands reach 46-59 units forward
+18	11	Take 001-0010	33	-1.38	-2.37	-1.14	run cycle	medium	forward lean 27-46 deg, knees high, zero net root travel
+18	12	Take 001-0011	22	0.06	47.03	17.64	getup	high	starts on the ground at ~96-155 deg pitch, ends standing; root rises 43-67 units
+18	13	Take 001-0012	65	0.00	0.00	0.00	idle/stand	high	the only long take with no root and no foot motion (43-65 frames)
+18	14	Take 001-0013	16	0.00	3.70	0.02	run cycle	medium	16-frame cycle, 19-45 deg lean; half the length of 11, so twice the cadence
+18	15	Take 001-0014	33	2.92	0.37	-7.34	walk cycle	medium	11-33 frame locomotion cycle with less lean than 14
+18	16	Take 001-0015	21	2.97	-1.52	-2.26	jump/leap (airborne pose)	low	air 10 frames
+18	17	Take 001-0016	25	0.00	0.00	0.00	jump/leap (airborne pose)	low	25 frames, in place, no air
+18	18	Take 001-0017	25	0.00	0.00	0.00	jump/leap (airborne pose)	low	25 frames, air 8
+18	19	Dummy	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	20	Take 001-0018	61	0.00	0.00	0.00	run cycle	low-medium	61 frames, air 7, returns to start pose
+18	21	Dummy-0000	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	22	Take 001-0019	19	2.92	-20.77	9.20	air fall/dive	medium	airborne all 19 frames, body horizontal, drifts +9 z and -21 y
+18	23	Dummy-0001	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	24	Take 001-0020	21	1.60	-4.70	-7.07	in-place motion, unidentified	low	21 frames in place
+18	25	Take 001-0021	21	-19.54	12.93	45.94	dash/lunge forward	low	travels +46 z and -20 y, never airborne
+18	26	Take 001-0022	26	0.00	0.00	0.00	taunt/gesture	medium	26 frames in place: steps, raises one arm overhead, returns
+18	27	Take 001-0023	26	-7.61	13.12	-21.08	drift back and rise	low	26 frames, -21 z, +13 y
+18	28	Take 001-0024	53	0.00	0.00	0.00	in-place motion, unidentified	low-medium	53 frames, loops, feet stay near the ground
+18	29	Take 001-0025	40	0.00	0.00	0.00	in-place motion, unidentified	low	40 frames, loops
+18	30	Take 001-0026	42	-3.89	1.62	-14.16	dive/roll and get up	medium	42 frames, air 17: dives flat, lies, rises to one knee, stands
+18	31	Take 001-0027	27	0.00	0.00	0.00	in-place motion, unidentified	low	27 frames in place, arm out to the side
+18	32	Take 001-0028	21	-0.03	1.60	1.45	air idle	medium	airborne all 18 frames, one leg tucked, almost no travel
+18	33	Take 001-0029	54	-0.59	-25.46	-10.82	knockdown (launched, on back)	low-medium	54 frames, air 38, pitch reaches 170 deg, ends -25 y
+18	34	Take 001-0030	29	0.00	0.00	0.00	in-place motion, unidentified	low	29 frames, loops
+18	35	Take 001-0031	21	-7.46	11.11	-18.50	drift back and rise	low	21 frames, -19 z, +11 y
+18	36	Take 001-0032	35	0.00	0.00	0.00	in-place motion, unidentified	low	35 frames, loops
+18	37	Take 001-0033	42	0.04	0.00	-0.18	in-place motion, unidentified	low	42 frames
+18	38	Dummy-0002	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	39	Take 001-0034	35	0.00	0.00	0.00	in-place motion, unidentified	low	35 frames, air 6, loops
+18	40	Dummy-0003	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	41	Take 001-0035	46	0.00	0.00	0.00	in-place motion, unidentified	low	46 frames, loops
+18	42	Dummy-0004	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	43	Take 001-0036	46	0.00	0.00	0.00	in-place motion, unidentified	low	46 frames, loops
+18	44	Dummy-0005	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	45	Take 001-0037	26	-4.79	14.28	-0.34	drift back and rise	low	26 frames, +14 y
+18	46	Dummy-0006	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	47	Dummy-0007	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	48	Dummy-0008	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	49	Dummy-0009	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	50	Dummy-0010	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	51	Dummy-0011	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	52	Dummy-0012	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	53	Dummy-0013	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	54	Dummy-0014	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	55	Dummy-0015	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	56	Dummy-0016	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	57	Dummy-0017	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	58	Dummy-0018	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	59	Dummy-0019	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	60	Dummy-0020	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	61	Dummy-0021	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	62	Dummy-0022	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	63	Dummy-0023	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	64	Dummy-0024	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	65	Dummy-0025	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	66	Dummy-0026	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	67	Dummy-0027	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	68	Dummy-0028	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	69	Dummy-0029	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	70	Dummy-0030	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	71	Dummy-0031	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	72	Dummy-0032	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	73	Dummy-0033	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	74	Dummy-0034	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+18	75	Dummy-0035	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	0	Take 001	64	-7.79	-4.55	6.28	jump (full arc)	high	airborne ~38 frames, root peaks ~132 units up, arms up at apex; same on all 4 rigs
+19	1	Take 001-0000	24	0.02	-18.31	13.44	bow/bend forward	medium	bends 60-72 deg forward and returns to the start pose; same shape on all 4 rigs
+19	2	Take 001-0001	21	-6.41	4.32	-7.67	crouch	medium	root drops 20-24 units, knees bend, hands toward the ground, returns to idle
+19	3	Take 001-0002	90	5.75	4.25	29.12	knockdown+down+getup	high	90-94 frames: falls, lies, kip-up through 160 deg pitch, stands; all 4 rigs
+19	4	Take 001-0003	21	2.30	-10.67	2.80	duck/dodge	medium	20-21 frames, crouches with a leg lift, returns to idle
+19	5	Take 001-0004	53	0.01	-68.35	-16.75	knockdown (launched, on back)	high	ends lying (root -66 y), body flips through ~168 deg, travels -21 z; all 4 rigs
+19	6	Take 001-0005	60	0.00	-90.07	-11.43	down (stays down, KO candidate)	medium	ends lying at ~100 deg pitch with no getup inside the take; 55-60 frames
+19	7	Take 001-0006	35	-0.00	-60.34	4.75	knockdown (to knees/sit)	medium	root falls 28-60 units, ends at ~48 deg pitch, still partly upright
+19	8	Take 001-0007	11	0.00	0.00	0.00	turn 180	high	11 frames, no travel; the root bone rotates a full 180 deg (measured on chrm17)
+19	9	Take 001-0008	37	-14.86	-67.88	-53.53	knockdown (face down, slides)	high	root travels -53..-67 z and -57..-68 y, ends face down at ~104-116 deg
+19	10	Take 001-0009	31	10.58	-10.50	4.42	melee swing	medium	an arm swings across the body and returns; hands reach 46-59 units forward
+19	11	Take 001-0010	34	-0.97	-9.93	4.93	run cycle	medium	forward lean 27-46 deg, knees high, zero net root travel
+19	12	Take 001-0011	23	1.53	43.46	23.52	getup	high	starts on the ground at ~96-155 deg pitch, ends standing; root rises 43-67 units
+19	13	Take 001-0012	50	-0.00	0.15	0.00	idle/stand	high	the only long take with no root and no foot motion (43-65 frames)
+19	14	Take 001-0013	16	0.00	-2.64	-2.92	run cycle	medium	16-frame cycle, 19-45 deg lean; half the length of 11, so twice the cadence
+19	15	Take 001-0014	31	0.00	0.00	0.00	walk cycle	medium	11-33 frame locomotion cycle with less lean than 14
+19	16	Take 001-0015	26	0.00	0.00	0.00	in-place motion, unidentified	low	26 frames in place
+19	17	Take 001-0016	23	0.00	0.00	0.00	crouch (held stance)	low	23 frames in place
+19	18	Take 001-0017	23	0.00	0.00	0.00	crouch (held stance)	low	23 frames in place
+19	19	Dummy	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	20	Take 001-0018	63	0.00	0.00	0.00	run cycle	low-medium	63 frames, air 4, loops
+19	21	Dummy-0000	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	22	Take 001-0019	19	3.11	-23.26	7.88	air fall/dive	medium	airborne all 19 frames, body horizontal, drifts +8 z and -23 y
+19	23	Dummy-0001	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	24	Take 001-0020	25	0.00	0.00	0.00	crouch (held stance)	low	25 frames in place
+19	25	Take 001-0021	21	4.93	18.35	55.08	dash/lunge forward	low-medium	travels +55 z and +18 y, never airborne
+19	26	Take 001-0022	41	0.00	0.00	0.00	melee lunge/thrust	low-medium	41 frames in place, deep forward lunge
+19	27	Take 001-0023	26	-0.51	27.43	-22.43	drift back and rise	low	26 frames, -22 z, +27 y
+19	28	Take 001-0024	36	-1.88	24.19	-37.80	drift back and rise	low	36 frames, -38 z, +24 y
+19	29	Take 001-0025	39	0.00	0.00	0.00	in-place motion, unidentified	low	39 frames, air 5, loops
+19	30	Take 001-0026	38	0.00	0.00	0.00	in-place motion, unidentified	low	38 frames, loops
+19	31	Take 001-0027	39	0.00	0.00	0.00	in-place motion, unidentified	low	39 frames, loops
+19	32	Dummy-0002	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	33	Take 001-0028	38	-0.00	0.95	1.51	air attack (jump kick)	low-medium	airborne 26 frames
+19	34	Dummy-0003	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	35	Take 001-0029	26	0.00	0.00	0.00	in-place motion, unidentified	low	26 frames, loops
+19	36	Take 001-0030	31	-1.45	12.78	-29.66	drift back and rise	low	31 frames, -30 z, +13 y, air 8
+19	37	Take 001-0031	16	0.00	0.00	0.00	in-place motion, unidentified	low	16 frames, loops
+19	38	Take 001-0032	16	0.00	5.50	4.30	in-place motion, unidentified	low	16 frames, +6 y
+19	39	Take 001-0033	34	0.00	4.03	2.42	in-place motion, unidentified	low	34 frames, +4 y
+19	40	Dummy-0004	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	41	Take 001-0034	31	0.00	0.00	0.00	in-place motion, unidentified	low	31 frames, loops
+19	42	Dummy-0005	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	43	Take 001-0035	32	0.00	0.00	0.00	in-place motion, unidentified	low	32 frames: crouches then extends an arm forward, returns
+19	44	Dummy-0006	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	45	Dummy-0007	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	46	Take 001-0036	31	0.00	0.00	0.00	in-place motion, unidentified	low	31 frames in place, arms extended
+19	47	Take 001-0037	27	48.72	2.60	-0.13	side step/flip (lateral)	medium	travels +49 units on X with no forward travel, 19 frames airborne, tumbles through 164 deg pitch and lands upright
+19	48	Take 001-0038	27	-59.59	1.24	-3.93	side step/flip (lateral)	medium	mirror of 47: -60 units on X, 18 frames airborne, tumbles through 176 deg
+19	49	Take 001-0039	31	1.92	0.86	0.56	air idle	low-medium	airborne all 31 frames, arms forward, legs run; almost no travel
+19	50	Take 001-0040	44	0.00	0.00	0.00	in-place motion, unidentified	low	44 frames, loops
+19	51	Dummy-0008	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	52	Dummy-0009	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	53	Dummy-0010	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	54	Dummy-0011	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	55	Dummy-0012	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	56	Dummy-0013	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	57	Dummy-0014	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	58	Dummy-0015	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	59	Dummy-0016	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	60	Dummy-0017	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	61	Dummy-0018	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	62	Dummy-0019	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	63	Dummy-0020	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	64	Dummy-0021	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	65	Dummy-0022	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	66	Dummy-0023	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	67	Dummy-0024	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	68	Dummy-0025	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	69	Dummy-0026	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	70	Dummy-0027	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	71	Dummy-0028	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	72	Dummy-0029	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	73	Dummy-0030	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	74	Dummy-0031	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+19	75	Dummy-0032	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	0	Take 001	64	0.00	0.00	0.00	jump (full arc)	high	airborne ~38 frames, root peaks ~132 units up, arms up at apex; same on all 4 rigs
+02	1	Take 001-0000	24	0.00	0.00	0.00	bow/bend forward	medium	bends 60-72 deg forward and returns to the start pose; same shape on all 4 rigs
+02	2	Take 001-0001	23	0.00	0.00	0.00	crouch	medium	root drops 20-24 units, knees bend, hands toward the ground, returns to idle
+02	3	Take 001-0002	94	0.00	0.00	0.00	knockdown+down+getup	high	90-94 frames: falls, lies, kip-up through 160 deg pitch, stands; all 4 rigs
+02	4	Take 001-0003	21	0.00	0.00	0.00	duck/dodge	medium	20-21 frames, crouches with a leg lift, returns to idle
+02	5	Take 001-0004	50	0.01	-66.29	-21.25	knockdown (launched, on back)	high	ends lying (root -66 y), body flips through ~168 deg, travels -21 z; all 4 rigs
+02	6	Take 001-0005	60	-0.08	-57.64	-18.00	down (stays down, KO candidate)	medium	ends lying at ~100 deg pitch with no getup inside the take; 55-60 frames
+02	7	Take 001-0006	35	-0.09	-27.90	6.88	knockdown (to knees/sit)	medium	root falls 28-60 units, ends at ~48 deg pitch, still partly upright
+02	8	Take 001-0007	11	0.00	0.00	0.00	turn 180	high	11 frames, no travel; the root bone rotates a full 180 deg (measured on chrm17)
+02	9	Take 001-0008	37	1.17	-57.14	-66.70	knockdown (face down, slides)	high	root travels -53..-67 z and -57..-68 y, ends face down at ~104-116 deg
+02	10	Take 001-0009	31	0.00	0.00	0.00	melee swing	medium	an arm swings across the body and returns; hands reach 46-59 units forward
+02	11	Take 001-0010	34	0.00	0.00	0.00	run cycle	medium	forward lean 27-46 deg, knees high, zero net root travel
+02	12	Take 001-0011	23	-0.00	66.64	29.24	getup	high	starts on the ground at ~96-155 deg pitch, ends standing; root rises 43-67 units
+02	13	Take 001-0012	43	0.00	0.00	0.00	idle/stand	high	the only long take with no root and no foot motion (43-65 frames)
+02	14	Take 001-0013	16	0.00	-5.28	-6.35	run cycle	medium	16-frame cycle, 19-45 deg lean; half the length of 11, so twice the cadence
+02	15	Take 001-0014	11	0.00	0.00	0.00	walk cycle	medium	11-33 frame locomotion cycle with less lean than 14
+02	16	Take 001-0015	24	0.00	0.00	0.00	jump/leap (airborne pose)	low	air 10 frames
+02	17	Take 001-0016	25	0.00	0.00	0.00	jump/leap (airborne pose)	low	25 frames, in place, no air
+02	18	Take 001-0017	25	0.00	0.00	0.00	jump/leap (airborne pose)	low	25 frames, air 8
+02	19	Take 001-0018	10	2.61	-3.70	6.90	stop/brake from run	low-medium	10 frames: starts in a running stride, ends standing
+02	20	Take 001-0019	54	0.00	0.00	0.00	run cycle	low-medium	54 frames, air 34, loops
+02	21	Dummy	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	22	Take 001-0020	18	0.03	-17.41	9.75	air fall/dive	medium	airborne all 18 frames, body horizontal
+02	23	Dummy-0000	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	24	Take 001-0021	25	0.00	0.00	0.00	taunt/gesture	low	25 frames in place, loops
+02	25	Take 001-0022	21	2.90	0.79	15.15	dash/lunge forward	low	21 frames, +15 z
+02	26	Take 001-0023	41	0.00	0.00	0.00	melee lunge/thrust	low-medium	41 frames, arm forward, returns to idle
+02	27	Take 001-0024	37	-1.45	20.02	-27.75	drift back and rise	low	37 frames, -28 z, +20 y
+02	28	Take 001-0025	32	-1.52	26.16	-37.28	hit reaction (flail)	low	fastest hand travel 105 units/frame, pitch reaches 144 deg
+02	29	Take 001-0026	33	0.00	0.00	0.00	in-place motion, unidentified	low	33 frames, loops
+02	30	Take 001-0027	35	0.00	0.00	0.00	in-place motion, unidentified	low	35 frames, loops
+02	31	Take 001-0028	25	0.00	0.00	0.00	in-place motion, unidentified	low	25 frames, loops
+02	32	Take 001-0029	38	0.00	0.00	0.00	in-place motion, unidentified	low	38 frames, pitch reaches 62 deg
+02	33	Take 001-0030	37	0.12	0.97	1.51	air attack (jump kick)	medium	airborne all 37 frames
+02	34	Take 001-0031	21	0.12	0.97	1.51	air attack (jump kick)	low	airborne all 21 frames
+02	35	Take 001-0032	22	0.00	0.00	0.00	in-place motion, unidentified	low	22 frames, loops
+02	36	Take 001-0033	27	2.23	14.43	-41.70	drift back and rise	low	27 frames, -42 z, +14 y
+02	37	Take 001-0034	32	0.00	0.00	0.00	in-place motion, unidentified	low	32 frames, loops
+02	38	Dummy-0001	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	39	Dummy-0002	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	40	Dummy-0003	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	41	Take 001-0035	31	-2.66	0.73	16.04	in-place motion, unidentified	low	31 frames, +16 z
+02	42	Dummy-0004	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	43	Take 001-0036	32	0.00	0.00	0.00	in-place motion, unidentified	low	32 frames: crouches then extends an arm forward, returns
+02	44	Dummy-0005	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	45	Take 001-0037	36	0.00	0.00	0.00	in-place motion, unidentified	low	36 frames, loops
+02	46	Dummy-0006	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	47	Dummy-0007	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	48	Take 001-0038	25	0.00	0.00	0.00	upper-body pose (legs static)	medium	no root curve, feet static, only arms and torso
+02	49	Dummy-0008	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	50	Dummy-0009	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	51	Dummy-0010	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	52	Dummy-0011	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	53	Dummy-0012	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	54	Dummy-0013	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	55	Dummy-0014	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	56	Dummy-0015	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	57	Dummy-0016	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	58	Dummy-0017	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	59	Dummy-0018	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	60	Dummy-0019	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	61	Dummy-0020	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	62	Dummy-0021	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	63	Dummy-0022	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	64	Dummy-0023	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	65	Dummy-0024	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	66	Dummy-0025	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	67	Dummy-0026	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	68	Dummy-0027	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	69	Dummy-0028	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	70	Dummy-0029	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	71	Dummy-0030	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	72	Dummy-0031	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	73	Dummy-0032	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	74	Dummy-0033	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
+02	75	Dummy-0034	1	0.00	0.00	0.00	dummy (no curves)	high	motion chunk with no bindings: nothing to play
