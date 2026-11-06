@@ -73,6 +73,9 @@ struct Options {
     std::string camera = "auto";   // auto|player|front|top|bounds
     bool        headless = false;  // no window/surface: offscreen captures only
     std::string install;           // dir holding daybreakXX.dat; auto-detected when empty
+    // --extract-psp=<iso>: collect the PSP version's files into psp-data/ and exit
+    // (docs/psp/README.md). It writes where --psp-data points, or beside the executable.
+    std::string extractPsp;
     bool        noCameraClamp = false;   // A/B switch for the arena eye clamp
     bool        noTextures = false;
     bool        fog        = false;   // opt-in: the DX9 reference renders unfogged
@@ -136,7 +139,8 @@ struct Options {
     std::string texturePack;
     // --psp-data=<folder>: the converted PSP data (D-3a). Interactive runs also mount one found
     // beside the executable; a verification run mounts only the folder it names here, so a
-    // psp-data that happens to sit next to the binary cannot change a capture.
+    // psp-data that happens to sit next to the binary cannot change a capture. This is the
+    // same folder `--extract-psp` writes, which is why the two share one option.
     std::string pspData;
     // --result-winner=<dir>[:weapon] with --screen=result: open the result screen on a finished
     // 1v1 that this fighter (blue) won against Rena 0 (red). Verification only — it is how the

@@ -103,7 +103,8 @@ void usage() {
         "  --language=<en|ja|auto>  menu and HUD labels; auto follows the system as a player's first run does\n"
         "  --texture-pack=<dir> PNGs at the game's paths, replacing its textures at any size\n"
         "  --psp-data=<dir>   the converted PSP data (Satoshi, Miyoko, Okonogi): adds its\n"
-        "                     data/ tree as an asset root and the three to the roster\n"
+        "                     data/ tree as an asset root and the three to the roster. This is\n"
+        "                     also where --extract-psp writes, else beside the executable\n"
         "  --result-winner=<dir>[:weapon]  with --screen=result: a finished 1v1 that this\n"
         "                     fighter won against Rena 0 (checks the post-match screen)\n"
         "  --story=<D41-0>    the script --screen=storyadv plays\n"
@@ -120,6 +121,9 @@ void usage() {
         "                     aim cross, desired-eye cross under --camera=arena)\n"
         "  --install=<dir>    use this game install's daybreakXX.dat bundles; when\n"
         "                     omitted, the install is inferred from the asset paths\n"
+        "  --extract-psp=<iso>  read a Higurashi Daybreak Portable ISO, verify every file\n"
+        "                     against assets/psp/manifest.txt, write the raw files and the\n"
+        "                     converted models into psp-data/, then exit\n"
         "  --no-camera-clamp  A/B switch: skip the arena eye's collision_camera clamp\n"
         "  --headless         no window, no surface, no swapchain: render straight to\n"
         "                     offscreen captures (needs --out). Lets verification run\n"
@@ -482,6 +486,7 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
                 return false;
             }
         }
+        else if (!(v = val("--extract-psp=")).empty()) o.extractPsp = v;
         else if (a == "--lock-taps") o.lockTaps = true;
         else if (a.rfind("--", 0) == 0) {
             error = "unknown option " + a;
@@ -585,7 +590,8 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
 // simply ignores them (input_backend's focus gate).
 static bool verificationRun(const Options& o) {
     return o.headless || !o.out.empty() || !o.script.empty() || !o.script2.empty() ||
-           o.match || o.versus || o.hudTest || o.bench > 0 || o.list;
+           o.match || o.versus || o.hudTest || o.bench > 0 || o.list ||
+           !o.extractPsp.empty();
 }
 
 // The update check never runs in a verification, capture or test launch (issue #100,

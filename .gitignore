@@ -33,7 +33,8 @@ Higurashi-Daybreak/
 local-data/harness/
 
 # The converted PSP data (issue #91): the extractor writes it from the player's own ISO, at the
-# game's own paths, beside the executable. The art is the rights holders' and never tracked.
+# game's own paths, beside the executable. Whole and in part it is the rights holders' data,
+# so only the file list in assets/psp/ is tracked.
 psp-data/
 
 # Generated research output; regenerate from decompiled/ and symbols/ when needed.
