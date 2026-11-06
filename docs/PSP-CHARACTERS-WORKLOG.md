@@ -564,3 +564,19 @@ run from the owner's ISO into `psp-data/`:
   combo's (cloned under the PSP id) and the PSP's weapon-specific `.atp` rows land in states the
   borrowed body rarely enters. The slots are selectable and playable; the differences are in
   animation and in a handful of hit records. Named as a D-2 cost, not hidden.
+
+### 2026-11-06 — coordinator: end-to-end check through the real front end
+
+Ran the actual menu path with the PSP data mounted and `tests/scripts/psp-select.txt` (P1 picks
+Satoshi and confirms):
+
+```
+title (0) → select (34) → vs (624) → battle seats HCCC on data/stage12 (60 s) → result (3893)
+```
+
+The battle renders with Satoshi's own model and bat, the HUD, and the opponent. So the three are
+reachable through the shipped UI, not only through the simulation API.
+
+Captures kept locally (`local-data/harness/psp/captures/`): `final-select-800.png` (19 icons),
+`psp-vs-satoshi.png` / `trackD_vs.png` (VS), `final-flow-battle-3000.png` (a real fight),
+`final-match-*.png` (match mode).
