@@ -9,7 +9,9 @@
 // not assumed — tests/dat_bundle_bytes.cpp compares both against the oracle.
 //
 // With an install open, lookups are bundle-first; with none, every call falls through to
-// the filesystem, so a checkout with only an extracted tree keeps working unchanged.
+// the filesystem, so a checkout with only an extracted tree keeps working unchanged. Extra
+// loose-file roots (mountDataRoot) rank after the bundles and after the caller's own path,
+// which is how the converted PSP data joins a bundle install without either winning by accident.
 //
 // Callers pass whatever path they already have (absolute, install-relative, or a bundle
 // key): toKey() maps it, and a path outside the install has no key and goes to the
@@ -42,6 +44,17 @@ public:
     size_t openTexturePacks(const std::vector<std::string>& folders);
     // The packs' image for a game path, whatever its extension. False when they have none.
     bool readPackImage(const std::string& path, uint32_t& width, uint32_t& height, std::vector<uint8_t>& rgba) const;
+
+    // Extra loose-file roots, consulted after the install's bundles and after the path the
+    // caller passed, in the order they were mounted. `psp-data/` is the one in use: the PSP
+    // converter writes the three extra fighters at the game's own paths there (D-3a,
+    // docs/PSP-CHARACTERS-WORKLOG.md), so `read("data/select/16.cnv")` finds
+    // `<root>/data/select/16.cnv` and no reader has to learn a second path syntax. A root that
+    // is not a directory is refused (false) rather than mounted empty, so the caller can report
+    // the path it was given.
+    bool mountDataRoot(const std::string& dir);
+    void clearDataRoots() { dataRoots_.clear(); }
+    const std::vector<std::string>& dataRoots() const { return dataRoots_; }
 
     bool                bundlesOpen() const { return bundlesOpen_; }
     const DatBundleSet& bundles() const { return bundles_; }
@@ -79,6 +92,7 @@ private:
 
     DatBundleSet bundles_;
     std::unordered_map<std::string, std::string> packImages_;  // lower-case stem -> file
+    std::vector<std::string> dataRoots_;   // mountDataRoot(), earliest first
     std::string  installDir_;   // normalized, no trailing separator
     bool         bundlesOpen_ = false;
 };
