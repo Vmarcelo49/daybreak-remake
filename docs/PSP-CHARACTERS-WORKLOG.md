@@ -156,3 +156,23 @@ Raw: `local-data/harness/psp/notes/fighter.md` (945 lines, addressed), `notes/ro
   (`0x5e09c`, `0x64514`); Satoshi is in the effect-0x84 mask (`0x65d10`); `setRow` specials
   for index 0x11 (Miyoko).
 - **Unknown:** hit geometry, bullet motion and spawn, `shot_data.bin`, the button layout.
+
+### 2026-11-06 — build tracks dispatched
+
+Three worktrees off `feat/91-psp-characters`, merged back by the coordinator:
+
+| Track | Branch / worktree | Scope |
+|---|---|---|
+| A | `feat/91-psp-a`, `../dbr-psp-a` | `--extract-psp`, hash list, GMO/GIM → binary `.X` + textures under `psp-data/` |
+| B | `feat/91-psp-b`, `../dbr-psp-b` | product roster of 19, `psp-data/` mount in `AssetSource`, select/VS screens and art |
+| C | `feat/91-psp-c`, `../dbr-psp-c` | core: dispatch pair in the action binding, `psp-data/` mount in the core, `.acs/.acv/.atp` → `0W.dat` + item dats, whole-match tests |
+
+Contracts fixed between tracks:
+
+- Indices 16 Satoshi, 17 Miyoko, 18 Okonogi; directories `satoshi`, `miyoko`, `okonogi`.
+- PSP weapon item ids 101–112 (Satoshi a–d 101–104, Miyoko 105–108, Okonogi 109–112).
+- Converted bone names: PSP `root`→`Bip01`, `spine1`→`Bip01_Spine`, `spine2`→`Bip01_Spine1`,
+  `neck`→`Bip01_Neck`, `head`→`Bip01_Head`, limbs → the PC's `Bip01_L_*`/`Bip01_R_*`,
+  `weapon_r`→`Bip01_Prop1`, `weapon_l`→`Bip01_Prop2`; others keep their PSP names. Animation
+  set *i* is PSP take *i*.
+- Follow-up study (hit geometry, bullets, input map) running → `notes/combat.md`.
