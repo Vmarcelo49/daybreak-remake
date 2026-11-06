@@ -355,6 +355,20 @@ if(NOT EMSCRIPTEN)
         target_link_options(simctl PRIVATE -static)
     endif()
 endif()
+
+# PSP moveset conversion (issue #91, plan D-3a). Writes the PC game's own frame table and weapon
+# item from the PSP's .acs/.acv/.atp, for the extractor to call at extraction time. It reads and
+# writes the core's data formats, so it may include the core's headers; nothing else outside
+# src/battle/ does. Kept out of simctl on purpose: the 46-combo fingerprints run simctl.
+add_library(psp_moveset STATIC src/psp/psp_moveset.cpp)
+target_include_directories(psp_moveset PUBLIC src src/psp PRIVATE src/battle/core src/battle)
+if(NOT EMSCRIPTEN)
+    add_executable(psp_moveset_convert tools/psp_moveset_convert.cpp)
+    target_link_libraries(psp_moveset_convert PRIVATE psp_moveset battle_core)
+    if(MINGW)
+        target_link_options(psp_moveset_convert PRIVATE -static)
+    endif()
+endif()
 if(NOT CMAKE_CROSSCOMPILING)
     add_executable(simfuzz src/battle/simfuzz.cpp)
     target_link_libraries(simfuzz PRIVATE battle_core)
