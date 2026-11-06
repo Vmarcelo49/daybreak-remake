@@ -1,0 +1,90 @@
+# P0 drives one 1v1 selection and puts Satoshi (roster index 16, the first PSP fighter) on the
+# blue panel, then starts the match — the capture path for the select diamond's three new icons
+# and the VS screen showing one of them (docs/psp/FRONTEND-ART.md).
+#
+# WHAT IT ASSUMES
+#   * the run mounts the converted PSP data (`--psp-data=psp-data`), so the select diamond offers
+#     19 characters. Without it index 16 is not on the grid and the move below lands on nothing.
+#   * the selection scene is created at tick 34 (the screen stack's fade) and the title's VERSUS
+#     row is one row down, exactly as tests/scripts/frontend-4p.txt documents.
+#
+# THE MOVE
+#   The character phase seeds the free cursor on character 0's cell (0,6) — Rena, at the diamond's
+#   bottom vertex — and the recovered cursor rate is 4.0 units/tick across and 3.0 up
+#   (FUN_00409340:239-244) over a 48x36 cell pitch. Satoshi's cell is (-1,7), i.e. 48 left and 36
+#   down: 12 ticks on both axes at once lands exactly on the icon, where the magnet holds it.
+#
+# A "-" line releases everything, as the input script format defines.
+
+# Title: VERSUS, then enter.
+2 DOWN
+8 -
+10 JUMP
+16 -
+
+# The selection scene: claim panel 0 (blue), which seeds the cursor on character 0.
+40 WAIT select
+46 JUMP
+52 -
+
+# Free cursor from (0,6) to Satoshi's (-1,7): 12 ticks left and down together, then release.
+60 LEFT DOWN
+74 -
+# Character -> Weapon -> Hypermode -> Controller -> Ready.
+80 JUMP
+90 -
+100 JUMP
+110 -
+120 JUMP
+130 -
+140 JUMP
+150 -
+
+# Ready drops back to the team cursor after 16 ticks. Walk it to the decide cell (column 0, row 2)
+# and open the stage page; the empty red panel becomes a random COM there.
+180 DOWN
+190 -
+200 DOWN
+210 -
+# The stage page, with its own rows: 60 s, 50 % health, 40 % balloons, so a headless round
+# reaches the results in minutes instead of the 180 s default, then START.
+220 JUMP
+230 -
+240 DOWN
+250 -
+260 LEFT
+270 -
+280 LEFT
+290 -
+300 LEFT
+310 -
+320 LEFT
+330 -
+340 DOWN
+350 -
+360 LEFT
+370 -
+380 LEFT
+390 -
+400 DOWN
+410 -
+420 DOWN
+430 -
+440 LEFT
+450 -
+460 LEFT
+470 -
+480 LEFT
+490 -
+500 DOWN
+510 -
+520 LEFT
+530 -
+540 LEFT
+550 -
+560 LEFT
+570 -
+580 DOWN
+590 -
+600 JUMP
+610 -

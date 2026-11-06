@@ -418,10 +418,11 @@ static bool readItemMesh(int itemId, std::string& mesh) {
 static bool resolveFighterWeapon(const std::string& charDir,
                                  const std::string& explicitSpec, std::string& meshSpec,
                                  int& itemId) {
-    const int character = gameplay::characterIndexForDir(charDir);
+    // Issue #91: the roster is 19 wide here, PC sixteen first; the PSP three carry four items.
+    const int character = gameplay::rosterCharacterIndexForDir(charDir);
     if (character < 0) return false;
     if (explicitSpec.empty()) {
-        itemId = gameplay::kWeaponIds[character][0];
+        itemId = gameplay::rosterWeaponItemId(character, 0);
         std::string mesh;
         if (!readItemMesh(itemId, mesh)) return false;
         meshSpec = mesh.empty() ? "" : std::string("data/item/") + mesh;
@@ -446,8 +447,8 @@ static bool resolveFighterWeapon(const std::string& charDir,
     }
     const size_t slash = path.find_last_of("/\\");
     const std::string base = slash == std::string::npos ? path : path.substr(slash + 1);
-    for (int w = 0; w < gameplay::weaponCountForCharacter(character); ++w) {
-        const int id = gameplay::kWeaponIds[character][w];
+    for (int w = 0; w < gameplay::rosterWeaponCount(character); ++w) {
+        const int id = gameplay::rosterWeaponItemId(character, w);
         std::string mesh;
         if (!readItemMesh(id, mesh) || mesh.empty() || mesh != base) continue;
         itemId = id;
@@ -679,6 +680,11 @@ static bool loadBulletParameter(int row, const gameplay::WeaponDefinition& weapo
 static bool startCoreBattle(App& app, const MatchSetup& config) {
     sim::BattleConfig core;
     core.gameDir = fnd::assets::assetSource().installDir();
+    // The simulation mounts the same converted PSP data the render side did (D-3a), so a PSP
+    // fighter's own frame table and item resolve behind the install's bundles. Empty for a PC
+    // match, which then mounts nothing extra.
+    if (!fnd::assets::assetSource().dataRoots().empty())
+        core.pspDataDir = fnd::assets::assetSource().dataRoots().front();
     if (app.frontendMatch) core.seed = static_cast<uint32_t>(app.logicTicks) * 2654435761u + 1u;
 #ifdef DAYBREAK_ONLINE
     const ui::OnlineContext* online = app.frontendMatch && app.frontend.online ? app.frontend.online.get() : nullptr;
@@ -696,11 +702,10 @@ static bool startCoreBattle(App& app, const MatchSetup& config) {
     std::array<const gameplay::WeaponDefinition*, 4> weapons{};
     for (int i = 0; i < 4; ++i) {
         const std::string dir = charDirForSpec(app.opts.battleCharacters[i]);
-        int character = -1;
-        for (int c = 0; c < sim::character_count(); ++c)
-            if (sim::character_name(c) == dir) character = c;
+        // Issue #91: the roster is 19 wide on the product side, PC sixteen first.
+        const int character = sim::character_index(dir);
         const gameplay::WeaponDefinition* weapon = config.weapon[i];
-        const int ownIndex = gameplay::characterIndexForDir(dir);
+        const int ownIndex = gameplay::rosterCharacterIndexForDir(dir);
         const int slot = weapon ? gameplay::weaponSlotForItem(ownIndex, weapon->id) : -1;
         if (character < 0 || slot < 0) {
             app.error = "battle: fighter " + std::to_string(i) + " (" + dir + ") is not a legal combo";
@@ -821,7 +826,7 @@ static bool initMatch(App& app) {
             if (!resolveFighterWeapon(charDir, explicitSpec, mesh, itemId)) {
                 // Same rule as the mesh stage: a roster fighter with no joinable
                 // weapon fails loudly; only unknown characters fall back.
-                if (gameplay::characterIndexForDir(charDir) >= 0) {
+                if (gameplay::rosterCharacterIndexForDir(charDir) >= 0) {
                     app.error = "fighter " + std::to_string(i) + " (" + charSpec +
                                 "): weapon '" + explicitSpec +
                                 "' joins no roster item — roster fighters must gear up";
@@ -870,7 +875,7 @@ static bool initMatch(App& app) {
         int slot = -1, expectedId = -1;
         if (config.weapon[i]) {
             expectedId = config.weapon[i]->id;
-            slot = gameplay::weaponSlotForItem(gameplay::characterIndexForDir(base),
+            slot = gameplay::weaponSlotForItem(gameplay::rosterCharacterIndexForDir(base),
                                                expectedId);
         }
         std::string movesError;

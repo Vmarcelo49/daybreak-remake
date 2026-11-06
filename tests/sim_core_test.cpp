@@ -384,7 +384,8 @@ void test_invalid_combos_are_rejected(const std::string& game) {
     };
     check(rejected(14, 2), "character 14 has no third weapon");
     check(rejected(0, 3), "weapon slot 3 does not exist");
-    check(rejected(16, 0), "character 16 does not exist");
+    // Issue #91 added 16..18 (the PSP fighters) in parallel with this roster, so the boundary moved.
+    check(rejected(16 + 3, 0), "character 19 does not exist");
 }
 
 // PATCHES.md, 2026-10-30. Ohishi+2's row 463 really does hand the trig call a pitch near 2^32,

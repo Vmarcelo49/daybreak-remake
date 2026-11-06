@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "weapon_item_data.hpp"
 #include "character_names.hpp"
+#include "psp_roster.hpp"
 #include "asset_search_path.hpp"
 #include "actor_animation_settings.hpp"
 #include "x_compression.hpp"
@@ -12,9 +13,11 @@ struct CharacterAssetFiles {
  ActorFrameFile frame_data;ActorAnimationSection settings;
 };
 inline CharacterAssetFiles load_character_asset_files(AssetSearchPath& assets,unsigned character,unsigned weapon,unsigned variant=0){
- if(character>=character_names.size()||weapon>=(character<14?3u:2u))throw std::out_of_range("Invalid character/weapon");
+ // Plan D-1: the PC sixteen keep character_names and their 3/2 weapon slots; the three PSP
+ // fighters (16..18) are four-weapon entries in psp_roster.hpp with their own data directories.
+ if(!roster_has_character(character)||weapon>=roster_weapon_count(character))throw std::out_of_range("Invalid character/weapon");
  if(variant>5)throw std::out_of_range("Invalid model variant");
- CharacterAssetFiles out;auto folder=std::string("data/")+std::string(character_names[character])+"/";
+ CharacterAssetFiles out;auto folder=std::string("data/")+std::string(roster_character_name(character))+"/";
  char file[16];std::snprintf(file,sizeof file,"%02u.dat",weapon);out.frame_path=folder+file;
  out.frames=assets.read(out.frame_path).bytes;out.frame_data=read_actor_frame_data(out.frames);
  out.settings=read_actor_animation_settings(out.frames,out.frame_data.consumed);
@@ -25,7 +28,7 @@ inline CharacterAssetFiles load_character_asset_files(AssetSearchPath& assets,un
  const auto item_bytes=assets.read(out.item_path).bytes;out.item=read_weapon_item_data(item_bytes);
  // DAT names the model: weapon number is not generally the model number.
  // 41e180 selects only the model directory; DAT and weapon item remain shared.
- const auto model_folder=variant?std::string("data/")+std::string(character_names[character])+"_"+char('A'+variant)+"/":folder;
+ const auto model_folder=variant?std::string("data/")+std::string(roster_character_name(character))+"_"+char('A'+variant)+"/":folder;
  out.model_path=model_folder+out.frame_data.model;out.model=assets.read(out.model_path).bytes;
  if(compressed_x(out.model))out.model=expand_x(out.model);
  // Model animation count and settings count are intentionally independent.

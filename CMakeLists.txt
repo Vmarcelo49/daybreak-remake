@@ -377,6 +377,24 @@ if(NOT EMSCRIPTEN)
         target_link_options(simctl PRIVATE -static)
     endif()
 endif()
+
+# PSP moveset conversion (issue #91, plan D-3a). Writes the PC game's own frame table and weapon
+# item from the PSP's .acs/.acv/.atp, for the extractor to call at extraction time. It reads and
+# writes the core's data formats, so it may include the core's headers; nothing else outside
+# src/battle/ does. Kept out of simctl on purpose: the 46-combo fingerprints run simctl.
+add_library(psp_moveset STATIC src/psp/psp_moveset.cpp)
+target_include_directories(psp_moveset PUBLIC src src/psp PRIVATE src/battle/core src/battle)
+# The extractor's second converter: the moveset library builds the frame tables from the raw
+# .acs/.acv/.atp and the PC install. It depends on this one for the raw layout and the models,
+# so the link goes this way round.
+target_link_libraries(psp_extract PRIVATE psp_moveset)
+if(NOT EMSCRIPTEN)
+    add_executable(psp_moveset_convert tools/psp_moveset_convert.cpp)
+    target_link_libraries(psp_moveset_convert PRIVATE psp_moveset battle_core)
+    if(MINGW)
+        target_link_options(psp_moveset_convert PRIVATE -static)
+    endif()
+endif()
 if(NOT CMAKE_CROSSCOMPILING)
     add_executable(simfuzz src/battle/simfuzz.cpp)
     target_link_libraries(simfuzz PRIVATE battle_core)
@@ -402,7 +420,7 @@ if(WIN32)
     add_executable(windows_startup_smoke EXCLUDE_FROM_ALL tests/windows_startup_smoke.cpp)
     target_link_libraries(windows_startup_smoke PRIVATE render ui
         media game_interfaces physics battle_backend gameplay
-        movie)
+        movie psp_extract)
 endif()
 
 set(CAPTION_CJK_FONT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/NotoSansCJKjp-Regular.otf")
@@ -542,6 +560,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
                  COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tests/locale_screen_check.py"
                          "$<TARGET_FILE:daybreak>" "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak")
         set_tests_properties(locale_screen_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
+
+        # Issue #91: a PSP fighter's finished match reaches the result screen and leaves it, with
+        # and without the converted art, and the PC winner is unchanged (tests/psp_result_check.py).
+        add_test(NAME psp_result_check
+                 COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tests/psp_result_check.py"
+                         "$<TARGET_FILE:daybreak>" "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak")
+        set_tests_properties(psp_result_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 LABELS asset)
 
         add_test(NAME hud_cell_scale
                  COMMAND ${Python3_EXECUTABLE}
@@ -849,6 +874,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak --recipe=com --rounds=1 --frames=5000 --fighters=4)
     set_tests_properties(sim_frontend_flow PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 LABELS asset)
 
+    # Issue #91: the three PSP fighters play whole matches. Needs the PSP data beside the install
+    # (or $DAYBREAK_PSP_DATA / $DAYBREAK_PSP_RAW) on top of the install, so it skips without both.
+    add_executable(psp_match_test tests/psp_match_test.cpp)
+    target_link_libraries(psp_match_test PRIVATE battle_core psp_moveset)
+    add_test(NAME psp_match_test COMMAND psp_match_test)
+    set_tests_properties(psp_match_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
+
     # The browser's download against what the core reads. Skips without a prepared tree.
     add_test(NAME web_match_group_check COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/web_match_group_check.py $<TARGET_FILE:simctl>
@@ -925,7 +957,8 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(controller_scene_lifetime_test PRIVATE render
         ui media game_interfaces physics
         battle_backend gameplay)
-    target_link_libraries(controller_scene_lifetime_test PRIVATE net_session update)
+    # psp_extract because this TU includes main.cpp, which owns --extract-psp.
+    target_link_libraries(controller_scene_lifetime_test PRIVATE net_session update psp_extract)
     add_test(NAME controller_scene_lifetime_test COMMAND controller_scene_lifetime_test
              "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak")
     set_tests_properties(controller_scene_lifetime_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
@@ -1179,8 +1212,23 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(participant_layout_test PRIVATE ui glm)
     add_test(NAME participant_layout_test COMMAND participant_layout_test)
 
+    # The PSP roster (issue #91, D-1): the extra asset root, the three-fighter roster and its
+    # launch identity, and the select diamond's three appended cells. psp_roster_test's launch half
+    # reads a real data/item/NNN.dat, so it skips itself (exit 77) without a game install.
+    add_executable(asset_source_mount_test tests/asset_source_mount_test.cpp)
+    # assets' include dirs are exported as src/assets only, so the test names the path the rest of
+    # the tree does.
+    target_include_directories(asset_source_mount_test PRIVATE src)
+    target_link_libraries(asset_source_mount_test PRIVATE assets glm)
+    add_test(NAME asset_source_mount_test COMMAND asset_source_mount_test)
+    set_tests_properties(asset_source_mount_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
+    add_executable(psp_roster_test tests/psp_roster_test.cpp)
+    target_link_libraries(psp_roster_test PRIVATE ui gameplay assets glm)
+    add_test(NAME psp_roster_test COMMAND psp_roster_test)
+    set_tests_properties(psp_roster_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
+
     foreach(frontend_test select_menu_test stage_vs_test frontend_config_test result_screen_test
-                         select_cursor_test select_row_slidein_test)
+                         select_cursor_test select_row_slidein_test select_psp_test)
         add_executable(${frontend_test} tests/${frontend_test}.cpp)
         # gameplay: frontend_launch.cpp reads the item's attachment meshes
         # through gameplay::WeaponDefinition (issue #23's gear-up fix).
@@ -1309,7 +1357,8 @@ set(DAYBREAK_AREA_FRONTEND
     title_camera_test screen_stack_test frontend_config_test frontend_lifecycle_test
     result_title_test result_screen_test participant_layout_test select_menu_test
     update_notice_test update_screens_test
-    select_cursor_test select_row_slidein_test stage_vs_test story_dialogue_test
+    select_cursor_test select_row_slidein_test select_psp_test psp_roster_test psp_result_check
+    stage_vs_test story_dialogue_test
     story_script_test sim_frontend_flow online_flow_check online_join_feedback
     pause_overlay_panel pause_overlay_layout_test
 )
@@ -1343,7 +1392,7 @@ set(DAYBREAK_AREA_RENDER
 )
 
 set(DAYBREAK_AREA_DATA
-    dat_bundle_bytes web_catalog_order web_assets_test web_delivery_test
+    dat_bundle_bytes asset_source_mount_test web_catalog_order web_assets_test web_delivery_test
     web_match_group_check web_frontend_tree_check texture_fallback_check texture_pack_check
     env_spawn_test unicode_path_check
 )

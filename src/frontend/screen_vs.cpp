@@ -7,8 +7,12 @@
 #include "hud/hud.h"
 #include "hud/hud_atlas.h"
 #include "frontend/participants.h"
+#include "frontend/roster_name.h"
 namespace ui {
 namespace {
+// The design height of a name plate the p03 atlas cannot supply: the atlas's own 256x64 cells
+// hold art about this tall, and those plates are drawn at scale 1 (the draw's name loop).
+constexpr float kNameCellHeight = 40.f;
 class VsScreen final : public Screen {
 public:
     VsScreen(SpriteRenderer& batch, FrontendState& state, std::string& error,
@@ -26,14 +30,21 @@ public:
                 error = failure;
         }
         // One portrait per participant, from the selection sheet that participant chose
-        // (FUN_00411cb0:78-92's four FUN_00655d60 calls).
+        // (FUN_00411cb0:78-92's four FUN_00655d60 calls). The PC sixteen's sheets are the
+        // install's and the screen needs them; the PSP three's come from psp-data and are
+        // optional, so a missing one drops that portrait and its name plate still says who it is.
         for (int i = 0; i < participantCount_; ++i) {
+            const int character = std::max(0, participants_[i].character);
             char portrait[64];
-            std::snprintf(portrait, sizeof(portrait), "data/select/%02d",
-                          std::max(0, participants_[i].character));
+            std::snprintf(portrait, sizeof(portrait), "data/select/%02d", character);
             std::string failure;
-            if (!uploadCnvSheet(batch, portrait, portraits_[i], failure) && error.empty())
-                error = failure;
+            if (!uploadCnvSheet(batch, portrait, portraits_[i], failure)) {
+                if (character < gameplay::kCharacterCount) {
+                    if (error.empty()) error = failure;
+                } else {
+                    std::fprintf(stderr, "[vs] %s: %s\n", portrait, failure.c_str());
+                }
+            }
         }
         // Combo + controller captions (D7 path). PORT EXTENSION: the original's VS screen
         // draws bands, portraits, names and the logo only, so this text is the port making
@@ -42,16 +53,35 @@ public:
         // still identify the participants).
         if (!participantCount_ || !loadCaptionFont(text_, 20.f, error)) return;
         std::vector<std::string> lines;
+        bool needsNames = false;
         for (int i = 0; i < participantCount_; ++i) {
             lines.push_back(captionFor(i));
             captionLayout_[i] = text_.layout(lines.back().c_str());
+            // The name plate for a participant the p03 atlas cannot name (see nameTextFor).
+            names_[i] = nameTextFor(i);
+            needsNames = needsNames || !names_[i].empty();
         }
         textSlot_ = batch.addTexture(text_.atlasWidth(), text_.atlasHeight(),
                                      text_.atlasRGBA().data(), error);
+        // Those plates get their own face size: the p03 atlas's name art is about kNameCellHeight
+        // tall in its 64 px cell, and the 20 px caption face above is half that. Loaded only when
+        // the selection needs it, so a PC-only VS screen is byte-identical to before.
+        std::string nameError;
+        if (needsNames && loadCaptionFont(nameFace_, kNameCellHeight, nameError)) {
+            for (int i = 0; i < participantCount_; ++i)
+                if (!names_[i].empty()) nameLayout_[i] = nameFace_.layout(names_[i].c_str());
+            std::string atlasError;
+            nameSlot_ = batch.addTexture(nameFace_.atlasWidth(), nameFace_.atlasHeight(),
+                                         nameFace_.atlasRGBA().data(), atlasError);
+        } else if (!nameError.empty()) {
+            std::fprintf(stderr, "[vs] name plates: %s\n", nameError.c_str());
+        }
     }
     bool loaded() const {
         for (int i = 0; i < 4; ++i) if (sheets_[i] < 0) return false;
-        for (int i = 0; i < participantCount_; ++i) if (portraits_[i] < 0) return false;
+        for (int i = 0; i < participantCount_; ++i)
+            if (portraits_[i] < 0 && std::max(0, participants_[i].character) < gameplay::kCharacterCount)
+                return false;
         return true;
     }
     const char* name() const override { return "vs"; }
@@ -63,11 +93,22 @@ public:
         batch.pushTextured(sheets_[0], {0,0,800,300}, {0,0,1,1}, {});
         batch.pushTextured(sheets_[1], {0,300,800,300}, {0,0,1,1}, {});
         // Names: the p03 name sheet, cell (character/8, character%8), at each participant's
-        // name anchor (FUN_00411cb0:28-50's four FUN_00655830 calls).
+        // name anchor (FUN_00411cb0:28-50's four FUN_00655830 calls). A participant the atlas
+        // cannot reach (16..18) is named with the caption face instead, at the same anchor and the
+        // height the atlas's own art has there, centred in the 256x64 cell it would fill.
         for (int i = 0; i < participantCount_; ++i) {
             const int character = std::max(0, participants_[i].character);
-            batch.pushSprite(sheets_[3], {(character / 8) * 256.f, (character % 8) * 64.f,256,64},
-                             128,32,slots_[i].nameX,slots_[i].nameY);
+            if (character < gameplay::kCharacterCount) {
+                batch.pushSprite(sheets_[3],
+                                 {(character / 8) * 256.f, (character % 8) * 64.f, 256, 64},
+                                 128, 32, slots_[i].nameX, slots_[i].nameY);
+                continue;
+            }
+            if (nameSlot_ < 0) continue;
+            const float width = nameLayout_[i].width(1.f);
+            drawCaptionLayout(batch, nameFace_, nameLayout_[i], nameSlot_, bitmapSlot_,
+                              slots_[i].nameX - width * .5f,
+                              slots_[i].nameY - kNameCellHeight * .5f, 1.f, kHudWhite, 2.f);
         }
         // Portraits: pivot (128,256), sliding in on the recovered per-slot offsets
         // (FUN_00411ae0:12-21 decays them by 30/20/20/30 px per frame). The blue team's
@@ -99,6 +140,12 @@ public:
         }
     }
 private:
+    // The name plate's text for a participant the p03 atlas cannot name (16..18), or "" for the
+    // sixteen it can. See roster_name.h for where the text comes from.
+    std::string nameTextFor(int i) const {
+        if (std::max(0, participants_[i].character) < gameplay::kCharacterCount) return {};
+        return rosterNameText(participants_[i].character);
+    }
     // "Rena 1  1P": the combo label (AGENTS.md rule 7 — never a bare fighter) plus the seat —
     // this machine's controller, another machine's player, or COM (issue #106).
     std::string captionFor(int i) const {
@@ -112,6 +159,10 @@ private:
     VsTimeline timeline_;
     TextLayer text_;
     TextLayout captionLayout_[kParticipantCount];
+    std::string names_[kParticipantCount];       // "" for the sixteen the p03 atlas names
+    TextLayout nameLayout_[kParticipantCount];   // empty for those same sixteen
+    TextLayer nameFace_;                         // the face those three names are drawn in
+    int nameSlot_ = -1;
     mutable int bitmapSlot_ = -1;
     int sheets_[4] = {-1,-1,-1,-1};
     int portraits_[kParticipantCount] = {-1,-1,-1,-1};

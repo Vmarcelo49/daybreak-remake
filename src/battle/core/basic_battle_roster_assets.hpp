@@ -8,7 +8,9 @@ struct BasicBattleRosterAssets {BattleActorAssetSlots assets;BattleActionBinding
 inline BasicBattleRosterAssets load_battle_roster_assets(AssetSearchPath& search,const LocalBattleRoster& roster,const BattleActionBindings& actions){
  BasicBattleRosterAssets result;result.actions=actions;
  // Reject missing handlers before loading models, rather than substituting another fighter.
- for(unsigned i=0;i<4;++i)if(actions[i].character!=unsigned(roster.character[i])||actions[i].weapon!=unsigned(roster.weapon[i]))throw std::invalid_argument("Roster/action binding mismatch");
+ // Plan D-2: the roster pair must name the slot's fighter; the dispatch pair may name another
+ // combo, which is what a PSP fighter does while still loading its own assets below.
+ for(unsigned i=0;i<4;++i)if(actions[i].roster_character!=unsigned(roster.character[i])||actions[i].roster_weapon!=unsigned(roster.weapon[i]))throw std::invalid_argument("Roster/action binding mismatch");
  for(unsigned i=0;i<4;++i){
   for(unsigned earlier=0;earlier<i;++earlier)if(roster.character[i]==roster.character[earlier]&&roster.weapon[i]==roster.weapon[earlier]&&roster.option[i]==roster.option[earlier]){result.assets[i]=result.assets[earlier];break;}
   if(!result.assets[i]){
@@ -19,7 +21,7 @@ inline BasicBattleRosterAssets load_battle_roster_assets(AssetSearchPath& search
  return result;
 }
 inline BasicBattleRosterAssets load_basic_battle_roster_assets(AssetSearchPath& search,const LocalBattleRoster& roster){
- BattleActionBindings actions;for(unsigned i=0;i<4;++i)actions[i]=basic_battle_action(unsigned(roster.character[i]),unsigned(roster.weapon[i]));
+ BattleActionBindings actions;for(unsigned i=0;i<4;++i)actions[i]=roster_battle_action(unsigned(roster.character[i]),unsigned(roster.weapon[i]));
  return load_battle_roster_assets(search,roster,actions);
 }
 }
