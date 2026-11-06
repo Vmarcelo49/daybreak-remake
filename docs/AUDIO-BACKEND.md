@@ -214,4 +214,4 @@ and gameplay BGM. The caller wiring is summarized in `MEDIA-INPUT.md` §5.
   behaviour is per the SDL3/Emscripten contract, not executed.
 - `main.cpp`/CMake wiring for `--audio-test --audio-file` landed with the
   decoder (this doc's § Verification describes it).
-- macOS untouched (standing PORT-PLAN rule).
+- macOS was not tested in this work.

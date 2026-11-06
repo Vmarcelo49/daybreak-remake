@@ -9,7 +9,7 @@ This repo has **two halves** with different rules:
 | Half | Path | Goal | Rule of thumb |
 |---|---|---|---|
 | **Product** | the repository root | Playable modern port (C++17, SDL3 + WebGPU: `webgpu.h`, wgpu-native native, emdawnwebgpu web; Linux/Windows/web) | All new game code goes here — build with `./build.sh {deps,linux,windows,web}`; see `docs/decisions.md` D1–D6 |
-| **Research** | `research/` | Reverse-engineering evidence + readable-C pipeline | Nothing here runs the game; `research/recomp/` is never hand-edited |
+| **Research** | `research/` | Reverse-engineering evidence + readable-C pipeline | Nothing here runs the game; `research/recomp/` is ignored generated output, never hand-edited or committed |
 
 ## Repo map
 
@@ -19,16 +19,15 @@ daybreak-decomp/
 ├── docs/                               English docs (you are here)
 │   ├── overview.md                     this file
 │   ├── pipeline.md                     how research artifacts flow
-│   ├── status.md                       living status + metrics
 │   ├── conventions.md                  C / style / commit conventions
 │   ├── agents/                         guides for automation agents
 │   ├── reports/                        findings summaries
-│   └── archive/                        original Portuguese docs (historical)
+│   └── archive/                        closed plans and historical records
 ├── research/                           RE artifacts (see pipeline.md)
 │   ├── binary_data/    upstream evidence: per-function JSON store,
 │   │                   strings, types, callgraph, phase reports
 │   ├── decompiled/     raw mass dump: one .c per function (read-only)
-│   ├── recomp/         generated readable C (never edit by hand)
+│   ├── recomp/         ignored generated readable C (never edit or commit)
 │   ├── symbols/        source of truth: names, types, notes
 │   ├── progress/       coverage metrics (official)
 │   ├── tools/          ingest → generate_recomp → coverage_report
@@ -39,7 +38,7 @@ daybreak-decomp/
 ├── tools/launch_original.sh            run the original exe under Wine
 ├── tools/{asset-tools,hook-tracer}/    .dat/.cnv tools; original-exe hook tracer
 ├── Higurashi-Daybreak/                 local game install (gitignored)
-└── .github/                            index Action (see INDEX.md header)
+└── .github/                            build and determinism workflows
 ```
 
 ## How research flows (one paragraph)
@@ -75,8 +74,8 @@ metric. Full version in `docs/pipeline.md`.
 
 ## Where to go next
 
-- New here? Read `docs/pipeline.md`, then `docs/status.md`.
+- New here? Read `docs/pipeline.md`; current coverage is `research/progress/coverage.json`, and the historical research status snapshot is `docs/archive/status.md`.
 - Writing game code? Read `docs/decisions.md`, then work in `src/`.
 - Driving the original for comparison? `tools/launch_original.sh`.
 - Automating RE work? `docs/agents/`.
-- Old Portuguese docs? `docs/archive/` (historical, superseded by `docs/`).
+- Closed plans and historical records? `docs/archive/` (kept as written; moved paths are mapped in `docs/PATHS.md`).

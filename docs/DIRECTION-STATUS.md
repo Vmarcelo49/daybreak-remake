@@ -19,6 +19,20 @@
 > in `DIRECTION.md` §4 Phase 2 and §5. The work log is append-only and unchanged;
 > entries written under the previous plan stand as history.
 
+## Issue #94 — research and historical documents
+
+The owner chose to keep the research corpus in this repository, untrack generated
+`research/recomp/` if unused by the game, and separate historical documents from current
+instructions. Static inspection found no build, runtime, test or packaging dependency on
+`recomp/`. An isolated generation produced all 3,169 previous files byte-for-byte with
+clang-format 23.1.4; formatting may differ in other environments. The generated directory is
+ignored, its local files are retained, and the generator and source evidence stay tracked.
+Historical documents were moved under `docs/archive/`; `docs/PATHS.md` maps their former paths.
+Linux and Windows cross-builds succeeded; the Windows configuration warned about test areas not
+registered in that build. Linux focused CTest checks passed: sim core, locale coverage,
+participant layout, camera and raycast (5/5; install-backed checks are tier 4). No Windows
+runtime was tested in this task. This maintenance check is not original-runtime parity evidence.
+
 ## Issue #96 — work report (closed)
 
 The menus, HUD and result report are translated through `assets/locale/en.txt`. Earned result

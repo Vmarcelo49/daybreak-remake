@@ -139,12 +139,12 @@ comments — when a decision changes.
   converters bake down animation blending/track setup the game relies on
   and would cost more effort than using the originals.
 - Loader parity targets (semantics of the original's loader
-  `FUN_0064d940`, `docs/reverse-engineering.md:195`; its flag table at
+  `FUN_0064d940`, `docs/archive/reverse-engineering.md:195`; its flag table at
   :229/:413 is superseded here): InMemory variant, mesh flags `0x220`,
   up to 2 anim tracks bound at load. (Note: `0x220` is
   `D3DXMESH_VB_MANAGED | D3DXMESH_IB_MANAGED` per `d3dx9mesh.h` —
   0x020 / 0x200 — not the `32BIT | NPATCHES` that
-  `reverse-engineering.md` still claims; no NPatch templates exist in the
+  `docs/archive/reverse-engineering.md` still claims; no NPatch templates exist in the
   shipped assets.)
 
 ## D4 — mvp hook status (do not plan around the README)
@@ -161,7 +161,7 @@ comments — when a decision changes.
 ## D5 — Comment/code-quality policy (remake)
 
 - Comments must explain **why** or cite RE provenance
-  (`FUN_xxxxxx`, binary address, `docs/reverse-engineering.md` section).
+  (`FUN_xxxxxx`, binary address, `docs/archive/reverse-engineering.md` section).
 - Delete comments that restate the code, dead-code blocks kept
   "just in case", and stale milestone chatter. No behavior changes
   while cleaning (standing policy: `AGENTS.md` rule 4).
@@ -431,7 +431,7 @@ comments — when a decision changes.
   recovered original action logic: the control headers and "native body" modules
   from the reference bundle, one binding resolver, and a per-frame differential
   harness that compares our build against the original executable. Plan and
-  phases: [`docs/DIRECTION.md`](../../docs/DIRECTION.md) §4.
+  phases: [`docs/DIRECTION.md`](DIRECTION.md) §4.
 - **Why:** 46 combos exist, one per character+weapon pair, and each is its own
   handler in the original (vtable block `0x6a4e10`, 46 vtables, stride `0x28`;
   `FUN_00649790` is the 46-case factory). The 184 per-combo functions are 57.6% of
@@ -442,10 +442,10 @@ comments — when a decision changes.
 - **What this forbids:** new per-character or per-weapon rule arrays, new
   per-combo branches in `fighter.cpp`, and new binding/controller tables that no
   runtime path reads. The freeze list and the three-question test are in
-  [`AGENTS.md`](../../AGENTS.md); that file is the enforcement point and the
+  [`AGENTS.md`](../AGENTS.md); that file is the enforcement point and the
   single source of truth for what is frozen.
 - **Provisional, and how it reverses:** the decision stands until the pilot
-  verdict recorded in [`docs/SCOREBOARD.md`](../../docs/SCOREBOARD.md) rejects it
+  verdict recorded in [`docs/SCOREBOARD.md`](SCOREBOARD.md) rejects it
   (criteria: `DIRECTION.md` §4, 2g). A red verdict sends the project to
   `DIRECTION.md` §5 — fork the reference runtime as the simulation core, or
   re-scope — and the pilot is reverted behind its flag. No bundle code becomes

@@ -1,6 +1,6 @@
 # Web runtime assets: delivery history and browser evidence (Track W)
 
-Scope: PORT-PLAN.md Track W (W1/W2/W3). Verification-only; no game data in git.
+Scope: `docs/archive/PORT-PLAN.md` Track W (W1/W2/W3). Verification-only; no game data in git.
 Local paths below are machine-local and gitignored, never committed.
 
 ## Current production path (issue #4)
@@ -230,5 +230,5 @@ top and `BUILD-web.md`.
 - OPFS alternative, range requests, hardware-adapter runs: not measured in this
   dated evidence pass. Current browser movie limitation and delivery verification
   are recorded in `BUILD-web.md`.
-- macOS anything (out of scope per PORT-PLAN).
+- macOS anything (out of scope per the archived `docs/archive/PORT-PLAN.md`).
 - Full-tree or multi-pack web load (only `akane:0`, 12 MB, exercised).

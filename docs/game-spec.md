@@ -2,7 +2,7 @@
 
 > What the game is, how it plays, and in what order we rebuild it.
 > Sources: original-game observation (owner), RE findings in
-> `docs/reverse-engineering.md`, and the [Higurashi Daybreak Wiki](https://higurashidaybreak.fandom.com/wiki/Higurashi_Daybreak_Wiki).
+> `docs/archive/reverse-engineering.md`, and the [Higurashi Daybreak Wiki](https://higurashidaybreak.fandom.com/wiki/Higurashi_Daybreak_Wiki).
 > Scope authority: `decisions.md` D6 (versus + LAN netplay are the focus).
 
 ## 1. What the game is
@@ -230,7 +230,7 @@ leaves the battle. The foundation implements all five (issue #48): the recovered
 gate (`DAT_006cfce9`: live in a versus battle, dead in story mode), sampling on
 the fixed-step boundary, `--no-debug-keys` and the `--debug-keys=KEY@TICK`
 injection. The recovered map, the addresses and the two port rules are in
-[`../foundation/docs/DEBUG-KEYS.md`](../foundation/docs/DEBUG-KEYS.md); F2's
+[`docs/DEBUG-KEYS.md`](DEBUG-KEYS.md); F2's
 CPU-off meaning is that key's own, so animation debug stays off the function
 row. Captures are made with `--out`, not an F12 screenshot.
 
@@ -252,10 +252,9 @@ flags, never saves**. Full shot log: `docs/reference/README.md`.
 The table below records the ordered plan/status snapshot from the DX9-remake
 era; it is provenance, not the current project roadmap. The DX9 tree was deleted
 in the Phase 5 cutover (2026-10-02), and several statuses have since changed.
-For current code truth and remaining work, use `foundation/README.md` and
-`foundation/docs/ROADMAP-PENDING.md`. RE truth is in
-`reverse-engineering.md` (camera numbers corrected by
-`foundation/src/gameplay/arena_camera.h`).
+For the current product and plan, use `DEVELOPMENT.md` and `docs/DIRECTION.md`.
+The historical RE findings are in `docs/archive/reverse-engineering.md`; the
+current camera implementation is in `src/camera/arena_camera.cpp`.
 
 | # | System | Now | Work |
 |---|---|---|---|

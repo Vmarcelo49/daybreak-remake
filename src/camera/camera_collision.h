@@ -3,10 +3,8 @@
 // eye can clamp against collision_camera.x.
 //
 // WHY a query, not a raycast: the blocker test raycasts the stage's
-// camera-only collision mesh (remake/src/maps/stage.h — collision_camera.x,
-// CollisionChannel::Camera; render path in arena_camera.cpp:106-131 against
-// physics/raycast.h, RE fcn.0042cb50). Mesh access + raycast machinery live
-// in gameplay/physics, which the foundation must not own per PORT-PLAN.md.
+// camera-only collision mesh (collision_camera.x; RE fcn.0042cb50). Mesh access
+// and raycasting are supplied separately rather than owned by the camera.
 // So physics implements this interface, and the camera path combines the
 // answer with the pure render::arenaClampEye math: query in, clamped eye
 // out, no raycast code in shared headers. glm + std only.

@@ -101,7 +101,7 @@ the reader to continue the old per-character hand-port. Those instructions are
 | `docs/archive/PILOT-EVIDENCE-CONTRACT.md`, `docs/archive/PILOT-SEAM.md` | what the pilot established, addressed findings, seam facts | new contract or per-rule work |
 | `research/evidence/parity-baseline/README.md` + the bank | history: what the deleted DX9 tree captured, and what it could not | a fidelity oracle — its fighters bound zero animation sets |
 | `docs/archive/FULL-REPLACEMENT-PLAN.md`, `docs/archive/port-from-mvp-plan.md`, `docs/archive/roadmap.md`, `docs/archive/**` | history and rationale | anything current |
-| `docs/status.md`, `docs/agents/**` | research pipeline, conventions | product work orders |
+| `docs/archive/status.md`, historical handoffs in `docs/archive/`, `docs/agents/**` | research history and conventions | product work orders |
 
 **Do not read the whole documentation tree "for context"**: that is how agents re-implement a
 retired plan. Use the table above.
@@ -171,8 +171,9 @@ changes need owner approval, never a silent denominator reduction.
 
 ## Hard rules (violations = reverted work)
 
-1. **Never hand-edit `research/recomp/`.** Generated output; edits are overwritten.
-   Source of truth is `research/symbols/`.
+1. **Never hand-edit or commit `research/recomp/`.** It is optional, ignored generated
+   output, not game code; regenerate it from `research/decompiled/` and
+   `research/symbols/` only when researching. The product does not depend on it.
 2. **The product keeps the original `.X` files — no conversion pipeline.** The
    renderer is **SDL3 + WebGPU** (D2): `webgpu.h`, wgpu-native natively and
    emdawnwebgpu on the web, built from the repository root. DX9 was dropped in the

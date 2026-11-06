@@ -77,7 +77,7 @@
 - `docs:` report or progress update
 - `chore:` config tweaks (`.gitignore`, scripts)
 - `refactor:` rename or reorganization
-- `recomp:` reserved for automatic recomp-pipeline commits
+- `recomp:` changes to the research generation pipeline (not its ignored output)
 - `symbols:` changes to `research/symbols/*.json`
 
 ### 6.2 Direct push to `main`
@@ -86,8 +86,8 @@
 - ✅ `research/symbols/*.json` (with human review)
 - ✅ `research/progress/*`
 - ✅ `*.md`, `research/extraction_phases/*.txt`
-- ❌ `research/recomp/*.c` — only via `research/tools/generate_recomp.py`
-  (automatic commit) or manual PR after review
+- ❌ `research/recomp/*.c` — generated locally by `research/tools/generate_recomp.py`;
+  never commit this optional output.
 
 ## 7. Branches
 

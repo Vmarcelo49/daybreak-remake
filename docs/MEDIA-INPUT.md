@@ -224,7 +224,7 @@ vendored stb_vorbis), `.sfl` loop parsing (`parse_sfl_loop` in
 | Linux | SDL3 stream push; device resamples if ≠44100; no mixer needed | SDL3 keyboard + `SDL_OpenGamepad`; hotplug via re-poll |
 | Windows (MinGW/Wine) | same SDL3 stream path; the old mixer temp-file constraint does not apply | same; XInput pads appear as SDL gamepads |
 | Web (Emscripten) | AudioContext starts **suspended**: gate stays `Gated` until first pointer/key/pad gesture; pushes while gated are dropped, never queued (no late BGM burst) | pads visible only after a button press, secure context (https/localhost) only; first-frame focus needed; no rumble (async/permission-gated — future option, not promised) |
-| macOS | not attempted (standing PORT-PLAN rule); code is dependency-free so nothing here blocks it | same as above |
+| macOS | not attempted; code is dependency-free so nothing here blocks it | same as above |
 
 ## 7. Explicitly not verified
 

@@ -2,9 +2,9 @@
 
 > **Status roster, not a task list — 2026-10-14.** Use this file to look up an
 > item's status, issue ID and measured limits. It does **not** authorize work:
-> the only active plan is [`docs/DIRECTION.md`](../../../docs/DIRECTION.md) and
-> the mandate in [`AGENTS.md`](../../../AGENTS.md). Character/combat items below
-> the cutover notes are frozen until the pilot verdict (`DIRECTION.md` §4, 2g).
+> the current plan is [`DIRECTION.md`](DIRECTION.md) and the mandate is in
+> [`AGENTS.md`](../AGENTS.md). The former pilot freeze and old work orders below
+> are historical; current work is ordered by the owner.
 
 > Written 2026-10-02, the day of the Phase 5 cutover
 > (`FULL-REPLACEMENT-PLAN.md` §8). DX9 is gone, so this file is the handoff:
@@ -1926,7 +1926,7 @@ counts, and the team-select diamond's y anchor discrepancy. Scenes 2 and
 ### G2. macOS: never executed
 
 * **Evidence.** `README.md:189` ("not attempted — no Mac available"),
-  `PORT-PLAN.md:11-12`, `MEDIA-INPUT.md:179`, `WEB-ASSETS-RUNTIME.md:242`,
+  `docs/archive/PORT-PLAN.md:11-12`, `MEDIA-INPUT.md:179`, `WEB-ASSETS-RUNTIME.md:242`,
   and D2's macOS bullet all agree. No execution evidence exists anywhere.
 * **Sketch.** Either keep the explicit "unverified" status (the honest
   default every doc currently uses) or do a first run on real hardware:

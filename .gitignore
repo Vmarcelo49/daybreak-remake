@@ -32,6 +32,9 @@ Higurashi-Daybreak/
 # Raw binary Evidence, captures and generated experiment reports.
 local-data/harness/
 
+# Generated research output; regenerate from decompiled/ and symbols/ when needed.
+/research/recomp/
+
 # Build outputs and fetched third-party sources. Both are produced by build.sh and
 # fetch_deps.sh; a clean checkout has neither.
 /build/

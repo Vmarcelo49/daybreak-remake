@@ -105,7 +105,7 @@ target_link_libraries(render PUBLIC runtime assets)
 
 # The 2D presentation layer: sprite batch, bitmap font and text (src/ui/), the HUD
 # composition (src/hud/), the front-end screens (src/frontend/) and the fallback
-# diagnostics. Same shape as render; verified headless before wiring (docs/UI-VERIFY.md).
+# diagnostics. Same shape as render; the historical verification is in docs/archive/UI-VERIFY.md.
 if(NOT EMSCRIPTEN)
     add_library(net_core STATIC src/net/udp_socket.cpp src/net/lobby.cpp)
     target_include_directories(net_core PUBLIC src)

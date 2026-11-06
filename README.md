@@ -42,7 +42,7 @@ If someone leaves an online match, a computer player takes over and the match go
 | Online | **New and in testing.** Expect problems, and please tell us about them |
 | Faithfulness to the original | Close, but **not confirmed**. Combat is a reconstruction, so some moves or timing may differ |
 | Story dialogue in English | Not done |
-| Browser version | Not ready: battles end in a crash after about 30 seconds |
+| Browser version | **Experimental.** A battle can run in the browser, but it is unfinished and not tested for release |
 | macOS | Not available |
 
 Some routers can't make direct connections. Those players can't play online together yet, and the lobby tells you who
@@ -55,10 +55,10 @@ We'd rather say this plainly than promise too much.
 | | Tested? |
 |---|---|
 | Linux, with a person playing | Yes |
-| Windows | **Not on a real Windows PC yet in this version**, only in an emulated environment (Wine) |
+| Windows | Yes, a native run on 2026-11-04 (menus and controller), but no full playthrough yet |
 | Online on one PC, on a simulated bad connection | Yes, automatically, with 2 and 4 players |
-| Online between real PCs | **Not yet.** That is what this test version is for |
-| Room codes through real routers | **Not yet** |
+| Online between real PCs | Yes, first tested 2026-11-04; still in testing |
+| Room codes through real routers | Yes, in that first real-PC session |
 | Linux players against Windows players | Only the game's calculations on real Windows, and a match under Wine |
 | The whole story, start to finish | **Not yet**, only in parts |
 

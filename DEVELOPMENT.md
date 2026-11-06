@@ -19,8 +19,8 @@ at runtime has not been verified.
 | Language | Menus and HUD in English or Japanese. Story dialogue is still Japanese. |
 | Texture packs | Optional PNG packs are read from beside the executable. No pack is published yet. |
 | Linux, Windows | Build and package. CI builds both when `VERSION` changes. |
-| Web | Battles run, but an uncaught exception ends them after about 31 s (issue #88). |
-| Multiplayer | Local, LAN and online for 2 to 4 players, with rollback and Linux and Windows together. In testing: not yet played over real networks. |
+| Web | Builds, fights and finishes a match; the round's end is part of the match group since #88. Not in CI since 0.2.1, where its build stalled. |
+| Multiplayer | Local, LAN and online for 2 to 4 players, with rollback and Linux and Windows together. In testing: first real-network playtest 2026-11-04. |
 | macOS | Not attempted. |
 
 This is not an exhaustive bug list. The plan and its live state are
@@ -158,8 +158,8 @@ test, and neither flag changes saved volumes.
 ### Continuous integration
 
 Changing `VERSION` on `main` runs [`.github/workflows/build.yml`](.github/workflows/build.yml):
-it builds Linux, Windows and web, runs the tests that need no game data, and keeps the packages
-as workflow artifacts. Run it by hand with `gh workflow run build.yml`.
+it builds Linux and Windows, runs Linux tests without game data, and keeps the packages as
+workflow artifacts. Web is not currently built in CI. Run it by hand with `gh workflow run build.yml`.
 
 ### The Linux release package
 

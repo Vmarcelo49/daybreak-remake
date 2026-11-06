@@ -4,10 +4,8 @@
 // env.dat spawn points.
 //
 // WHY an interface, not data: fighter positions/facing/animation live in the
-// gameplay simulation (remake/src/gameplay/fighter.h — Fighter::position(),
-// facing_yaw(), animation state), which the foundation must not own per
-// PORT-PLAN.md (no gameplay in shared renderer code). The renderer polls one
-// pose per locked-on fighter per frame; prediction, interpolation and the
+// gameplay simulation; the camera consumes poses without owning gameplay state.
+// The renderer polls one pose per locked-on fighter per frame; prediction, interpolation and the
 // lock-on target choice stay game-side. glm + std only: no WebGPU, no SDL.
 #include <glm/glm.hpp>
 

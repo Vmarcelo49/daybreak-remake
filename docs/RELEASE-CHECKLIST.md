@@ -87,7 +87,7 @@ gate runs both.** Every test has a hard timeout, so a hang fails rather than hol
   `live_camera_smoothness_test`, 54 from issue #48's `debug_keys_test`, 53 from issue
   #47's `countdown_overlay_test`, and 52 from issue #51's `lock_switch_camera_test`;
   issue #21 row 1 adds `shadow_map_test` and `character_shadow`). The Ginkiha port's
-  `ginkiha_tables_test` (docs/reports/ginkiha-port-plan.md §1, Fase 0) is the 65th:
+  `ginkiha_tables_test` (docs/archive/ginkiha-port-plan.md §1, Fase 0) is the 65th:
   device-free AND data-free, so it neither skips without an install nor changes which
   tests skip, and it pins the generated `ginkiha_tables.h` against the bundle.
 * **Without any game data** (the CI runner's state — no `Higurashi-Daybreak/`):

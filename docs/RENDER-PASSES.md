@@ -92,7 +92,7 @@ reverted, so every pixel below is the guard alone):
 
 ## Remaining verification gaps (per this implementation record)
 
-- Shadow cards against a DX9 frame (PORT-PLAN's bar): no DX9 run this session.
+- Shadow cards against a DX9 frame (the bar set in `docs/archive/PORT-PLAN.md`): no DX9 run this session.
   The guard matches the in-tree DX9 states verbatim and the pixel signature is
   exactly single-vs-double multiply, but an original-exe comparison is still open.
 - Web/Dawn runtime for the stencil path: compiles; not executed (browser page

@@ -1,9 +1,9 @@
 # Path map after the 2026-10-30 reorganization
 
 This tree is the same product and the same research corpus, moved so that the layout says
-what each part is. The map below is complete for the paths the move touched; where a path
-does not appear, its name is unchanged. The one commit series is on the `reorganize`
-branch; `docs/archive/` keeps the closed plans with their original text.
+what each part is. The map below is complete for the paths the 2026-10-30 reorganization
+touched; where a path does not appear, its name is unchanged. That move landed on `main`;
+`docs/archive/` keeps the closed plans with their original text.
 
 ## The product tree
 
@@ -85,3 +85,21 @@ The app is one translation unit, and the blocks are included from `main.cpp` for
 
 Archived documents keep their text, so paths inside them are historical. Use this table, not
 the text, when following one of them.
+
+## Documents archived after the reorganization (2026-11-05)
+
+These documents declared themselves historical, or recorded work that was already closed.
+They keep their original text, plus a one-line archive banner where the title still read as
+current. Current documents use the new path; the historical work logs in
+`DIRECTION-STATUS.md` and `docs/agents/` keep the old one.
+
+| Before | After |
+|---|---|
+| `docs/status.md` | `docs/archive/status.md` |
+| `docs/reverse-engineering.md` | `docs/archive/reverse-engineering.md` |
+| `docs/HUD-FONTS-VECTOR.md` | `docs/archive/HUD-FONTS-VECTOR.md` |
+| `docs/PORT-PLAN.md` | `docs/archive/PORT-PLAN.md` |
+| `docs/UI-VERIFY.md` | `docs/archive/UI-VERIFY.md` |
+| `docs/RELEASE-LINUX.md` | `docs/archive/RELEASE-LINUX.md` |
+| `docs/reports/checks-audit-2026-10-10.md` | `docs/archive/checks-audit-2026-10-10.md` |
+| `docs/reports/reorganization-brief-2026-10-30.md` | `docs/archive/reorganization-brief-2026-10-30.md` |

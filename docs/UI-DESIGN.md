@@ -78,7 +78,7 @@ the text/bars fallback remains available.
 - **Scissor, not faith.** Per-quad `UiClip` resolves through `clipToScissor`
   to `SetScissorRect`, keeping bars/panels inside their frames on resize.
   WebGPU scissor/viewport origin is top-left (D3D convention) on every backend,
-  so no per-backend flip exists — verified empirically, see `UI-VERIFY.md`.
+  so no per-backend flip exists — verified empirically, see `archive/UI-VERIFY.md`.
 - **One texture format.** RGBA8 for sprites, the font atlas (white with
   coverage in alpha) and the 1x1 white solid fallback: one pipeline draws
   bars, sprites and glyphs.
