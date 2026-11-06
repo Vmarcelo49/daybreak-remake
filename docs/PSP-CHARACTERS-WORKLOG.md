@@ -580,3 +580,15 @@ reachable through the shipped UI, not only through the simulation API.
 Captures kept locally (`local-data/harness/psp/captures/`): `final-select-800.png` (19 icons),
 `psp-vs-satoshi.png` / `trackD_vs.png` (VS), `final-flow-battle-3000.png` (a real fight),
 `final-match-*.png` (match mode).
+
+### 2026-11-06 — chibi art (exploration, owner continues)
+
+The PSP ships no chibi art, so the select screen's chibi/costume/weapon cells are documented
+place-holders. I explored generating style-matched chibis for the three with the owner's local
+image stack (`gen.sh`/`edit.sh`, Qwen-Image-2.1 + the anime LoRA, reference-image edits) and the
+`image_generate` tool. A first pass produced usable Satoshi sheets (5 pose cells + the white
+flash cell in the 3×2 layout, and 4 costume cells) that sit convincingly beside the PC chibis; see
+`local-data/harness/psp/chibi/mock/select200.png`. **Nothing is tracked and nothing is wired in:**
+the owner stopped the run and will continue it. Turning it into shipped art needs two decisions
+from the owner: whether AI-made art is tracked in `assets/psp/chibi/` (or generated once into
+`psp-data/`), and which pose set to keep.
