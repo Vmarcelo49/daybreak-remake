@@ -486,7 +486,6 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
             }
         }
         else if (!(v = val("--extract-psp=")).empty()) o.extractPsp = v;
-        else if (!(v = val("--psp-data=")).empty()) o.pspData = v;
         else if (a == "--lock-taps") o.lockTaps = true;
         else if (a.rfind("--", 0) == 0) {
             error = "unknown option " + a;

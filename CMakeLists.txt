@@ -953,7 +953,8 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(controller_scene_lifetime_test PRIVATE render
         ui media game_interfaces physics
         battle_backend gameplay)
-    target_link_libraries(controller_scene_lifetime_test PRIVATE net_session update)
+    # psp_extract: main.cpp's --extract-psp path (src/app/psp.inc) is compiled in with it.
+    target_link_libraries(controller_scene_lifetime_test PRIVATE net_session update psp_extract)
     add_test(NAME controller_scene_lifetime_test COMMAND controller_scene_lifetime_test
              "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak")
     set_tests_properties(controller_scene_lifetime_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
