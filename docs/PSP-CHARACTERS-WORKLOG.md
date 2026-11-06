@@ -339,3 +339,48 @@ fingerprints confirm it. Merged as `7a562201`.
 - Known limits: silent voices (VAG in `.pck`), and the per-row animation is the borrowed combo's.
   Until Track A's model lands, the converter copies the dispatch combo's PC model under the PSP
   name.
+
+### 2026-11-06 — Track A: the extractor and the PSP models
+
+`feat/91-psp-a`, merged with `feat/91-psp-characters` (Track B, then Track C's integration).
+Commits: the extractor, the GMO→`.X` conversion, the two-reader test, then the merge.
+
+- **The extractor works on the owner's ISO and nothing else is needed.** `--extract-psp <iso>
+  [--psp-data <dir>] [--install <game>]` reads the ISO9660 image, finds
+  `PSP_GAME/USRDIR/_pack/gzpack.pck`, inflates the 143 files [`assets/psp/manifest.txt`] lists,
+  checks each against the tracked SHA-256 and writes `psp-data/psp/<pack path>`, then runs the
+  converters. 21.7 MB of raw payloads in 0.6 s. It runs before SDL, the GPU and the settings: it
+  is the one run that writes files. Evidence: tier 4 (`psp_model_test`) and tier 5 (a run on the
+  owner's dump; the count, sizes and hashes were also cross-checked against the pack's own index
+  read by the local Python reader).
+- **The raw list is one tracked file**, paths + sizes + SHA-256 of the inflated payloads, so any
+  good dump works and no game bytes enter git. `psp-data/` is ignored. Evidence: tier 3, the
+  bytes; the seam is `psp/psp_extract.h`'s converter list, which Track C's moveset converter now
+  occupies — its frame tables read the converted `00.X`, so the extractor produces the whole
+  tree in one command.
+- **Conversion: GMO → the port's binary `.X`** ([`docs/psp/MODEL-CONVERSION.md`](psp/MODEL-CONVERSION.md)).
+  15 costumes (5/7/3), 68 or 77 bones, 4 skinned meshes each, all 76 takes as animation sets, and
+  the textures decoded from the embedded TGA and the `chrtNN.gim` head atlas. Both readers accept
+  every file, which is the point: the renderer draws `xm::loadModel`'s output and the simulation
+  reads the core's `XObjectReader`'s, from the same bytes (D-3a).
+- **Three port rules** (tier 6, stated as such): bone names become the PC rigs' where the core
+  looks a name up (the hand bones throw without them; the `Bip01` prefix is the core's
+  upper-body channel); takes are written in reverse file order because both readers register sets
+  back to front, so index *i* is PSP take *i*; and the fighter's draw scale plus a half turn
+  about Y sit on the root frame. The half turn was **measured**, not assumed: with
+  `--camera=front` a PC fighter faces the camera and a converted PSP one showed its back, and
+  `chr190.gmo`'s face mesh agrees (z +9.9, mean normal +0.9 in z).
+- **Two frame-side details a whole match taught** (tier 5): the mesh-owning frame must be written
+  unnamed, because a PC frame table anchors a no-hitbox state on an empty bone name and the core
+  turns an unresolvable name into bone 0 and throws; and an empty take must be a two-key hold,
+  because a set's length is its last key time and a single key is a zero-length animation the row
+  timers divide by.
+- **Found, and handed to Track C: their frame tables' set indices are out of range** for a
+  76-set model. Only the eleven converted moves remap a phase value; every other state keeps the
+  dispatch combo's index (valid for its 124 sets), so satoshi 67 phases in 42 states, miyoko 70,
+  okonogi 73 (states 350/360, 400–412, 450/460 among them) point past the end and binding those
+  rows throws. Measured with the converted model in place: `psp_match_test` fails 5/178 (shot
+  rows unreachable); with the older PC stand-in model it passes 178/178. The fix is a clamp over
+  every state, in `psp_moveset.cpp`.
+- Also unchanged and still true: the 46 PC combos did not move. The six fingerprints on the
+  merged tree are the values in `AGENTS.md`.
