@@ -318,3 +318,24 @@ Track B's source conflicted with Track C's; the seams lined up because both used
   Both name the same directories and the same item ids, which is now written down in
   [`docs/psp/COMBAT.md`](psp/COMBAT.md) §4.
 - The full default ctest tier and the six fingerprints were re-run on the merged tree.
+
+### 2026-11-06 — coordinator: Track C merged
+
+Reviewed the core diff: 1 new + 6 patched core files, each with a `PATCHES.md` entry. For a PC
+combo the dispatch pair equals the roster pair, so the 46 combos cannot be affected; the
+fingerprints confirm it. Merged as `7a562201`.
+
+- **D-2 as built.** `BattleActionBinding.character/weapon` *is* the dispatch pair, and the new
+  `roster_character/roster_weapon` is identity. *Why:* this routes ~158 dispatch reads, four
+  `character*3+weapon` switches, three `[16][3]` tables and ~50 throwing bodies with no edit. Only
+  three identity readers moved.
+- **D-7 dispatch weapon = slot 0 for all twelve.** Least-squares over the 11 measured moves cannot
+  separate one PC character's three slots (they share a melee damage profile). PSP `wpn17d` is
+  Keiichi's weapon-a model.
+- **D-8 PSP HP not applied.** Damage goes in 1:1 against the core's 10000 per fighter, so all
+  fighters stay on one scale. A PSP fighter's time-to-kill is not the PSP's (tier 6, port rule).
+- **D-9 victory personas 19/20/21.** 16 and 17 are Rena's and Rika's weapon-2 personas; 18 is left
+  as a visible gap.
+- Known limits: silent voices (VAG in `.pck`), and the per-row animation is the borrowed combo's.
+  Until Track A's model lands, the converter copies the dispatch combo's PC model under the PSP
+  name.
