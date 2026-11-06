@@ -23,6 +23,9 @@ struct Slot {
 
 struct BattleConfig {
     std::string gameDir;           // holds daybreak00.dat and friends
+    // Plan D-3a: the converted PSP tree (data/satoshi/00.dat ...), mounted after the install so a
+    // PC name still wins. Empty means $DAYBREAK_PSP_DATA, then <gameDir>/psp-data when it exists.
+    std::string pspDataDir;
     std::array<Slot, 4> slots{};   // slots 0-1 and 2-3 are the two teams
     unsigned stage = 1;
     std::uint32_t seed = 1;
@@ -210,9 +213,17 @@ struct ActorAnimation {
     float lowerTime = 0.f, upperTime = 0.f;  // seconds into each set
 };
 
+// The PC roster stays 16. Issue #91's three PSP fighters are reached in parallel, as indices
+// character_count()..character_count()+psp_character_count()-1, with four weapon slots each.
 int character_count();
+int psp_character_count();
 int weapon_count(int character);
+// Answered for the whole roster, PC first, so a log line or a report can name any slot.
 std::string character_name(int character);
+int character_index(const std::string& name);  // -1 when no roster fighter has that name
+// Plan D-2: the PC combo whose recovered code a roster combo runs. The input itself for every PC
+// combo; for a PSP fighter, the borrowed body. -1/-1 when the combo does not exist.
+std::pair<int, int> dispatch_combo(int character, int weapon);
 
 // A copy of a battle's simulation, for rollback. A slot keeps its allocation, so reusing one is
 // cheap. It may only go back into the Battle that saved it.

@@ -2,6 +2,7 @@
 #include "asset_search_path.hpp"
 #include "battle_voice_route.hpp"
 #include "character_names.hpp"
+#include "psp_roster.hpp"
 #include "legacy_image_name.hpp"
 #include <array>
 #include <cstdio>
@@ -21,6 +22,10 @@ inline constexpr std::array<const char*,40> battle_voice_categories{{
  "tagfront","tagOK","thank","specialC"
 }};
 inline std::string battle_voice_root(unsigned character,unsigned item,unsigned option,bool alternate_special=false){
+ // Plan D-1: a PSP fighter's voices are VAG files inside activity/chrNNx_voice.pck, which this
+ // asset tree does not carry, so its bank is looked for under its own name and comes back empty.
+ // The throw stays for an index that is not a roster fighter at all.
+ if(is_psp_character(character))return std::string(psp_character_name(character));
  if(character>=character_names.size())throw std::out_of_range("Battle voice character");
  if((character==0&&item==33)||(character==4&&item==37)||
     (character==11&&option==1)||(character==14&&item==32&&alternate_special))

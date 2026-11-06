@@ -1484,8 +1484,10 @@ public:
   std::array<unsigned,4> characters{},weapons{};
   for(unsigned i=0;i<4;++i){
    // Legacy regression constructor has no roster and historically uses Keiichi0.
-   const auto& binding=action_binding(i);characters[i]=binding.policy==BattleActionPolicy::legacy_test?2:binding.character;
-   weapons[i]=binding.policy==BattleActionPolicy::legacy_test?0:binding.weapon;
+   // Plan D-2: the victory identity is the roster pair; for a PSP fighter that is not the
+   // dispatch pair whose recovered bodies ran.
+   const auto& binding=action_binding(i);characters[i]=binding.policy==BattleActionPolicy::legacy_test?2:binding.roster_character;
+   weapons[i]=binding.policy==BattleActionPolicy::legacy_test?0:binding.roster_weapon;
   }
   return battle_victory_team(unsigned(match.winner),characters,weapons);
  }

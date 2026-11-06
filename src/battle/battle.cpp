@@ -20,11 +20,13 @@
 #include "local_normal_projectiles.hpp"
 #include "projectile_asset_files.hpp"
 #include "projectile_render_pose.hpp"
+#include "psp_roster.hpp"
 #include "stage_environment.hpp"
 #include "stage_floor_collision.hpp"
 #include "stage_wall_collision.hpp"
 
 #include <cstdio>
+#include <cstdlib>
 #include <sstream>
 #include <filesystem>
 #include <stdexcept>
@@ -33,17 +35,39 @@ namespace sim {
 
 using namespace daybreak;
 
+// The PC roster: unchanged by issue #91 so the 46-combo sweeps keep their exact meaning.
 int character_count() { return static_cast<int>(character_names.size()); }
 
-// load_character_asset_files: characters 0-13 carry three weapons, 14-15 carry two.
+// Plan D-1: the three PSP fighters sit after the PC sixteen, with four weapon slots each, and
+// are reached in parallel rather than by widening character_names.
+int psp_character_count() { return static_cast<int>(psp_character_names.size()); }
+
+// load_character_asset_files: characters 0-13 carry three weapons, 14-15 carry two, 16-18 four.
 int weapon_count(int character) {
-    if (character < 0 || character >= character_count()) return 0;
-    return character < 14 ? 3 : 2;
+    if (character < 0 || !daybreak::roster_has_character(static_cast<unsigned>(character))) return 0;
+    return static_cast<int>(daybreak::roster_weapon_count(static_cast<unsigned>(character)));
 }
 
 std::string character_name(int character) {
-    if (character < 0 || character >= character_count()) throw std::out_of_range("sim: character");
-    return std::string(character_names[static_cast<size_t>(character)]);
+    if (character < 0 || !daybreak::roster_has_character(static_cast<unsigned>(character)))
+        throw std::out_of_range("sim: character");
+    return std::string(daybreak::roster_character_name(static_cast<unsigned>(character)));
+}
+
+// Plan D-2: the PC combo whose recovered update body a roster combo runs. Equal to the input for
+// every PC combo; a PSP fighter borrows one, which is what the per-combo row bodies key on.
+std::pair<int, int> dispatch_combo(int character, int weapon) {
+    if (character < 0 || !daybreak::roster_has_character(static_cast<unsigned>(character)) || weapon < 0) return {-1, -1};
+    if (!daybreak::is_psp_character(static_cast<unsigned>(character))) return {character, weapon};
+    const auto c = static_cast<unsigned>(character);
+    return {static_cast<int>(daybreak::psp_dispatch_character(c)),
+            static_cast<int>(daybreak::psp_dispatch_weapon(c, static_cast<unsigned>(weapon)))};
+}
+
+int character_index(const std::string& name) {
+    for (int c = 0; c < psp_character_count() + character_count(); ++c)
+        if (character_name(c) == name) return c;
+    return -1;
 }
 
 namespace {
@@ -78,16 +102,32 @@ LocalBattleRoster make_roster(const BattleConfig& config) {
     return roster;
 }
 
-AssetSearchPath mount_assets(const std::string& gameDir) {
+// Plan D-3a: the PSP data is converted to the PC's own layout and mounted as one more directory.
+// $DAYBREAK_PSP_DATA names it for tests and for a data directory kept outside the install;
+// otherwise <install>/psp-data is used when it exists.
+std::string psp_data_directory(const std::string& gameDir, const std::string& requested) {
+    if (!requested.empty()) return requested;
+    if (const char* configured = std::getenv("DAYBREAK_PSP_DATA"))
+        if (*configured) return configured;
+    const std::filesystem::path dir = std::filesystem::u8path(gameDir.empty() ? "." : gameDir);
+    const auto candidate = dir / "psp-data";
+    return std::filesystem::exists(candidate) ? candidate.u8string() : std::string();
+}
+
+AssetSearchPath mount_assets(const std::string& gameDir, const std::string& pspDataDir) {
     AssetSearchPath assets;
     const std::filesystem::path dir = std::filesystem::u8path(gameDir.empty() ? "." : gameDir);
     // Without the archives this is a prepared tree of loose payloads: the web client's.
     if (!std::filesystem::exists(dir / "daybreak00.dat")) {
         assets.index_directory(dir.string());
-        return assets;
+    } else {
+        for (const char* name : {"daybreak07.dat", "daybreak04.dat", "daybreak00.dat"})
+            assets.append((dir / name).u8string());
     }
-    for (const char* name : {"daybreak07.dat", "daybreak04.dat", "daybreak00.dat"})
-        assets.append((dir / name).u8string());
+    // Later than the install on purpose: AssetSearchPath reads the archive mounts first, so a PC
+    // name can never be shadowed by the converted tree, and the PSP files only fill its gaps.
+    const auto psp = psp_data_directory(gameDir, pspDataDir);
+    if (!psp.empty()) assets.index_directory(psp);
     return assets;
 }
 
@@ -124,7 +164,7 @@ struct Battle::Impl {
     decltype(LocalBattleRoster::controlled_count) hearingCount = 0;
 
     explicit Impl(const BattleConfig& config)
-        : assets(mount_assets(config.gameDir)),
+        : assets(mount_assets(config.gameDir, config.pspDataDir)),
           roster(make_roster(config)),
           projectiles(assets),
           effects(assets),
@@ -777,7 +817,7 @@ DebugFighter Battle::debug_fighter(unsigned slot) const {
 
 std::vector<BulletInfo> weapon_bullets(const std::string& gameDir, int character, int weapon) {
     if (weapon < 0 || weapon >= weapon_count(character)) throw std::invalid_argument("sim: not a legal combo");
-    AssetSearchPath assets = mount_assets(gameDir);
+    AssetSearchPath assets = mount_assets(gameDir, std::string());
     char path[64];
     std::snprintf(path, sizeof path, "data/%s/%02d.dat", character_name(character).c_str(), weapon);
     const unsigned item = read_actor_frame_data(assets.read(path).bytes).parameters[3];

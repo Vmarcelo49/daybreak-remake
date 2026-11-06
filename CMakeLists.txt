@@ -355,6 +355,20 @@ if(NOT EMSCRIPTEN)
         target_link_options(simctl PRIVATE -static)
     endif()
 endif()
+
+# PSP moveset conversion (issue #91, plan D-3a). Writes the PC game's own frame table and weapon
+# item from the PSP's .acs/.acv/.atp, for the extractor to call at extraction time. It reads and
+# writes the core's data formats, so it may include the core's headers; nothing else outside
+# src/battle/ does. Kept out of simctl on purpose: the 46-combo fingerprints run simctl.
+add_library(psp_moveset STATIC src/psp/psp_moveset.cpp)
+target_include_directories(psp_moveset PUBLIC src src/psp PRIVATE src/battle/core src/battle)
+if(NOT EMSCRIPTEN)
+    add_executable(psp_moveset_convert tools/psp_moveset_convert.cpp)
+    target_link_libraries(psp_moveset_convert PRIVATE psp_moveset battle_core)
+    if(MINGW)
+        target_link_options(psp_moveset_convert PRIVATE -static)
+    endif()
+endif()
 if(NOT CMAKE_CROSSCOMPILING)
     add_executable(simfuzz src/battle/simfuzz.cpp)
     target_link_libraries(simfuzz PRIVATE battle_core)
@@ -820,6 +834,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/release_flow_check.py $<TARGET_FILE:daybreak>
         ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak --recipe=com --rounds=1 --frames=5000 --fighters=4)
     set_tests_properties(sim_frontend_flow PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 LABELS asset)
+
+    # Issue #91: the three PSP fighters play whole matches. Needs the PSP data beside the install
+    # (or $DAYBREAK_PSP_DATA / $DAYBREAK_PSP_RAW) on top of the install, so it skips without both.
+    add_executable(psp_match_test tests/psp_match_test.cpp)
+    target_link_libraries(psp_match_test PRIVATE battle_core psp_moveset)
+    add_test(NAME psp_match_test COMMAND psp_match_test)
+    set_tests_properties(psp_match_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
 
     # The browser's download against what the core reads. Skips without a prepared tree.
     add_test(NAME web_match_group_check COMMAND ${Python3_EXECUTABLE}

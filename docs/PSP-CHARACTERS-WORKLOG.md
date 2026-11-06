@@ -249,3 +249,72 @@ crashing. The contract for their art is [`psp/FRONTEND-ART.md`](psp/FRONTEND-ART
 - **D-6 (Track B, accepted).** Random COM fill, the off-diamond roll, story mode and online stay
   on the PC sixteen. *Why:* a random seat must never pick a fighter whose data the player has not
   extracted, and the online bundle hash does not cover `psp-data/`, so peers could desync.
+
+### 2026-11-06 — Track C: the three fighters play whole matches (subagent)
+
+**What now exists.** Roster indices 16 Satoshi, 17 Miyoko, 18 Okonogi (four weapons each, item ids
+`data/item/101..112.dat`) are loadable and playable through `sim::Battle` and `simctl`, in any slot,
+against any PC combination, to the results screen. `simctl` takes `satoshi:0`..`okonogi:3`.
+[`docs/psp/COMBAT.md`](psp/COMBAT.md) is the reference: the dispatch choice per weapon, what is PSP
+data, what is borrowed, and every port rule with its tier.
+
+**D-2 implemented as two identities in one binding.** `BattleActionBinding::character/weapon` is the
+*dispatch* pair (the combo whose recovered rows run); `roster_character/roster_weapon` is the
+*identity* (assets, voice, victory). The 46 PC combos keep them equal, so the ~158 dispatch reads,
+the four `character*3+weapon` switches, the three `[16][3]` tables and the ~50 throwing per-combo
+bodies needed no edit; only three identity readers moved. One core file added
+(`psp_roster.hpp`), six patched, all in `src/battle/core/PATCHES.md`. `character_names`,
+`sim::character_count()` and `sim_pose_test`'s sweep are untouched, and the six fingerprints did not
+move: SIM `746ce7a9cbe6e44a`, `941f3dcd7a679d74`, `f19e8d6d58c37151`; PIX `ff54a85d`, `1fc12c64`,
+`9ecda8ec`.
+
+**Dispatch pairs.** Characters from the moveset study; weapon slot 0 for all twelve, because the
+three PC slots of one character share one melee damage profile on the eleven measured moves (a
+least-squares table is in COMBAT.md §2) and PSP `wpn17d` is byte-identical to Keiichi's bat anyway.
+
+**D-3a implemented as a converter, not a loader.** `src/psp/psp_moveset.{h,cpp}` turns one weapon's
+`.acs`/`.acv`/`.atp` plus the dispatch combo's own `.dat`/item into `data/<name>/0W.dat` and
+`data/item/NNN.dat` in the PC layout; `daybreak`'s extractor (Track A) will call the same function,
+and `tools/psp_moveset_convert.cpp` builds a whole tree by hand. `psp-data/` mounts after the
+install's archives (`BattleConfig::pspDataDir`, `$DAYBREAK_PSP_DATA`, `<install>/psp-data`).
+
+**Two findings that changed the rules.** (1) The `.atp` record of a row is `atp[acv.S4[row]]`, not
+`atp[row]` (hit/bullet study, `notes/combat.md` §1.3); the converter indexes it that way. (2) The
+first cut picked each phase's animation set by the PSP row's own length. That shortened every attack
+row against the borrowed body's timing and cost the fighters most of their damage (Okonogi 0-6k
+where the dispatch combo dealt 6-13k). A phase's animation length *is* its row timer, so the set is
+now the dispatch combo's own index whenever the model has it, and only an index the model lacks is
+remapped, to the set of nearest length. With that, the twelve combos deal damage in the dispatch
+combo's own range.
+
+**Verification.** `tests/psp_match_test.cpp` (CTest `psp_match_test`, default tier, skips without PSP
+data): every combo plays two full CPU-vs-CPU rounds against a rotating PC opponent set with the
+*dispatch combo itself* as the control, one four-PSP match, a scripted human round per fighter
+(walk, jump, melee, shot, guard), a determinism repeat and a rollback stress (2821 rewinds agree).
+Dated measurement of the twelve combos is in the track's report; the limits are COMBAT.md §5.
+
+**Known and deliberate.** PSP voices are silent (VAG in `.pck`); the item's magazines and bullets
+stay the dispatch combo's; PSP bullet motion is undecoded; the animation per row is a placeholder
+until `FUN_0001a228` is read; the PSP's `maxHp` (8500/11000) is not applied, the core's 10000 is the
+authority. Each is labelled a port rule in COMBAT.md rather than presented as recovered behaviour.
+
+
+### 2026-11-06 — Track C merged with Track B, and the product's match path
+
+Merged `feat/91-psp-characters` (Tracks A/B's work) into `feat/91-psp-c`. One conflict, in this
+file: both sides had appended entries, so both are kept and Track C's sits last. Nothing in
+Track B's source conflicted with Track C's; the seams lined up because both used the same contract
+(`data/item/101..112.dat`, the three directory names, `psp-data/` after the install).
+
+- **The product's match path now plays a PSP fighter.** `startCoreBattle` passes the root its own
+  `AssetSource` mounted into `BattleConfig::pspDataDir`, resolves fighters with
+  `sim::character_index` (19-wide) and resolves weapons with Track B's `roster*` accessors
+  (`rosterCharacterIndexForDir`, `rosterWeaponCount`, `rosterWeaponItemId`) instead of the
+  PC-16-only forms. `--match --psp-data=<psp-data> --sim-roster=<install>/data/satoshi@0,...`
+  reaches `RESULT: ok` over 600 frames (tier 5 capture); without `--psp-data` the same command
+  fails cleanly at the rig load rather than throwing inside the battle.
+- **Two identities, one contract.** The simulation's roster table is
+  `src/battle/core/psp_roster.hpp`; the screens' is `src/battle/weapon_definition.h`'s `kPspRoster`.
+  Both name the same directories and the same item ids, which is now written down in
+  [`docs/psp/COMBAT.md`](psp/COMBAT.md) §4.
+- The full default ctest tier and the six fingerprints were re-run on the merged tree.
