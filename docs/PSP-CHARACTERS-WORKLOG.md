@@ -404,3 +404,20 @@ Remaining gaps against the success criteria, in order:
 3. **Front-end art from the C++ extractor.** Today only `tools/asset-tools/psp_select_art.py`
    makes the select/VS/win sheets. A player has no Python, so the extractor must write them.
 4. Weapons in hand (unweighted GMO vertex type), voices (VAG), expressions: polish, not criteria.
+
+### 2026-11-06 — PSP take labels (subagent)
+
+Rendered every take of `chrm17/18/19` (and PSP Keiichi `chrm02`) as 6-frame filmstrips and
+labelled them by eye. Results kept locally: `notes/take_labels.tsv`, contact sheets in
+`local-data/harness/psp/takes/`.
+
+- Takes 0–12 read identically on all four rigs: jump arc, hit flinches, knockdowns, turn, getup.
+- Basics: idle 13, walk 15, run 11/14, brake 19, air fall 22, air attack 33, dash 25, swing 10,
+  thrust 26.
+- No held guard was found, and victory is only a candidate (43). Satoshi 52–60 are static
+  placeholders.
+- `chrm18/19` root curves sit in a rotated bone frame; the label tables use model space.
+- **D-10.** Animation is mapped at the *move* level: PC state → one PSP take, with the phases
+  sliced inside it. *Why:* a PC set is a phase while a PSP take is a whole move, so per-set
+  similarity failed its own known-answer test. Labels from a human-style visual read are the
+  best static evidence, and each table row carries its label confidence (tier 6).
