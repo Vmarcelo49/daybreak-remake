@@ -74,5 +74,6 @@ Linux needs glibc 2.38 or newer, such as Ubuntu 24.04, and a Vulkan driver. Your
 ## SHA-256
 
 ```
-pending
+233b1106fd1ff6948945e94acaf573824b0608e5570034781925a6f45fb47bef  daybreak-1.0.1-linux-x86_64.tar.gz
+0e776b63bc74b7d3a75db75c37213591000888d3812819950350cd87af05feba  daybreak-1.0.1-33815c8f-windows-x86_64.zip
 ```
