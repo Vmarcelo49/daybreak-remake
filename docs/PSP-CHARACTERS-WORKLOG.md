@@ -404,3 +404,70 @@ Remaining gaps against the success criteria, in order:
 3. **Front-end art from the C++ extractor.** Today only `tools/asset-tools/psp_select_art.py`
    makes the select/VS/win sheets. A player has no Python, so the extractor must write them.
 4. Weapons in hand (unweighted GMO vertex type), voices (VAG), expressions: polish, not criteria.
+
+### 2026-11-06 — Track D: the extractor writes the front-end sheets (subagent)
+
+`daybreak --extract-psp=<iso> --psp-data=<dir> --install=<game>` now writes the five sheet families
+the select, VS and result screens read for indices 16–18 — `data/select/NN.cnv`, `iNN.cnv`,
+`cosNN.cnv`, `wNN.cnv` and `data/win/16a..18a.cnv` — so a player with no Python gets them from the
+one command that converts the models and the frame tables. The contract did not move:
+[`psp/FRONTEND-ART.md`](psp/FRONTEND-ART.md) §2 is unchanged, and §4 now describes the C++ path.
+
+- **Port, not a rewrite.** `src/psp/psp_select_art.cpp` is `tools/asset-tools/psp_select_art.py` in
+  C++, registered as the extractor's `select art` converter (`models`, `select art`, `movesets`). It reads
+  only `psp-data/psp/gra/gim/select/` and writes CNV through Track A's own writer, so nothing new
+  decodes or encodes at run time. The costume counts and the weapon item ids come from the two
+  tables that already own them (`psp::pspFighters()`, `daybreak::psp_item_id`), not a third copy.
+- **The GIM decoder needed one rule it did not have.** The padded row pitch is the real row
+  ([`psp/research/RESOURCES.md`](psp/research/RESOURCES.md) §8): `vs_enter_satoshi` declares 168
+  columns and is 176 wide, `bustup_satoshi` declares 220 and is 224, and there is live art in the
+  padding. `psp::decodeGim` now decodes `align(width, align)` texels (`src/psp/gim.cpp`); before it,
+  a portrait lost its right 8 columns — a shoulder and a sleeve — and a bust-up its right 4.
+  INDEX8, INDEX4 and the palette association were checked against the same reference and are
+  correct as they were: the head atlas (`chrt17.gim`, INDEX4 and swizzled) decodes to a clean face,
+  which is what Track A's fighter captures already show.
+- **D-10: the Python tool stays, as the reference.** It defined the sheets and is what the screens
+  were judged against, and it keeps the two entry points a player's extractor has no use for:
+  `--dump=<dir>` (build from an already extracted tree, no ISO) and `--preview=<dir>` (PNG copies
+  for the eye). It is not required to play and it is not the supported path — the extractor is.
+  Nothing was removed, and `--iso` still works on it for A/B work.
+- **The two agree byte for byte, measured.** On the owner's dump, all fifteen sheets from
+  `--extract-psp` and from `psp_select_art.py --iso` are identical: 0 differing bytes, max diff 0,
+  mean diff 0.000000, over five families × three characters (262,144–1,048,576 bytes each). That is
+  stronger than this track's bar ("any good deterministic filter") and it is the property that
+  makes the screens' pixels independent of which generator wrote them. The resampling is the
+  reference's box filter with its arithmetic reproduced: premultiplied alpha, integer division,
+  round-half-to-even, and the spec-dropping neighbour count that reads the buffer it is mutating.
+- **New test, install-backed (tier 4).** `tests/psp_select_art_test.cpp` (CTest
+  `psp_select_art_test`, default tier, label `data`, skips with 77 without `DAYBREAK_PSP_ISO`)
+  extracts, then reads every sheet through the product's own CNV decoder and checks the size and the
+  alpha in the cells the screens draw from: the portrait reaching the bottom row and the middle
+  column, the five chibi art cells drawn and cell (2,1) fully opaque white, the costume cells up to
+  the contract's count (5/7/3) drawn and the rest empty, a slot letter and an item id in all four
+  weapon rows, the win figure ending on the 492 baseline and reaching the quote band — and that the
+  extraction report names all fifteen files. Negative check: with one costume count changed to 6 the
+  test fails on `costume cell 5 is empty`, so the assertions are not vacuous.
+- **Captures, tier 5, from the extractor's tree only.** `daybreak --extract-psp` wrote
+  `local-data/harness/psp/trackD-psp-data` (ignored) and every capture run names exactly that
+  folder with `--psp-data`, so no Python output and nothing beside the binary could have
+  contributed: the select diamond with all 19 icons and Satoshi's portrait in the blue panel
+  (`--frames=200`, `trackD_select.png`), the VS screen with his `vs_enter` art beside Keiichi's PC
+  portrait (`--frames=800`, `trackD_vs.png`), and the result screen of a 1v1 he won, his bust-up
+  portrait cut at the chest by the quote band (`--screen=result --result-winner=satoshi:0
+  --frames=200`, `trackD_result.png`), all in `local-data/harness/psp/captures/`. The install ships
+  no `data/select/16*.cnv` and no `data/win/16a.cnv`, so those pixels can only come from the new
+  converter.
+- **Player-facing side.** `--help` documents the extraction run properly now (what it writes, where,
+  why `--install` matters) and gained a real `-h, --help` that prints it and exits 0; before, the
+  flag was an "unknown option" line. `README.md` has a plain "PSP characters" section: run once with
+  your own ISO, keep `psp-data` beside the game, delete it whenever. `docs/psp/README.md`'s own
+  command example used the space form (`--extract-psp /path`), which the parser rejects; fixed
+  there and in the header comment that repeated it.
+- **Unchanged.** The 46 PC combos: SIM `746ce7a9cbe6e44a`, `941f3dcd7a679d74`, `f19e8d6d58c37151`;
+  PIX `ff54a85d`, `1fc12c64`, `9ecda8ec`. The default ctest tier passes with `DAYBREAK_PSP_ISO` set,
+  so the PSP suites exercise rather than skip.
+- **Known limits.** Two implementations of one transform, kept identical by hand — FRONTEND-ART.md
+  §7 says so, and nothing checks it automatically because that would need Python on a player's
+  machine. The chibi, costume and weapon cells are still place-holders and the win portrait is still
+  the bust-up's smiling pose, both as §4 documents: this track made them reachable without Python,
+  not better.
