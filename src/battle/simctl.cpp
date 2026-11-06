@@ -54,9 +54,8 @@ sim::Slot parse_slot(const std::string& text) {
     sim::Slot slot;
     slot.weapon = std::stoi(text.substr(first + 1, second - first - 1));
     slot.cpu = second == std::string::npos || text.substr(second + 1) != "human";
-    slot.character = -1;
-    for (int c = 0; c < sim::character_count(); ++c)
-        if (sim::character_name(c) == name) slot.character = c;
+    // Names cover the PSP three as well (issue #91): satoshi, miyoko, okonogi, 0..3 weapons.
+    slot.character = sim::character_index(name);
     if (slot.character < 0) slot.character = std::stoi(name);
     return slot;
 }
@@ -166,7 +165,7 @@ int main(int argc, char** argv) try {
             return argv[i];
         };
         if (arg == "--list") {
-            for (int c = 0; c < sim::character_count(); ++c)
+            for (int c = 0; c < sim::character_count() + sim::psp_character_count(); ++c)
                 for (int w = 0; w < sim::weapon_count(c); ++w) std::printf("%s:%d\n", sim::character_name(c).c_str(), w);
             return 0;
         } else if (arg == "--roster") {
