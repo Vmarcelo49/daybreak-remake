@@ -827,6 +827,15 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME sim_oracle_test COMMAND sim_oracle_test)
     set_tests_properties(sim_oracle_test PROPERTIES SKIP_RETURN_CODE 77 LABELS asset)
 
+    # The PSP conversion, end to end: extract the three PSP-only fighters from the player's own
+    # ISO, convert them to .X, and load every file through both the core's reader and the
+    # renderer's. Skips without DAYBREAK_PSP_ISO — a disc path never enters a tracked file.
+    add_executable(psp_model_test tests/psp_model_test.cpp)
+    target_link_libraries(psp_model_test PRIVATE battle_core psp_extract assets glm)
+    add_test(NAME psp_model_test COMMAND psp_model_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/psp/manifest.txt)
+    set_tests_properties(psp_model_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS data)
+
     # M4's first risk: the core's bones against our own rig sampling, per animation set.
     add_executable(sim_pose_test tests/sim_pose_test.cpp)
     target_link_libraries(sim_pose_test PRIVATE battle_core gameplay)
