@@ -28,6 +28,10 @@ struct PspExtractOptions {
     std::string dataDir;        // the `psp-data` root, absolute
     std::string packPath = "PSP_GAME/USRDIR/_pack/gzpack.pck";
     const PspManifest* manifest = nullptr;
+    // The PC install, for the converters that start from the PC game's own tables (the moveset
+    // converter reads the dispatch combo's frame table from it). Empty means "the caller had
+    // none": such a converter reports and skips instead of failing the extraction.
+    std::string installDir;
     bool convert = true;        // run the registered converters once the raw files land
 };
 
@@ -44,14 +48,20 @@ PspExtractReport extractPsp(const PspExtractOptions& options, std::ostream& log)
 // ---------------------------------------------------------------------------------------
 // The converter seam (design decision D-3a).
 //
-// A converter owns one output family and reads only <psp-data>/psp/. `run` returns the
-// paths it wrote, relative to the psp-data root, so the report can list them. Registering
-// is a plain call; pspConverters() is the list the extractor walks, in registration order,
-// and registerAllPspConverters() (psp_convert.cpp) is the one place the list is spelled
-// out. Track C's moveset converter (data/<name>/0W.dat, data/item/1NN.dat) joins there.
+// A converter owns one output family and reads only <psp-data>/psp/ (and, when it needs the
+// PC game's own tables, the install). `run` returns the paths it wrote, relative to the
+// psp-data root, so the report can list them. Registering is a plain call; pspConverters() is
+// the list the extractor walks, in registration order, and registerAllPspConverters()
+// (psp_convert.cpp) is the one place the list is spelled out: the models, then the movesets,
+// which read the converted model for the take count each frame table's phases refer to.
 // ---------------------------------------------------------------------------------------
-using PspConverterFn =
-    std::function<std::vector<std::string>(const std::string& dataDir, std::ostream& log)>;
+struct PspConverterContext {
+    std::string    dataDir;      // the psp-data root: raw files are in <dataDir>/psp
+    std::string    installDir;   // the PC install, when the caller had one; may be empty
+    std::ostream*  log = nullptr;
+};
+
+using PspConverterFn = std::function<std::vector<std::string>(const PspConverterContext&)>;
 
 struct PspConverter {
     std::string    name;

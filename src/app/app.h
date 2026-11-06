@@ -74,8 +74,7 @@ struct Options {
     bool        headless = false;  // no window/surface: offscreen captures only
     std::string install;           // dir holding daybreakXX.dat; auto-detected when empty
     // --extract-psp=<iso>: collect the PSP version's files into psp-data/ and exit
-    // (docs/psp/README.md). --psp-data=<dir> (declared below) moves the output folder, which
-    // otherwise sits beside the executable the way a texture pack does.
+    // (docs/psp/README.md). It writes where --psp-data points, or beside the executable.
     std::string extractPsp;
     bool        noCameraClamp = false;   // A/B switch for the arena eye clamp
     bool        noTextures = false;
@@ -138,10 +137,10 @@ struct Options {
     std::string netHost, netJoin;
     // --texture-pack=<folder>: PNGs at the game's paths, replacing its textures at any size.
     std::string texturePack;
-    // --psp-data=<folder>: the converted PSP data (D-3a), and --extract-psp's output folder: one
-    // folder, written by the extractor and mounted by a run. Interactive runs also mount one found
+    // --psp-data=<folder>: the converted PSP data (D-3a). Interactive runs also mount one found
     // beside the executable; a verification run mounts only the folder it names here, so a
-    // psp-data that happens to sit next to the binary cannot change a capture.
+    // psp-data that happens to sit next to the binary cannot change a capture. This is the
+    // same folder `--extract-psp` writes, which is why the two share one option.
     std::string pspData;
     // --result-winner=<dir>[:weapon] with --screen=result: open the result screen on a finished
     // 1v1 that this fighter (blue) won against Rena 0 (red). Verification only — it is how the

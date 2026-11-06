@@ -22,6 +22,13 @@ static bool runPspExtraction(const Options& options, std::string& error) {
         if (extract.dataDir.empty())
             extract.dataDir = baseDir.empty() ? std::string("psp-data") : baseDir + "psp-data";
         extract.manifest = &manifest;
+        // The moveset converter reads the dispatch combo's own frame table from the PC game.
+        // --install= wins; $DAYBREAK_INSTALL is the same fallback the front end uses, so a
+        // launcher that exports it does not have to repeat the flag.
+        extract.installDir = options.install;
+        if (extract.installDir.empty()) {
+            if (const char* install = std::getenv("DAYBREAK_INSTALL")) extract.installDir = install;
+        }
         std::cout << "psp: manifest " << manifestPath << ", " << manifest.entries.size()
                   << " files\n";
         const psp::PspExtractReport report = psp::extractPsp(extract, std::cout);

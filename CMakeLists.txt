@@ -384,6 +384,10 @@ endif()
 # src/battle/ does. Kept out of simctl on purpose: the 46-combo fingerprints run simctl.
 add_library(psp_moveset STATIC src/psp/psp_moveset.cpp)
 target_include_directories(psp_moveset PUBLIC src src/psp PRIVATE src/battle/core src/battle)
+# The extractor's second converter: the moveset library builds the frame tables from the raw
+# .acs/.acv/.atp and the PC install. It depends on this one for the raw layout and the models,
+# so the link goes this way round.
+target_link_libraries(psp_extract PRIVATE psp_moveset)
 if(NOT EMSCRIPTEN)
     add_executable(psp_moveset_convert tools/psp_moveset_convert.cpp)
     target_link_libraries(psp_moveset_convert PRIVATE psp_moveset battle_core)
@@ -416,7 +420,7 @@ if(WIN32)
     add_executable(windows_startup_smoke EXCLUDE_FROM_ALL tests/windows_startup_smoke.cpp)
     target_link_libraries(windows_startup_smoke PRIVATE render ui
         media game_interfaces physics battle_backend gameplay
-        movie)
+        movie psp_extract)
 endif()
 
 set(CAPTION_CJK_FONT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/NotoSansCJKjp-Regular.otf")
@@ -953,7 +957,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(controller_scene_lifetime_test PRIVATE render
         ui media game_interfaces physics
         battle_backend gameplay)
-    # psp_extract: main.cpp's --extract-psp path (src/app/psp.inc) is compiled in with it.
+    # psp_extract because this TU includes main.cpp, which owns --extract-psp.
     target_link_libraries(controller_scene_lifetime_test PRIVATE net_session update psp_extract)
     add_test(NAME controller_scene_lifetime_test COMMAND controller_scene_lifetime_test
              "${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak")

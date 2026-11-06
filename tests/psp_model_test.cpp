@@ -145,6 +145,11 @@ void checkModel(const std::string& label, const std::vector<std::uint8_t>& bytes
     }
     check(core::actor_animation_channel("Bip00_L_Thigh") == 0,
           label + ": the legs are not on the core's lower-body channel");
+    // The borrowed frame tables anchor their no-hitbox states on an empty bone name, and the
+    // core turns a name it cannot find into bone 0 and then throws inside the tick. The PC
+    // rigs answer that lookup with an unnamed frame (their mesh owners); so must this one.
+    check(skeleton.find("") != 0,
+          label + ": no unnamed frame, so an empty hit-record bone resolves to 0");
 
     // The core registers sets in reverse file order, so its index i must be PSP take i: the
     // converted file writes take N-1 first for exactly this reason.
