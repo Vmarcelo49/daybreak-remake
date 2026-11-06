@@ -156,3 +156,52 @@ Raw: `local-data/harness/psp/notes/fighter.md` (945 lines, addressed), `notes/ro
   (`0x5e09c`, `0x64514`); Satoshi is in the effect-0x84 mask (`0x65d10`); `setRow` specials
   for index 0x11 (Miyoko).
 - **Unknown:** hit geometry, bullet motion and spawn, `shot_data.bin`, the button layout.
+
+### 2026-11-06 — Track B: the roster carries 19 on the front end
+
+Branch `feat/91-psp-b`. The three are now *selectable* and *visible*; their combat and their 3D
+model stay with tracks C/E/F, and a launch without their data reports one clear error instead of
+crashing. The contract for their art is [`psp/FRONTEND-ART.md`](psp/FRONTEND-ART.md).
+
+- **Roster (D-1).** `gameplay::kCharacterCount`/`kWeaponSlots`/`kWeaponIds`/`kCharacterDirs` and
+  `sim::character_count()` still mean the PC 16 × 3. The three live in their own table
+  (`kPspRoster`, `PspRosterEntry`) behind `rosterCharacterCount()` (19 while `psp-data` is mounted,
+  16 otherwise), `rosterCharacterDir`, `rosterWeaponCount` (4 for 16..18), `rosterWeaponItemId`,
+  `rosterCharacterIndexForDir`, and `comboSlotLabel`/`weaponSlotForItem` now answer over the whole
+  roster. **Item ids 101–112** (Satoshi a–d 101–104, Miyoko 105–108, Okonogi 109–112) — clear of the
+  PC's shipped 1–46, and the ids Track A/C write `data/item/NNN.dat` at. Dir names `satoshi`,
+  `miyoko`, `okonogi`.
+- **The mount (D-3a).** `fnd::assets::AssetSource::mountDataRoot(dir)` adds a loose-file root
+  consulted after the install's bundles; `read("data/select/16.cnv")` then finds
+  `<root>/data/select/16.cnv`, and `--psp-data=<dir>` names the root. A verification run mounts
+  only the folder it names, so a `psp-data` beside the binary cannot move a capture — measured:
+  `title4p` stays `9ecda8ec…` with `build/linux/psp-data` present.
+- **Select screen.** The four diamond tables are 19 entries; the original sixteen are
+  bit-identical and the three are appended at (−1,7), (1,7) and (0,8), below the diamond's bottom
+  vertex — 60+ units from every other icon, because the recovered 30-unit pass overrides a <50-unit
+  fallback and a lattice-step neighbour keeps the cursor on the earlier index (the art study's
+  (−1,6), (1,6), (2,5) are 36–48 units from one, i.e. inside that band). Costumes 5/7/3. Art for
+  16..18 is optional per file: a missing sheet draws nothing and logs, where the PC sixteen still
+  refuse the screen. Names outside the `p03` 2×8 atlas are drawn with the caption face from
+  `assets/locale/en.txt` (`select/name`), in Japanese from the roster table otherwise.
+- **VS screen.** The portrait is optional for a PSP participant and the name cell is the same
+  caption path (its own 40 px face, so it matches the atlas art's weight).
+- **Launch.** `frontend_launch.cpp`'s hardcoded `16`s and raw `kWeaponIds` indexing are gone;
+  `participants.h`'s unguarded `kWeaponIds` is a bounds-checked roster id. A PSP fighter whose
+  `data/item/NNN.dat` does not exist yet stops the run with
+  `RESULT: front end: cannot read data/item/101.dat (Satoshi 0)`.
+- **Result screen.** Win art for 16–18 has no PSP source (`gra/gim/result/` is shared UI only), so
+  a PSP winner's result screen refuses with the missing path named. Win *scripts* stop at id 17 and
+  16/17 are already Rena's and Rika's personas, so a PSP winner gets **no** script path —
+  `planWinnerQuote` returns empty rather than reading another character's line.
+- **Kept on 16, on purpose.** Random COM fill and the off-diamond random roll (a random seat must
+  not fail a launch on data that does not exist yet), online selection (peers are not guaranteed
+  the same `psp-data`; the bundle hash does not cover it), and story mode.
+- **Art.** `tools/asset-tools/psp_select_art.py` generates the four sheet families from the player's
+  ISO (`psp-data/`, ignored), with the GIM decoder and the padded-pitch rule copied from the art
+  study. Chibi/costume/weapon cells are documented place-holders: the PSP ships no chibi body, no
+  per-costume and no per-weapon picture.
+- **Checks.** `asset_source_mount_test` (new, `data`), `psp_roster_test` and `select_psp_test` (new,
+  `frontend`), `locale_coverage_test` extended for the runtime-text names. Regression unchanged:
+  SIM `746ce7a9cbe6e44a`, `941f3dcd7a679d74`, `f19e8d6d58c37151`; PIX `ff54a85d`, `1fc12c64`,
+  `9ecda8ec`.
