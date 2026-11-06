@@ -4,6 +4,11 @@
 // and the Python tools the same question, and fails when the two disagree: the Python side
 // writes what a release contains, so a difference would mean the game refuses something the
 // release tool published (or accepts what it refused). It is a test tool, not shipped.
+//
+// An archive mode verdict is a *package* verdict, not a structural one: the release-side
+// reader returns the package's own file list, so an archive with no package-manifest.txt is
+// refused there, and the updater refuses it too (updater.cpp:581). The parser below is the
+// updater's, so the two halves answer the same question.
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -30,6 +35,14 @@ std::string readText(const std::string& path) {
 int fail(const std::string& message) {
     std::fprintf(stderr, "%s\n", message.c_str());
     return 1;
+}
+
+// A package's manifest is at the archive's root: flat in the Windows zip, under the single
+// top-level directory in the Linux tar.gz.
+bool isPackageManifest(const std::string& path) {
+    const std::size_t slash = path.find_last_of('/');
+    return (slash == std::string::npos ? path : path.substr(slash + 1)) ==
+           update::kPackageManifestName;
 }
 
 }  // namespace
@@ -65,12 +78,30 @@ int main(int argc, char** argv) {
             kind == "tar" ? update::Archive::openTarGz(readFile(argv[3]), &error)
                           : update::Archive::openZip(readFile(argv[3]), &error);
         if (archive == nullptr) return fail(error);
+        std::string manifestText;
+        bool haveManifest = false;
         for (const update::ArchiveEntry& entry : archive->entries()) {
             if (entry.isDirectory) continue;
+            const bool isManifest = isPackageManifest(entry.path);
             const bool extracted = archive->extract(
                 entry.path,
-                [](const std::uint8_t*, std::size_t) { return true; }, &error);
+                [&manifestText, &haveManifest, isManifest](const std::uint8_t* data,
+                                                           std::size_t size) {
+                    if (isManifest) {
+                        haveManifest = true;
+                        manifestText.append(reinterpret_cast<const char*>(data), size);
+                    }
+                    return true;
+                },
+                &error);
             if (!extracted) return fail(entry.path + ": " + error);
+        }
+        if (!haveManifest) return fail("the archive has no package-manifest.txt");
+        update::PackageManifest manifest;
+        std::string parseError;
+        if (update::PackageManifest::parse(manifestText, &manifest, &parseError) !=
+            update::ParseStatus::Ok) {
+            return fail(parseError);
         }
         return 0;
     }
