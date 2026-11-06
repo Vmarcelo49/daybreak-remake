@@ -132,6 +132,16 @@ for Miyoko, 34 for Okonogi: their range is `0..0` and they have no curves). Both
 **drop a set with no tracks**, which would shift every later index, so an empty take is
 written with one constant key on the root bone: it occupies its index and poses the bind.
 
+**Slices after the takes.** A borrowed PC frame table plays one animation set per *phase*, and a
+phase is a fraction of a move; a PSP take is the whole move. So the moveset converter plans, per
+fighter, which span of which take each phase plays (`docs/psp/COMBAT.md` §3.1), and this writer
+appends those spans as extra sets after the 76 takes: `Slice-<i>`, written before the takes and
+last slice first, so that in either reader set 76+*i* is slice *i* and sets 0..75 are still exactly
+the takes. A slice's keys are the take's own key frames over its span, re-timed to start at 0,
+because a set's length is its last key time. The extractor makes the plan once and gives the same
+one to both converters; without the PC install there is no plan, and the model carries its 76
+takes alone.
+
 ### 3. Scale and a half turn, on the root frame
 
 Both are applied to the **root frame's matrix**, as one right multiplication:
@@ -246,6 +256,6 @@ has its row pitch padded to the header's alignment.
 | Bone names the core looks up, and that a missing hand bone throws | 3 — read in `src/battle/core` |
 | PSP rigs face +Z, PC rigs face −Z | 5 — a capture of this build with `--camera=front`, plus the face mesh's normals in the file |
 | A converted model draws correctly, textured, at the plan's scale | 5 — captures of all three fighters beside PC Keiichi (`docs/psp/README.md` reproduces the command) |
-| Both readers accept every converted file; 76 sets; every set samples | 4 — `psp_model_test` against the player's own ISO |
+| Both readers accept every converted file; 76 sets without the install (more, with its slices); every set samples | 4 — `psp_model_test` against the player's own ISO |
 | Bone renames, take order, scale on the root, 30 Hz keys | 6 — port rules, chosen so the PC's readers and rig conventions apply unchanged |
 | The unnamed mesh frame and the two-key empty take are needed | 5 — a `--match` capture and `tests/psp_match_test` with the converted model: without them the filter throws inside the tick and three of twelve combos never reach a shot row |
