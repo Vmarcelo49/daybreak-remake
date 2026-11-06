@@ -110,11 +110,12 @@ be ported without the PSP's own row→state semantics.
 | damage scale `+0x90` multiplies the power | PSP `.atp` | 2 (`FUN_000690ec`) |
 | hit volume: a sphere at the weapon bone, radius 110 | PSP `bin/chr.fpd` `def[+0x3c] + def[+0x40]` = 60 + 50 for every combination | 2 for the formula (`FUN_0006a8cc`), 6 for the unit identity below |
 | hit time | PSP `.acv` §2 record times (the row's window list) | 2 for "the time field is what the row timer compares" (`FUN_00069824`); 6 for the frame conversion |
-| animation set per phase | the dispatch combo's own index, when the model has it | 6: the PSP's row→motion table (`FUN_0001a228`) is undecoded, so no PSP take is claimed per row |
+| animation set per phase | a slice of the PSP take its state plays (`src/psp/psp_take_table.h`), appended to the model after the 76 takes | 6: the PSP's row→motion table (`FUN_0001a228`) is undecoded; the takes are chosen from the visual take labels, §3.2 |
+| animation settings per set (blend, hold, texture events) | the dispatch combo's record for the PC set a slice replaces | 6: keeps the borrowed rows' phase timing; the PSP has no such record |
 | magazines, bullet list, bullet models | the dispatch combo's item | 6: PSP magazine numbers are undecoded and its bullet motion is not decoded at all |
 | every other row, every tuning table, the whole row machine | the dispatch combo | 6 (this is D-2 itself) |
 
-### 3.1 Three conversion rules that needed a decision
+### 3.1 The conversion rules that needed a decision
 
 **Units.** The PSP authors distances in centimetres; the PC cast is also authored at 1 unit = 1 cm
 (a PC adult's bind-pose top is 177-182 units). The PSP hit sphere therefore transfers as 110 units
@@ -126,12 +127,58 @@ of the PC's `extent`, and the PC record is written as shape 0 (a sphere centred 
 window timed beyond the phase's own animation length would never open (the row timer advances the
 phase first), so the converted times are proportional-mapped inside 85% of the phase's length.
 
-**Animation index.** A phase value must be an index the loaded model registers, or the load path
-throws. The dispatch combo's own index is kept whenever the model has that many sets; otherwise the
-set with the nearest length is used, because the row timer advances a phase once its tick counter
-passes the set's own length. Until Track A's converted `00.X` exists, the twelve tables are built
-against the dispatch combo's PC model, so in that tree every index is kept and the poses are the
-borrowed ones — a simulation stand-in, not a claim about the PSP's animation.
+**Animation index.** A phase names an animation set by index, and the load path throws for one the
+model does not register (`battle_actor_assets.hpp`, `animations_.at`). The borrowed table's indices
+are the dispatch PC model's (124 sets); a PSP fighter's own model has 76 takes. So every phase is
+re-pointed, and the unit of the pairing is the *move*, not the set: a PC set is one phase of a move
+(about a quarter of a second), a PSP take is a whole move (about a second), and the per-set
+similarity study found no reliable one-to-one match at that granularity
+(`local-data/harness/psp/notes/take_map.md` §6).
+
+The rule, in `plan_psp_animation` (`src/psp/psp_moveset.cpp`):
+
+1. **Each PC state plays one take**, or one span of it, from the tracked table
+   `src/psp/psp_take_table.h` (§3.2).
+2. **Its phases play consecutive slices** of that span, each as long as its share of the state: the
+   PC set it replaces, measured on the dispatch PC model. A single-phase state plays the whole span.
+   Slices share their boundary key, so a phase ends on the pose the next one starts from.
+3. **Each slice is a new animation set**, appended by the model converter after the takes. Sets
+   0..75 stay exactly PSP take 0..75; set 76+i is slice i. Identical slices (same take, span and
+   settings) are written once: 220-228 sets per fighter, under the core's 256.
+4. **A slice keeps its PC set's settings record** (blend frames, hold flag, texture events), so the
+   borrowed rows advance phases exactly when they did on the PC model: the row timer moves to the
+   next phase once the phase's tick counter passes its set's length, and that length is the slice's.
+5. **A state the table does not name** takes the usable take nearest its own length (ties to the
+   lower index): never an empty or placeholder take, never `index % take_count`. Two to five states
+   per fighter end up here — rows the borrowed code reaches rarely or never (132, 232, 339, 342,
+   413, 135, 186, 452). The plan logs every one.
+
+The plan is a contract between two converters, so `daybreak --extract-psp` makes it once, before
+the models, and hands the same plan to the model converter (which writes the slices) and the
+moveset converter (which writes the phase values and the settings section). The moveset converter
+refuses a fighter's own `00.X` without a plan, and checks that the model registers exactly the
+plan's set count. Without the PC install there is nothing to plan over; the extractor then writes
+the models with their 76 takes alone and skips the movesets, as before.
+
+A tree built by `tools/psp_moveset_convert` alone has no converted model: it copies the dispatch
+combo's PC model in as a stand-in and keeps the borrowed indices, which are valid for it. That is a
+simulation-only tree.
+
+### 3.2 The take table
+
+`src/psp/psp_take_table.h`, one table per fighter, one row per PC state: the take, an optional key
+frame span, and the evidence. Built from the visual take labels
+(`local-data/harness/psp/notes/take_labels.tsv`) — every row a port rule, its label's confidence in
+the row. The movement basics are shared on all three rigs: idle 13, walk 15, the jump as spans of
+take 0 (crouch 0-10, takeoff and rise 10-30, apex and fall 30-48, landing 48-64, read off the root
+height curve), light flinches 1/2, launches 5, face-down 9, down/KO 6, getup 12, the round-start drop
+22. Attacks use each fighter's labelled attack takes: swing 10, lunge/thrust 26, dash lunge 25, air
+attack 33 (Satoshi, Okonogi); Miyoko has only the swing, so her other attacks are its kin rows.
+
+No take is labelled as a guard or as a shot. Satoshi's single upper-body-only take (48) stands in for
+both, which suits rows layered over walking legs; Miyoko and Okonogi hold their idle on the ground
+and their air idle (32, 49) in the air. Those rows say so (`kin`, `hold`). Satoshi's takes 52-60 are
+static placeholders and are excluded from the fallback.
 
 **Hit points.** The PSP's `maxHp` is 8500 (Satoshi, Miyoko) and 11000 (Okonogi); the core's fighters
 have 10000. Damage is written 1:1, so a PSP fighter's effective time-to-KO against the PC cast is
@@ -175,7 +222,9 @@ order of what would change the rules most:
 3. **Bullets**: PSP bullet motion, homing and spawn are undecoded; a PSP fighter fires the dispatch
    combo's bullets. Missing `data/bullet/<item>/` files fall back to the core's basic projectile,
    the same fallback the shipped PC archives already need for two of their own holes.
-4. **The PSP motion per row** (`FUN_0001a228`), which would make the poses real.
+4. **The PSP motion per row** (`FUN_0001a228`). The poses come from the PSP's own takes now, but
+   which take a move plays is the visual label's judgement (§3.2), not the PSP's own selection.
+   Guard and shots have no labelled take at all.
 5. **The render side**: a PSP fighter draws with whatever art Track A/E produce. Nothing in
    `docs/psp/COMBAT.md` covers rendering.
 

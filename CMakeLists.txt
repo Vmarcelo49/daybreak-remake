@@ -389,6 +389,8 @@ target_include_directories(psp_moveset PUBLIC src src/psp PRIVATE src/battle/cor
 # .acs/.acv/.atp and the PC install. It depends on this one for the raw layout and the models,
 # so the link goes this way round.
 target_link_libraries(psp_extract PRIVATE psp_moveset)
+# psp_convert.cpp checks the model converter's fighter list against the core's roster table.
+target_include_directories(psp_extract PRIVATE src/battle/core)
 if(NOT EMSCRIPTEN)
     add_executable(psp_moveset_convert tools/psp_moveset_convert.cpp)
     target_link_libraries(psp_moveset_convert PRIVATE psp_moveset battle_core)

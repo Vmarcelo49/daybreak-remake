@@ -19,6 +19,7 @@
 //   * scale       the fighter's draw scale multiplies the root frame's matrix, so the
 //                 drawn mesh and every bone-anchored hit shape scale together.
 #include <cstdint>
+#include <functional>
 #include <iosfwd>
 #include <string>
 #include <vector>
@@ -62,12 +63,32 @@ struct PspConvertedModel {
     unsigned                  emptyTakes = 0;
 };
 
+// A slice of one take, appended as an extra animation set after the takes (docs/psp/COMBAT.md
+// §3.1). Sets 0..N-1 stay PSP take 0..N-1; set N+i is slices[i]. Key frames from..to inclusive.
+struct PspTakeSlice {
+    unsigned take = 0, from = 0, to = 0;
+};
+
+// What the moveset converter needs to know about each take before it plans the slices: its last
+// key frame (30 Hz) and whether it animates anything.
+struct PspTakeFacts {
+    unsigned lastFrame = 0;
+    bool animated = false;
+};
+std::vector<PspTakeFacts> pspTakeFacts(const GmoModel& rig);
+// The same for one fighter's rig as the extractor wrote it under <dataDir>/psp/.
+std::vector<PspTakeFacts> pspTakeFacts(const std::string& dataDir, const PspFighter& fighter);
+
 // The pure conversion, so a test can hand the bytes to both readers without touching the
 // filesystem.
 PspConvertedModel buildPspModel(const GmoModel& rig, const GmoModel& costume,
-                                const std::vector<RgbaImage>& headPictures, float scale);
+                                const std::vector<RgbaImage>& headPictures, float scale,
+                                const std::vector<PspTakeSlice>& slices = {});
 
-// The extractor's converter: every fighter, every costume, into <dataDir>/data/...
-std::vector<std::string> convertPspFighters(const std::string& dataDir, std::ostream& log);
+// The extractor's converter: every fighter, every costume, into <dataDir>/data/... `slicesFor`
+// returns a fighter's derived sets (by fighter name), or nullptr for none.
+using PspSlicesFor = std::function<const std::vector<PspTakeSlice>*(const std::string& fighter)>;
+std::vector<std::string> convertPspFighters(const std::string& dataDir, std::ostream& log,
+                                            const PspSlicesFor& slicesFor = {});
 
 }  // namespace psp

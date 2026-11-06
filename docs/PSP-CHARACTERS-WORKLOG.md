@@ -36,13 +36,13 @@ The issue's numbered steps, compressed to what the success criteria need, in dep
 
 | # | Work | Owner | State |
 |---|---|---|---|
-| A | Extractor: `daybreak --extract-psp <iso>` → `psp-data/`, hash-checked list | subagent | pending |
-| B | PSP format study: GMO (mesh/skeleton/motion), GIM/TGA, `.acs/.acv/.atp`, select/VS art | subagents | pending |
-| C | PSP executable study: Fighter state machine, row handlers, `.acv` hit geometry | subagents + Ghidra | pending |
-| D | Roster expansion: 16→19 characters, slots 3→4, without moving the 46 combos' hashes | subagent | pending |
-| E | Renderer: draw a GMO fighter, scaled | subagent | pending |
-| F | Core: one PSP fighter body driven by the tables | subagents | pending |
-| G | Select + VS screen entries for the three | subagent | pending |
+| A | Extractor: `daybreak --extract-psp=<iso>` → `psp-data/`, hash-checked list, models, art, movesets | Track A + D | **done, merged** |
+| B | PSP format study: GMO (mesh/skeleton/motion), GIM/TGA, `.acs/.acv/.atp`, select/VS art | studies | **done** (`docs/psp/research/`) |
+| C | PSP executable study: `Fighter`, row handlers, hit geometry, bullets, input | studies | **done** (`docs/psp/research/CODE-MAP.md`) |
+| D | Roster expansion: 16→19 characters, slots 3→4, without moving the 46 combos' hashes | Track B | **done, merged** |
+| E | Renderer: draw a GMO fighter, scaled | Track A | **done, merged** |
+| F | Combat: a PSP fighter playing its own data in whole matches | Track C | **done, merged** |
+| G | Select + VS + result screen entries for the three | Track B | **done, merged** |
 | H | Whole-match test per combo, fingerprints unchanged | coordinator | pending |
 
 ## Design decisions (to be restated in the final report)
@@ -488,3 +488,56 @@ one command that converts the models and the frame tables. The contract did not 
   machine. The chibi, costume and weapon cells are still place-holders and the win portrait is still
   the bust-up's smiling pose, both as §4 documents: this track made them reachable without Python,
   not better.
+
+### 2026-11-06 — Track C: every phase plays the fighter's own take
+
+**Defect (found by Track A with the real model).** `psp_match_test` failed 5 of 178 on a tree whose
+`00.X` is the PSP fighter's own: Satoshi 0 and Okonogi 0 never reached a shot row, Miyoko 0 dealt no
+damage. The converter re-pointed phases only for the eleven converted attacks; every other state kept
+the dispatch combo's set index, valid for its 124-set PC model and out of range for the 76-take PSP
+one (67-73 phases per fighter, including the whole shot family 350-461). `animations_.at()` threw, so
+those rows were unreachable. Reproduced on a fresh extraction before the fix.
+
+**Fix, at the move level** ([`COMBAT.md`](psp/COMBAT.md) §3.1). A PC state plays one PSP take (or one
+span of it), and its phases play consecutive slices of that span in proportion to the PC sets they
+replace. The slices are extra animation sets the model converter appends after the 76 takes, so sets
+0..75 remain PSP take 0..75; each slice carries its PC set's settings record, so the borrowed rows
+advance phases when they always did. The pairing is the tracked table `src/psp/psp_take_table.h`,
+filled from the visual take labels (`take_labels.tsv`), one row per state with its label confidence.
+An unlisted state takes the usable take nearest its length — never an empty or placeholder take,
+never `% take_count`. One plan per fighter, made once per extraction and shared by both converters;
+the moveset converter refuses a fighter's own model without it.
+
+**Why not the per-set table.** The PC-set → PSP-take similarity study (`take_map.md`) failed its own
+known-answer test; a PC set is a phase (≈0.25 s) and a take a whole move (≈1 s), so the pairing
+cannot be made at set granularity.
+
+**Also found.** Satoko 0's table repeats two state ids (311, 331), so the plan is keyed by record,
+not id. Tracks A and B both declared `Options::pspData` for the same folder; one field now serves
+both (7ec34e44).
+
+**Verification.** On a fresh `--extract-psp` with the PC install: every phase of all twelve tables
+names a set the model registers, none of zero length, and each model's set count equals its plan's
+(220 Satoshi, 228 Miyoko, 224 Okonogi). `psp_match_test` 178/178 on that tree, and 178/178 on the
+dispatch-model stand-in tree. `psp_model_test` passes. Fingerprints unchanged: SIM `746ce7a9cbe6e44a`,
+`941f3dcd7a679d74`, `f19e8d6d58c37151`; PIX `ff54a85d`, `1fc12c64`, `9ecda8ec`.
+
+**Open.** No take is labelled as a guard or a shot: Satoshi uses his one upper-body take for both,
+Miyoko and Okonogi hold idle (air idle in the air). Which take a move plays is a label's judgement,
+not the PSP's own row→motion selection, which is still undecoded (`FUN_0001a228`).
+
+### 2026-11-06 — coordinator: Track C's take plan merged, integration complete
+
+- Track C's fix: every phase now plays a *slice* of the fighter's own PSP take. The plan
+  (`src/psp/psp_take_table.h`) maps PC state → PSP take from the visual labels, appends the
+  slices after the 76 takes, and falls back to the nearest usable length (never `% take_count`).
+- Conflict in `src/psp/psp_convert.cpp` resolved by hand: Track D's `select art` converter keeps
+  its place between models and movesets in Track C's plan-driven pipeline.
+- `psp_match_test` reaches 178/178 with the real PSP models and the dispatch-stand-in tree.
+- **D-12 (Track C, accepted).** Guard and shot rows have no labelled PSP take. Satoshi uses take 48
+  (his one upper-body take) for both; Miyoko and Okonogi hold idle (air idle in the air).
+  *Why:* no take is a held guard or a firing pose, so an idle hold shows the fighter is aiming or
+  blocking without claiming a pose the data does not have. Recorded as tier 6.
+- **D-13 (Track C, accepted).** Take choices are label judgements, not the PSP's own row→motion
+  selection (`FUN_0001a228` stays undecoded). Each row of the tracked table says which label it
+  came from and its confidence.

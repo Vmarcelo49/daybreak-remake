@@ -103,8 +103,9 @@ struct Group {
 
 class Builder {
 public:
-    Builder(const GmoModel& rig, const GmoModel& costume, float scale)
-        : rig_(rig), costume_(costume), scale_(scale) {
+    Builder(const GmoModel& rig, const GmoModel& costume, float scale,
+            const std::vector<PspTakeSlice>& slices)
+        : rig_(rig), costume_(costume), scale_(scale), slices_(slices) {
         if (rig_.bones.size() != costume_.bones.size())
             throw std::runtime_error("psp model: rig and costume have " +
                                      std::to_string(rig_.bones.size()) + " and " +
@@ -284,6 +285,19 @@ private:
         // Reverse document order: the core (battle_actor_assets.hpp) and the product
         // (xmodel.h finish()) both register sets back to front, so this is what makes
         // index i in either reader PSP take i.
+        //
+        // The derived slices register after the takes, so they are written before them, last
+        // slice first: set N+i in either reader is slices_[i].
+        for (std::size_t index = slices_.size(); index-- > 0;) {
+            const PspTakeSlice& slice = slices_[index];
+            if (slice.take >= motions.size()) throw std::runtime_error("psp model: slice of a missing take");
+            file.beginObject("AnimationSet", "Slice-" + std::to_string(index));
+            if (!emitTake(file, motions[slice.take], (float)slice.from, (float)slice.to))
+                throw std::runtime_error("psp model: slice of take " + std::to_string(slice.take) +
+                                         ", which animates nothing");
+            file.endObject();
+            ++out.animationSets;
+        }
         for (std::size_t index = motions.size(); index-- > 0;) {
             const GmoMotion& motion = motions[index];
             file.beginObject("AnimationSet", motion.name.empty() ? "Anim-" + std::to_string(index)
@@ -314,8 +328,10 @@ private:
         }
     }
 
-    // Returns false when the take animates nothing.
-    bool emitTake(XFile& file, const GmoMotion& motion) {
+    // Returns false when the take animates nothing. `from`/`to` (key frames, inclusive, relative
+    // to the take's own start) select a slice; negative means the whole take. A slice's keys are
+    // re-timed to start at 0, because a set's length is its last key time.
+    bool emitTake(XFile& file, const GmoMotion& motion, float from = -1.f, float to = -1.f) {
         struct Channels {
             const GmoCurve* translate = nullptr;
             const GmoCurve* rotate = nullptr;
@@ -333,7 +349,10 @@ private:
         }
         if (channels.empty()) return false;
 
-        const float frames = std::max(1.f, std::round(motion.range[1] - motion.range[0]));
+        const float whole = std::max(1.f, std::round(motion.range[1] - motion.range[0]));
+        const float first = from < 0.f ? 0.f : std::min(from, whole);
+        const float last = to < 0.f ? whole : std::min(std::max(to, first + 1.f), whole);
+        const float frames = std::max(1.f, last - first);
         const std::uint32_t keys = (std::uint32_t)frames + 1;
         const float ticksPerFrame = motion.fps > 0.f ? (float)kTicksPerSecond / motion.fps
                                                      : (float)kTicksPerSecond / 30.f;
@@ -344,7 +363,7 @@ private:
             file.beginObject("AnimationKey");
             file.intList({4, keys});
             for (std::uint32_t key = 0; key < keys; ++key) {
-                const float frame = motion.range[0] + (float)key;
+                const float frame = motion.range[0] + first + (float)key;
                 std::array<float, 3> translation = costume_.bones[bone].translation;
                 std::array<float, 4> rotation = costume_.bones[bone].rotation;
                 if (entry.second.translate) {
@@ -361,7 +380,7 @@ private:
                 // A scaled root keeps its scale and its half turn in every pose, so a motion
                 // that ever animates it cannot drop either.
                 if (scaledRoots_[bone]) local = multiplyMatrix(local, rootFixMatrix(scale_));
-                const std::uint32_t time = (std::uint32_t)std::lround(frame * ticksPerFrame);
+                const std::uint32_t time = (std::uint32_t)std::lround((float)key * ticksPerFrame);
                 file.intList({time, 16});
                 file.floatList(local.data(), 16);
             }
@@ -515,6 +534,7 @@ private:
     const GmoModel&                     rig_;
     const GmoModel&                     costume_;
     float                               scale_ = 1.f;
+    const std::vector<PspTakeSlice>&    slices_;
     std::vector<std::string>            names_;
     std::vector<std::vector<unsigned>>  children_;
     std::vector<unsigned>               roots_;
@@ -622,12 +642,32 @@ int pspHeadPicture(const std::string& textureName) {
 }
 
 PspConvertedModel buildPspModel(const GmoModel& rig, const GmoModel& costume,
-                                const std::vector<RgbaImage>& headPictures, float scale) {
-    Builder builder(rig, costume, scale);
+                                const std::vector<RgbaImage>& headPictures, float scale,
+                                const std::vector<PspTakeSlice>& slices) {
+    Builder builder(rig, costume, scale, slices);
     return builder.run(headPictures);
 }
 
-std::vector<std::string> convertPspFighters(const std::string& dataDir, std::ostream& log) {
+std::vector<PspTakeFacts> pspTakeFacts(const GmoModel& rig) {
+    std::vector<PspTakeFacts> out;
+    for (const GmoMotion& motion : rig.motions) {
+        PspTakeFacts facts;
+        facts.lastFrame = (unsigned)std::max(0.f, std::round(motion.range[1] - motion.range[0]));
+        // The same test emitTake applies: a take animates something when one of its bindings is a
+        // translate or rotate curve (scale curves are dropped there).
+        for (const GmoMotion::Binding& binding : motion.bindings)
+            if (binding.target == 0x48 || binding.target == 0x4b) facts.animated = true;
+        out.push_back(facts);
+    }
+    return out;
+}
+
+std::vector<PspTakeFacts> pspTakeFacts(const std::string& dataDir, const PspFighter& fighter) {
+    return pspTakeFacts(GmoModel::parse(readBytes(pspRawPath(dataDir, fighter.rig))));
+}
+
+std::vector<std::string> convertPspFighters(const std::string& dataDir, std::ostream& log,
+                                            const PspSlicesFor& slicesFor) {
     std::vector<std::string> written;
     for (const PspFighter& fighter : pspFighters()) {
         const std::vector<std::uint8_t> rigBytes = readBytes(pspRawPath(dataDir, fighter.rig));
@@ -641,7 +681,9 @@ std::vector<std::string> convertPspFighters(const std::string& dataDir, std::ost
             if (costume) folder += "_" + std::string(1, (char)('A' + costume));
             const std::string directory = joinPath(dataDir, folder);
             const GmoModel mesh = GmoModel::parse(readBytes(pspRawPath(dataDir, fighter.costumes[costume])));
-            PspConvertedModel model = buildPspModel(rig, mesh, heads, fighter.scale);
+            static const std::vector<PspTakeSlice> none;
+            const std::vector<PspTakeSlice>* slices = slicesFor ? slicesFor(fighter.name) : nullptr;
+            PspConvertedModel model = buildPspModel(rig, mesh, heads, fighter.scale, slices ? *slices : none);
             const std::string xPath = joinPath(directory, "00.X");
             writeBytes(xPath, model.x);
             written.push_back(folder + "/00.X");

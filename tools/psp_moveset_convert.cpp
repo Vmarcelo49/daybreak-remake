@@ -1,13 +1,13 @@
-// Prepares a psp-data tree from raw PSP files and the player's own install (issue #91, plan
-// D-3a). The extractor will call the same library function; this tool exists so the tree can be
-// built and inspected by hand, and so the whole-match test has something to mount.
+// Prepares a simulation-only psp-data tree from raw PSP files and the player's own install
+// (issue #91, plan D-3a): the frame tables and items, over the dispatch combos' PC models copied in
+// as stand-ins. It is how the moveset is built and inspected without the model converter.
 //
 //   psp_moveset_convert --install <game dir> --raw <dir> --out <psp-data dir> [--no-model-copy]
 //
 // --raw holds the twelve combos' activity/chrNNx.{acs,acv} and assault/chrNNx.atp, at those paths
-// or with the separators replaced by '_'. Without --no-model-copy a fighter's own 00.X, when the
-// converted one is missing, is the dispatch combo's PC model (a simulation-only stand-in; the
-// renderer needs the real one).
+// or with the separators replaced by '_'. A tree that already holds a fighter's own converted 00.X
+// is refused: that model's animation sets and the tables' phases come from one animation plan, and
+// only `daybreak --extract-psp` builds both from it (docs/psp/COMBAT.md §3.1).
 #include "psp/psp_moveset.h"
 
 #include <cstdio>

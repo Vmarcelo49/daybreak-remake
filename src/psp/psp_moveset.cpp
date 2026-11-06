@@ -5,8 +5,10 @@
 #include "actor_frame_data.hpp"
 #include "asset_search_path.hpp"
 #include "character_names.hpp"
+#include "psp/psp_take_table.h"
 #include "psp_roster.hpp"
 #include "x_animation_keys.hpp"
+#include "x_compression.hpp"
 #include "x_objects.hpp"
 
 #include <algorithm>
@@ -17,6 +19,8 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <tuple>
 #include <stdexcept>
 
 namespace daybreak::psp {
@@ -282,8 +286,146 @@ std::vector<unsigned> registered_animation_frame_counts(const std::vector<std::u
     return out;
 }
 
-unsigned registered_animation_set_count(const std::vector<std::uint8_t>& model) {
-    return unsigned(registered_animation_frame_counts(model).size());
+namespace {
+
+const TakeChoice* take_choice(unsigned character, unsigned pc_state) {
+    const auto& fighter = kFighterTakes[psp_character_index(character)];
+    for (unsigned i = 0; i < fighter.count; ++i)
+        if (fighter.rows[i].pc_state == pc_state) return &fighter.rows[i];
+    return nullptr;
+}
+
+bool take_listed_unusable(unsigned character, unsigned take) {
+    const auto& fighter = kFighterTakes[psp_character_index(character)];
+    for (unsigned i = 0; i < fighter.unusable_count; ++i)
+        if (fighter.unusable[i] == take) return true;
+    return false;
+}
+
+// The dispatch combo's settings section, as records, so a derived set can copy its PC set's.
+std::vector<ActorAnimationSettings> dispatch_settings(const std::vector<std::uint8_t>& table) {
+    const auto frames = read_actor_frame_data(table);
+    return read_actor_animation_settings(table, frames.consumed).animations;
+}
+
+}  // namespace
+
+AnimationPlan plan_psp_animation(unsigned character, const std::vector<std::uint8_t>& dispatch_frame_table,
+                                 const std::vector<unsigned>& dispatch_set_frames,
+                                 const std::vector<TakeInfo>& takes) {
+    if (!is_psp_character(character)) throw std::invalid_argument("PSP animation plan: not a PSP fighter");
+    if (takes.empty() || takes.size() > 256) throw std::invalid_argument("PSP animation plan: bad take list");
+    const auto frames = read_actor_frame_data(dispatch_frame_table);
+    const auto settings = dispatch_settings(dispatch_frame_table);
+
+    AnimationPlan plan;
+    plan.take_count = unsigned(takes.size());
+    std::vector<unsigned> usable;
+    for (unsigned i = 0; i < takes.size(); ++i)
+        if (takes[i].usable && takes[i].frames > 0 && !take_listed_unusable(character, i)) usable.push_back(i);
+    if (usable.empty()) throw std::runtime_error("PSP animation plan: the model has no usable take");
+
+    // The fallback for a state the table does not name: the usable take whose length is nearest
+    // the state's own PC length, ties to the lower index. Deterministic and never an index the
+    // model does not have; it says nothing about what the take shows, which is why every state the
+    // borrowed code commonly enters is in the table instead.
+    const auto nearest = [&](unsigned pc_frames) {
+        // PC frames are 1/62.5 s, PSP frames 1/30 s.
+        const double target = double(pc_frames) * 0.016 * 30.0;
+        unsigned best = usable.front();
+        double best_error = 1e18;
+        for (const unsigned take : usable) {
+            const double error = std::abs(double(takes[take].frames) - target);
+            if (error < best_error) { best = take; best_error = error; }
+        }
+        return best;
+    };
+
+    std::map<std::tuple<unsigned, unsigned, unsigned, unsigned>, unsigned> derived_index;
+    unsigned listed = 0, fallen_back = 0;
+    for (const auto& state : frames.states) {
+        if (state.phases.empty()) { plan.phases.emplace_back(); continue; }
+        std::vector<unsigned> weights;
+        unsigned total = 0;
+        // A phase's share of its state is its PC set's own length, which is how long the row
+        // timer keeps it before advancing.
+        for (const auto& phase : state.phases) {
+            const unsigned length = phase.value < dispatch_set_frames.size() ? dispatch_set_frames[phase.value] : 0;
+            weights.push_back(std::max(1u, length));
+            total += weights.back();
+        }
+
+        unsigned take = 0, from = 0, to = 0;
+        const TakeChoice* choice = take_choice(character, state.id);
+        if (choice && choice->psp_take < takes.size() && std::find(usable.begin(), usable.end(), choice->psp_take) != usable.end()) {
+            take = choice->psp_take;
+            const unsigned last = takes[take].frames;
+            from = std::min<unsigned>(choice->from, last);
+            to = choice->to ? std::min<unsigned>(choice->to, last) : last;
+            if (to <= from) to = std::min(last, from + 1);
+            ++listed;
+        } else {
+            if (choice) plan.report += format("  state %u: table names take %u, which this model cannot play; fallback\n",
+                                              state.id, unsigned(choice->psp_take));
+            take = nearest(total);
+            from = 0;
+            to = takes[take].frames;
+            ++fallen_back;
+        }
+
+        // Consecutive slices of [from, to], proportional to each phase's share, sharing their
+        // boundary keys; a slice is at least one PSP frame so it has a length.
+        std::vector<unsigned> sets;
+        unsigned consumed = 0;
+        for (std::size_t k = 0; k < state.phases.size(); ++k) {
+            const unsigned span = to - from;
+            const unsigned a = from + unsigned(std::lround(double(span) * consumed / total));
+            consumed += weights[k];
+            unsigned b = from + unsigned(std::lround(double(span) * consumed / total));
+            if (b <= a) b = std::min(to, a + 1);
+            const unsigned pc_set = state.phases[k].value;
+            // A derived set copies the PC set's settings; the PC set must exist in the section.
+            const unsigned settings_of = pc_set < settings.size() ? pc_set : ~0u;
+            const auto key = std::make_tuple(take, a, b, settings_of);
+            auto found = derived_index.find(key);
+            if (found == derived_index.end()) {
+                if (plan.take_count + plan.derived.size() >= 256)
+                    throw std::runtime_error("PSP animation plan: more than 256 animation sets");
+                found = derived_index.emplace(key, plan.take_count + unsigned(plan.derived.size())).first;
+                plan.derived.push_back({take, a, b, settings_of});
+            }
+            sets.push_back(found->second);
+        }
+        plan.phases.push_back(std::move(sets));
+    }
+    plan.report += format("  animation plan: %u states from the take table, %u by the nearest-length fallback, "
+                          "%zu derived sets after the %u takes\n",
+                          listed, fallen_back, plan.derived.size(), plan.take_count);
+    return plan;
+}
+
+std::vector<std::uint8_t> plan_animation_settings(const AnimationPlan& plan,
+                                                  const std::vector<std::uint8_t>& dispatch_frame_table) {
+    const auto settings = dispatch_settings(dispatch_frame_table);
+    std::vector<std::uint8_t> out;
+    const auto record = [&](const ActorAnimationSettings& setting) {
+        put_word(out, setting.blend_frames);
+        put_word(out, setting.hold_phase);
+        put_word(out, std::uint32_t(setting.events.size()));
+        for (const auto& event : setting.events) {
+            for (const auto value : event.timing) put_word(out, value);
+            put_text(out, event.source_texture, 60);
+            put_text(out, event.replacement_texture, 60);
+        }
+    };
+    put_word(out, std::uint32_t(plan.take_count + plan.derived.size()));
+    // The takes themselves: the core's default for a set with no record (blend 1, no hold), so a
+    // phase that names a raw take behaves as a PC set without settings does.
+    ActorAnimationSettings plain;
+    plain.blend_frames = 1;
+    for (unsigned i = 0; i < plan.take_count; ++i) record(plain);
+    for (const auto& derived : plan.derived) record(derived.pc_set < settings.size() ? settings[derived.pc_set] : plain);
+    return out;
 }
 
 ConvertResult convert_psp_moveset(const ConvertRequest& request) {
@@ -313,6 +455,23 @@ ConvertResult convert_psp_moveset(const ConvertRequest& request) {
     report += format("  .atp %zu attack records, .acv handler map and %u window lists\n",
                      atp.records.size(), acv.window_times.size());
 
+    // Every phase of every state names a set of the fighter's own model (docs/psp/COMBAT.md §3.1).
+    // Done first, because the hit windows below are scaled into the length of the set a phase plays.
+    if (request.plan) {
+        if (request.plan->phases.size() != frame_data.states.size())
+            throw std::runtime_error("PSP moveset: the animation plan was made over another frame table");
+        for (std::size_t i = 0; i < frame_data.states.size(); ++i) {
+            auto& state = frame_data.states[i];
+            const auto& sets = request.plan->phases[i];
+            if (sets.size() != state.phases.size())
+                throw std::runtime_error(format("PSP moveset: the animation plan does not cover state %u", state.id));
+            for (std::size_t k = 0; k < state.phases.size(); ++k) state.phases[k].value = sets[k];
+        }
+        report += request.plan->report;
+    } else {
+        report += "  animation set indices kept from the dispatch combo (its PC model stands in)\n";
+    }
+
     unsigned converted_moves = 0;
     for (auto& state : frame_data.states) {
         unsigned row = 0;
@@ -324,35 +483,13 @@ ConvertResult convert_psp_moveset(const ConvertRequest& request) {
             continue;
         }
         const auto& attack = atp.records[handler];
-        // The animation set a phase plays. The PSP's row -> motion table (FUN_0001a228) is not
-        // decoded, so the pose is not reconstructed: the dispatch combo's own set index is kept
-        // wherever the model provides that many sets (the load path throws for one it lacks), and
-        // otherwise the set whose length matches is used, because the row timer advances a phase
-        // once its tick counter passes the set's own length. Applied below, per phase, where the
-        // phase's own index is still known.
-        const auto take_of = [&](unsigned original) {
-            if (!request.take_count) return original;
-            if (original < request.take_count) return original;
-            if (!request.take_frames.empty() && original < request.take_frames.size()) {
-                const unsigned target = request.take_frames[original];
-                unsigned best = 0;
-                unsigned best_error = ~0u;
-                for (unsigned i = 0; i < request.take_count && i < request.take_frames.size(); ++i) {
-                    const unsigned error = request.take_frames[i] > target ? request.take_frames[i] - target : target - request.take_frames[i];
-                    if (error < best_error) { best = i; best_error = error; }
-                }
-                return best;
-            }
-            return original % request.take_count;
-        };
         const auto& windows = acv.window_times[row];
         // A window timed beyond the phase's own length never opens (the row timer advances the
         // phase first), so the PSP's hit times are proportional-mapped inside 85% of that length.
         for (auto& phase : state.phases) {
-            phase.value = take_of(phase.value);
             double limit = 0.0;
-            if (phase.value < request.take_frames.size())
-                limit = 0.85 * double(std::max(1u, request.take_frames[phase.value]));
+            if (phase.value < request.set_frames.size())
+                limit = 0.85 * double(std::max(1u, request.set_frames[phase.value]));
             double scale = 1.0;
             if (limit > 0.0 && !windows.empty()) {
                 const double last_window = double(convert_time(windows.back()));
@@ -394,13 +531,10 @@ ConvertResult convert_psp_moveset(const ConvertRequest& request) {
     }
     report += format("  %u of %zu moves took PSP damage, timing and volume\n",
                      converted_moves, frame_data.states.size());
-    if (!request.take_count)
-        report += "  animation set indices kept from the dispatch combo (no model take count given)\n";
-    else
-        report += format("  phase values are indices into the %u registered animation sets\n", request.take_count);
 
-    // Rewrite the frame table: same magic, the PSP model name, the PSP item id, and the settings
-    // section copied byte for byte so the reader's consumed == size contract still holds.
+    // Rewrite the frame table: same magic, the PSP model name, the PSP item id, and a settings
+    // section that ends the file, as the reader's consumed == size contract requires: the plan's
+    // when there is one, else the dispatch combo's own, byte for byte.
     std::vector<std::uint8_t> table;
     put_word(table, frame_data.magic);
     put_text(table, request.model, 260);
@@ -429,8 +563,13 @@ ConvertResult convert_psp_moveset(const ConvertRequest& request) {
             }
         }
     }
-    table.insert(table.end(), request.dispatch.frame_table.begin() + std::ptrdiff_t(settings_offset),
-                 request.dispatch.frame_table.end());
+    if (request.plan) {
+        const auto section = plan_animation_settings(*request.plan, request.dispatch.frame_table);
+        table.insert(table.end(), section.begin(), section.end());
+    } else {
+        table.insert(table.end(), request.dispatch.frame_table.begin() + std::ptrdiff_t(settings_offset),
+                     request.dispatch.frame_table.end());
+    }
 
     ConvertResult result;
     result.files.push_back({"data/" + request.character + "/" + format("%02u.dat", request.weapon), std::move(table)});
@@ -472,18 +611,47 @@ std::filesystem::path raw_path(const std::filesystem::path& root, const std::str
     throw std::runtime_error("PSP moveset: missing raw file " + name + " under " + root.u8string());
 }
 
+AssetSearchPath mount_install(const std::filesystem::path& install) {
+    if (!std::filesystem::exists(install / "daybreak00.dat"))
+        throw std::runtime_error("PSP moveset: no install at " + install.u8string());
+    // The same three archives sim::Battle mounts, so the dispatch files are the ones the match uses.
+    AssetSearchPath assets;
+    for (const char* name : {"daybreak07.dat", "daybreak04.dat", "daybreak00.dat"}) assets.append((install / name).u8string());
+    return assets;
+}
+
 }  // namespace
+
+std::vector<AnimationPlan> plan_psp_animations(const std::string& install_dir,
+                                               const std::vector<std::vector<TakeInfo>>& takes) {
+    if (takes.size() != psp_character_names.size()) throw std::invalid_argument("PSP animation plan: one take list per fighter");
+    AssetSearchPath assets = mount_install(std::filesystem::u8path(install_dir));
+    std::vector<AnimationPlan> plans;
+    for (unsigned index = 0; index < psp_character_names.size(); ++index) {
+        const unsigned character = psp_character_first + index;
+        const std::string dispatch_dir(character_names[psp_dispatch_character(character)]);
+        // One plan per fighter, not per weapon: the four weapons share the model, so they share
+        // its set list. Every weapon dispatches to the same PC slot (psp_roster.hpp), so they
+        // also share the table the plan is made over; the check below keeps that true.
+        const unsigned dispatch_weapon = psp_dispatch_weapon(character, 0);
+        for (unsigned weapon = 1; weapon < psp_weapon_count; ++weapon)
+            if (psp_dispatch_weapon(character, weapon) != dispatch_weapon)
+                throw std::logic_error("PSP animation plan: a fighter's weapons dispatch to different PC slots");
+        const auto table = assets.read(format("data/%s/%02u.dat", dispatch_dir.c_str(), dispatch_weapon)).bytes;
+        auto model = assets.read("data/" + dispatch_dir + "/" + read_actor_frame_data(table).model).bytes;
+        if (compressed_x(model)) model = expand_x(model);
+        plans.push_back(plan_psp_animation(character, table, registered_animation_frame_counts(model), takes[index]));
+    }
+    return plans;
+}
 
 TreeResult prepare_psp_data_tree(const TreeRequest& request) {
     namespace fs = std::filesystem;
     const fs::path install = fs::u8path(request.install_dir);
     const fs::path raw = fs::u8path(request.raw_dir);
     const fs::path output = fs::u8path(request.output_dir);
-    if (!fs::exists(install / "daybreak00.dat")) throw std::runtime_error("PSP moveset: no install at " + install.u8string());
     if (!fs::is_directory(raw)) throw std::runtime_error("PSP moveset: no raw directory at " + raw.u8string());
-    // The same three archives sim::Battle mounts, so the dispatch files are the ones the match uses.
-    AssetSearchPath assets;
-    for (const char* name : {"daybreak07.dat", "daybreak04.dat", "daybreak00.dat"}) assets.append((install / name).u8string());
+    AssetSearchPath assets = mount_install(install);
 
     TreeResult result;
     const auto read_install = [&](const std::string& path) { return assets.read(path).bytes; };
@@ -514,17 +682,34 @@ TreeResult prepare_psp_data_tree(const TreeRequest& request) {
             // index space: a phase value must exist among the sets the load path registers.
             const fs::path converted_model = output / "data" / name / "00.X";
             fs::path model = converted_model;
-            if (!fs::exists(model)) {
+            // The stand-in is the dispatch combo's PC model, copied in by this call for an earlier
+            // weapon or by an earlier tree build; it is recognised by its bytes, because it is also
+            // named 00.X. The fighter's own model is anything else at that path.
+            const std::string stand_in_key = "data/" + dispatch_dir + "/" + dispatch_frames.model;
+            const auto stand_in_bytes = read_install(stand_in_key);
+            const bool present = fs::exists(model);
+            std::vector<std::uint8_t> model_bytes = present ? read_file(model) : stand_in_bytes;
+            const bool is_stand_in = present && model_bytes == stand_in_bytes;
+            if (present && !is_stand_in) {
+                // The fighter's own model: its set list is the plan's, takes then derived slices.
+                if (!request.plans || request.plans->size() != psp_character_names.size())
+                    throw std::runtime_error("PSP moveset: " + converted_model.u8string() +
+                                             " is the fighter's own model, and no animation plan was given for it");
+                convert.plan = &(*request.plans)[index];
+            } else if (!present) {
                 if (!request.copy_dispatch_model)
                     throw std::runtime_error("PSP moveset: no converted model at " + converted_model.u8string());
                 model = output / "data" / name / dispatch_frames.model;
-                const auto bytes = read_install("data/" + dispatch_dir + "/" + dispatch_frames.model);
-                write_file(model, bytes);
+                write_file(model, stand_in_bytes);
                 result.written.push_back((fs::path("data") / name / dispatch_frames.model).generic_u8string());
             }
             convert.model = model.filename().u8string();
-            convert.take_frames = registered_animation_frame_counts(read_file(model));
-            convert.take_count = unsigned(convert.take_frames.size());
+            if (compressed_x(model_bytes)) model_bytes = expand_x(model_bytes);
+            convert.set_frames = registered_animation_frame_counts(model_bytes);
+            if (convert.plan && convert.set_frames.size() != convert.plan->take_count + convert.plan->derived.size())
+                throw std::runtime_error(format("PSP moveset: %s registers %zu animation sets, its plan %zu",
+                                                converted_model.u8string().c_str(), convert.set_frames.size(),
+                                                convert.plan->take_count + convert.plan->derived.size()));
 
             auto converted = convert_psp_moveset(convert);
             result.report += converted.report;
