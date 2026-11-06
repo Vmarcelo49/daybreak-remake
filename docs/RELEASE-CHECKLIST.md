@@ -178,6 +178,14 @@ needs the install and takes minutes per recipe (it prints the build directory's 
 transcript on failure). Neither is a CTest entry: the first would need a build directory
 in CI's test step, and the second is a release-time gate, not a per-push one.
 
+**The first gate needs Wine, and this is easy to lose.** `cross_build_check` and
+`unicode_path_check` are asset suites that run the Windows build under Wine, so a machine
+without it reports `executed=37 skipped=2` and the gate fails — correctly, because the
+Windows half of the simulation was not compared. The CI runners have no Wine and do not run
+this gate at all, so this is the publisher's prerequisite: `wine` (11.x, 64-bit, no
+`wine-mono`, no `winetricks`, no display — both suites are headless) and the game install.
+`package_windows.sh` likewise needs `zip`, which is not part of a base install.
+
 ## 3. The acceptance runs (deterministic, real assets)
 
 All four use the committed scripts under `tests/scripts/`, run from
