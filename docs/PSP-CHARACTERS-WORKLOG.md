@@ -237,3 +237,15 @@ crashing. The contract for their art is [`psp/FRONTEND-ART.md`](psp/FRONTEND-ART
   `frontend`), `locale_coverage_test` extended for the runtime-text names. Regression unchanged:
   SIM `746ce7a9cbe6e44a`, `941f3dcd7a679d74`, `f19e8d6d58c37151`; PIX `ff54a85d`, `1fc12c64`,
   `9ecda8ec`.
+
+### 2026-11-06 — coordinator: Track B merged
+
+- Reviewed captures of the select diamond (19 icons) and the VS screen with Satoshi: both correct.
+- Asked for and merged the result-screen follow-up: win portraits `data/win/16a–18a.cnv` come from
+  the bust-up's second pose. A missing PSP portrait or quote degrades instead of refusing.
+- **D-5 (Track B, accepted).** The three's icons hang below the diamond at (−1,7), (1,7), (0,8),
+  not at the art study's (−1,6), (1,6), (2,5). *Why:* the recovered 30/50-unit selection passes
+  would have kept naming an existing neighbour at those spots, which `select_psp_test` measures.
+- **D-6 (Track B, accepted).** Random COM fill, the off-diamond roll, story mode and online stay
+  on the PC sixteen. *Why:* a random seat must never pick a fighter whose data the player has not
+  extracted, and the online bundle hash does not cover `psp-data/`, so peers could desync.
