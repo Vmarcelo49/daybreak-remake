@@ -828,6 +828,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak --recipe=com --rounds=1 --frames=5000 --fighters=4)
     set_tests_properties(sim_frontend_flow PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 LABELS asset)
 
+    # Issue #91: the three PSP fighters play whole matches. Needs the PSP data beside the install
+    # (or $DAYBREAK_PSP_DATA / $DAYBREAK_PSP_RAW) on top of the install, so it skips without both.
+    add_executable(psp_match_test tests/psp_match_test.cpp)
+    target_link_libraries(psp_match_test PRIVATE battle_core psp_moveset)
+    add_test(NAME psp_match_test COMMAND psp_match_test)
+    set_tests_properties(psp_match_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900 LABELS asset)
+
     # The browser's download against what the core reads. Skips without a prepared tree.
     add_test(NAME web_match_group_check COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/web_match_group_check.py $<TARGET_FILE:simctl>
