@@ -164,7 +164,16 @@ public:
 private:
     // -- frames
     void emitFrame(XFile& file, unsigned bone) {
-        file.beginObject("Frame", names_[bone]);
+        // The mesh-owning frame is written **without a name**, as the PC rigs write theirs.
+        // That is not cosmetic: a PC frame table anchors a state's hit record on "" when the
+        // state has no hitbox, and the core resolves that name through ActorSkeleton::find.
+        // A rig with no unnamed frame returns 0 there, and the core treats bone 0 as "the
+        // looked-up bone is missing" and throws inside the tick
+        // (development_animated_combat.hpp, snapshot_body_contact_geometry). The PC rigs have
+        // such a frame, so an empty name binds; mirroring the convention keeps the borrowed
+        // frame tables working unchanged, and it anchors those records on this frame's world
+        // transform, which is the rig's root.
+        file.beginObject("Frame", bone == costume_.meshBoneIndex ? std::string() : names_[bone]);
         file.beginObject("FrameTransformMatrix");
         file.floatList(bind_[bone].data(), 16);
         file.endObject();
@@ -281,13 +290,21 @@ private:
                                                                  : motion.name);
             if (!emitTake(file, motion)) {
                 ++out.emptyTakes;
-                // A take with no curve still has to occupy its index, so give it one
-                // constant key on the root: both readers drop a set with no tracks at all,
+                // A take with no curve still has to occupy its index, so it becomes a
+                // constant hold on the root: both readers drop a set with no tracks at all,
                 // and a dropped set would shift every later index.
+                //
+                // Two keys, not one. A take's length is its last key time, and the core turns
+                // that into whole 60 Hz frames (actor_animation_frame_count): one key is zero
+                // ticks, i.e. a zero-length animation, and the row timers that scale a phase
+                // to its animation's length divide by it. Keys one 30 Hz frame apart are the
+                // one-frame take the PSP has (0..0), read at 60 Hz.
                 file.beginObject("Animation", names_[roots_.front()]);
                 file.reference(names_[roots_.front()]);
                 file.beginObject("AnimationKey");
-                file.intList({4, 1, 0, 16});
+                file.intList({4, 2, 0, 16});
+                file.floatList(bind_[roots_.front()].data(), 16);
+                file.intList({(std::uint32_t)(kTicksPerSecond / 30), 16});
                 file.floatList(bind_[roots_.front()].data(), 16);
                 file.endObject();
                 file.endObject();

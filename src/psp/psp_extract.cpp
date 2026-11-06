@@ -97,9 +97,13 @@ PspExtractReport extractPsp(const PspExtractOptions& options, std::ostream& log)
         << " bytes verified against the manifest, under " << options.dataDir << "/psp\n";
 
     if (options.convert) {
+        PspConverterContext context;
+        context.dataDir = options.dataDir;
+        context.installDir = options.installDir;
+        context.log = &log;
         for (const PspConverter& converter : pspConverters()) {
             log << "psp: converting " << converter.name << '\n';
-            const std::vector<std::string> written = converter.run(options.dataDir, log);
+            const std::vector<std::string> written = converter.run(context);
             report.converted.insert(report.converted.end(), written.begin(), written.end());
             log << "psp: " << converter.name << " wrote " << written.size() << " file(s)\n";
         }
