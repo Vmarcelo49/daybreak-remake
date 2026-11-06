@@ -52,6 +52,23 @@ std::string resultSingleScriptPath(int id) {
     return path;
 }
 
+WinnerArt winnerArt(int character, bool persona) {
+    WinnerArt art;
+    if (character < 0) return art;
+    char stem[32];
+    std::snprintf(stem, sizeof(stem), "data/win/%02d%c", character, persona ? 'b' : 'a');
+    art.stem = stem;
+    art.required = character < gameplay::kCharacterCount;
+    return art;
+}
+
+bool winnerQuoteRequired(const int characters[2], int memberCount) {
+    const int members = std::clamp(memberCount, 1, 2);
+    for (int i = 0; i < members; ++i)
+        if (characters[i] < 0 || characters[i] >= gameplay::kCharacterCount) return false;
+    return true;
+}
+
 WinnerQuotePlan planWinnerQuote(const int characters[2], const int weapons[2], int memberCount,
                                 int margin, bool winnersBelowHalfHp) {
     WinnerQuotePlan plan;

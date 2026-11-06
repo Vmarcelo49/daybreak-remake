@@ -100,6 +100,23 @@ inline int winnerPortraitCount(int memberCount) {
     return memberCount > 2 ? 2 : memberCount;
 }
 
+// The winner portrait one winning slot loads: data/win/<NN><a|b> (FUN_00635d40:255-273), and
+// whether the result screen may refuse without it. The PC sixteen's sheets ship with the install,
+// so a missing one is a broken install and the screen refuses as it always has. A PSP fighter's
+// (16..18) comes from the converted psp-data and is optional: without it the screen draws no
+// portrait and still shows the report, so a finished match always reaches its result
+// (docs/psp/FRONTEND-ART.md §5). `persona` is the 'b' variant, which only Rena/Rika have.
+struct WinnerArt {
+    std::string stem;      // "" for an absent slot
+    bool required = false;
+};
+WinnerArt winnerArt(int character, bool persona);
+
+// Whether the result screen may refuse when no quotation resolves. Only a side made entirely of
+// the PC sixteen has a shipped script to find; a PSP winner gets no script at all (above), so the
+// screen shows no quote rather than refusing.
+bool winnerQuoteRequired(const int characters[2], int memberCount);
+
 // Builds the plan for a winning side. `characters`/`weapons` are the side's slots in panel
 // order; a one-member side (the port's 1v1) repeats that member, which is the documented port
 // rule — the original always has two fighters per side, and every character ships a self-pair

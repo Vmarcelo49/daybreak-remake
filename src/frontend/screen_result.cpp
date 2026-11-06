@@ -48,13 +48,14 @@ public:
         for (int i = 0; i < winnerCount; ++i) {
             WinnerSlot& winner = winners[(size_t)i];
             winner.persona = resultPersonaId(winner.character, winner.weapon) != winner.character;
-            if (winner.character < 0) continue;
-            char stem[64];
-            std::snprintf(stem, sizeof(stem), "data/win/%02d%c", winner.character,
-                          winner.persona ? 'b' : 'a');
+            const WinnerArt art = winnerArt(winner.character, winner.persona);
+            if (art.stem.empty()) continue;
+            winnerRequired_[i] = art.required;
             std::string failure;
-            if (!uploadCnvSheet(batch, stem, winnerSheets_[i], failure) && error.empty())
-                error = failure;
+            if (uploadCnvSheet(batch, art.stem.c_str(), winnerSheets_[i], failure)) continue;
+            // A PSP fighter's portrait is optional (winnerArt): the slot draws nothing.
+            if (!art.required) std::fprintf(stderr, "[result] %s: %s\n", art.stem.c_str(), failure.c_str());
+            else if (error.empty()) error = failure;
         }
         // The quote pair repeats a one-member side's fighter (planWinnerQuote), so the evidence
         // line reports that member's persona for both pair slots.
@@ -76,12 +77,14 @@ public:
             }
             plan_ = planWinnerQuote(characters, weapons, winnerCount, state.resultMargin,
                                     state.resultWinnersHurt);
+            quoteRequired_ = winnerQuoteRequired(characters, winnerCount);
             auto& assets = fnd::assets::assetSource();
             std::vector<uint8_t> bytes;
-            if (assets.read(plan_.pairScript, bytes) && !bytes.empty()) {
-                quotePath_ = plan_.pairScript;
-            } else if (assets.read(plan_.fallbackScript, bytes) && !bytes.empty()) {
-                quotePath_ = plan_.fallbackScript;
+            // A PSP winner's plan names no script (planWinnerQuote), so there is nothing to read.
+            for (const std::string* script : {&plan_.pairScript, &plan_.fallbackScript}) {
+                if (script->empty() || !assets.read(*script, bytes) || bytes.empty()) continue;
+                quotePath_ = *script;
+                break;
             }
             if (!bytes.empty()) {
                 entries_ = parseResultQuotes(
@@ -93,7 +96,7 @@ public:
                 }
             }
         }
-        if (state.resultWinner >= 0 && quote_.text.empty() && error.empty())
+        if (state.resultWinner >= 0 && quote_.text.empty() && quoteRequired_ && error.empty())
             error = "result: no shipped victory quotation resolved for " + plan_.pairScript;
         if (state.resultWinner >= 0) {
             // Evidence line: which script answered, which alternative was picked and which
@@ -141,7 +144,7 @@ public:
             return false;
         }
         for (int i = 0; i < winnerSlots_; ++i) {
-            if (winnerSheets_[i] < 0) {
+            if (winnerSheets_[i] < 0 && winnerRequired_[i]) {
                 if (error.empty())
                     error = "the winning character's result portrait did not load";
                 return false;
@@ -151,7 +154,7 @@ public:
             if (error.empty()) error = "the result screen's caption atlas did not load";
             return false;
         }
-        return state_.resultWinner < 0 || !quote_.text.empty();
+        return state_.resultWinner < 0 || !quote_.text.empty() || !quoteRequired_;
     }
     const char* name() const override { return "result"; }
     ScreenId update(const ScreenInput& input) override {
@@ -238,6 +241,10 @@ private:
     mutable int bitmapSlot_ = -1;
     int systemSheet_ = -1;
     int winnerSheets_[2] = {-1,-1};
+    // Whether each winner slot's portrait, and the quotation, may refuse the screen: true for the
+    // PC sixteen (shipped art and scripts), false for the PSP three (winnerArt, winnerQuoteRequired).
+    bool winnerRequired_[2] = {false,false};
+    bool quoteRequired_ = true;
     int winnerSlots_ = 0;    // portraits the winning side draws (1 for the port's 1v1)
     int textSlot_=-1, sound_=-1;
 };

@@ -1614,8 +1614,8 @@ bool initScreens(App& app) {
                 const char* dir = ui::frontendCharacterDirectory(slot.character);
                 if (!dir) continue;
                 slots.push_back(std::string(dir) + ":" + std::to_string(slot.costume));
-                if (slot.weapon >= 0 && slot.weapon < gameplay::weaponCountForCharacter(slot.character))
-                    weaponIds.push_back(gameplay::kWeaponIds[slot.character][slot.weapon]);
+                if (const int item = gameplay::rosterWeaponItemId(slot.character, slot.weapon))
+                    weaponIds.push_back(item);
             }
             char stage[24];
             std::snprintf(stage, sizeof(stage), "stage%02d",
