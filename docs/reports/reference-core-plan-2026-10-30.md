@@ -1,7 +1,8 @@
 # Reference-core plan (proposal, 2026-10-30)
 
-**Status: proposal, awaiting owner approval.** Until then [`../DIRECTION.md`](../DIRECTION.md)
-remains the plan. Nothing here has been integrated.
+**Historical proposal: approved and implemented.** The reference core is now the
+only combat authority. This report preserves the proposal and its measurements;
+it is not a current work plan. See [`../DIRECTION.md`](../DIRECTION.md).
 
 ## 1. The proposal in one paragraph
 

@@ -1,5 +1,8 @@
 # Owner exceptions to the freeze
 
+> Historical record only: the freeze ended and these exceptions do not govern
+> current work. Original paths may have moved; see [`../PATHS.md`](../PATHS.md).
+
 The freeze list in [`../AGENTS.md`](../AGENTS.md) is the default. Work outside it
 is allowed **only** through an entry here, written by the repo owner. An entry
 without a date or an expiry is not an exception.

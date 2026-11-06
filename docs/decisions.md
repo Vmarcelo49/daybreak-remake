@@ -427,11 +427,16 @@ comments — when a decision changes.
 
 ## D14 — the recovered action bodies become the character runtime (2026-10-14)
 
-- **The port stops hand-transcribing per-character behaviour.** The target is the
-  recovered original action logic: the control headers and "native body" modules
-  from the reference bundle, one binding resolver, and a per-frame differential
-  harness that compares our build against the original executable. Plan and
-  phases: [`docs/DIRECTION.md`](DIRECTION.md) §4.
+> **Historical pilot decision.** The pilot and its freeze/approval gates are closed.
+> The current combat authority is the vendored reference core, described in
+> [`DIRECTION.md`](DIRECTION.md). The pilot passed; the freeze, approval gates and
+> section references below are historical, not current requirements. The old verdict
+> is in [`archive/SCOREBOARD.md`](archive/SCOREBOARD.md), and Q1 is resolved in
+> [`archive/QUESTIONS.md`](archive/QUESTIONS.md).
+
+- **The port stopped hand-transcribing per-character behaviour.** The original
+  proposal used recovered action bodies and a differential harness. The adopted
+  implementation is the vendored reference core; see [`DIRECTION.md`](DIRECTION.md).
 - **Why:** 46 combos exist, one per character+weapon pair, and each is its own
   handler in the original (vtable block `0x6a4e10`, 46 vtables, stride `0x28`;
   `FUN_00649790` is the 46-case factory). The 184 per-combo functions are 57.6% of
@@ -439,18 +444,13 @@ comments — when a decision changes.
   tables measured 0/46 complete after weeks of work and the project's own
   architecture note names the mechanism (≈550 hand-encodings against a 9-op rule
   vocabulary).
-- **What this forbids:** new per-character or per-weapon rule arrays, new
-  per-combo branches in `fighter.cpp`, and new binding/controller tables that no
-  runtime path reads. The freeze list and the three-question test are in
-  [`AGENTS.md`](../AGENTS.md); that file is the enforcement point and the
-  single source of truth for what is frozen.
-- **Provisional, and how it reverses:** the decision stands until the pilot
-  verdict recorded in [`docs/SCOREBOARD.md`](SCOREBOARD.md) rejects it
-  (criteria: `DIRECTION.md` §4, 2g). A red verdict sends the project to
-  `DIRECTION.md` §5 — fork the reference runtime as the simulation core, or
-  re-scope — and the pilot is reverted behind its flag. No bundle code becomes
-  load-bearing until the licence/provenance question in `docs/QUESTIONS.md` (Q1)
-  is answered.
+- **Current rule:** do not recreate the deleted hand-written combat path or add
+  parallel per-combo behaviour tables. See [`AGENTS.md`](../AGENTS.md) and
+  `src/battle/core/PATCHES.md` for the current core-change rules.
+- **Outcome:** the pilot passed; the former freeze and verdict gates ended with
+  the reference-core adoption. The bundle-code permission was resolved in Q1
+  ([`archive/QUESTIONS.md`](archive/QUESTIONS.md)); original game assets remain
+  outside that permission.
 - **Port-side decision, not recovered behaviour:** the original has no notion of
   a "pilot", a freeze or a harness; this records how *this* project intends to
   finish, and it is the reason the old per-character plans are retired.

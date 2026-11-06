@@ -1,7 +1,6 @@
 # harness — tier-1 evidence from the original executable
 
-Phase 1 of [`docs/DIRECTION.md`](../../docs/DIRECTION.md) §4. This directory holds
-the tooling that records what the **original** `DaybreakDX.exe` actually does, so
+This historical tooling records what the **original** `DaybreakDX.exe` does, so
 the port's behaviour can be compared field by field instead of argued about.
 
 ## Why the harness spawns the game itself
@@ -179,7 +178,7 @@ of by key.
 
 ## Not this tool's job
 
-- It never patches the original's **code** (`docs/DIRECTION.md` §"Original-binary
-  work"). Data writes, if ever needed, get recorded in the trace.
+- It never patches the original's **code**. Live attachment, instrumentation and
+  data writes need separate owner authorization; see `AGENTS.md`.
 - It is not the differ. Port-side comparison lives with the port
   (`TRACE-SCHEMA.md`, once P1-1 freezes the schema).

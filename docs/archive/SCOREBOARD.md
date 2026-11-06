@@ -1,4 +1,8 @@
-# Scoreboard — the port's only progress metric
+# Scoreboard — historical port metrics
+
+> Historical record only: the pilot, per-combo acceptance process and milestone
+> gates are closed. The last headline was 46/46 running; the 0/46 rows predate
+> M4 and are not current status or work orders. See [`../DIRECTION.md`](../DIRECTION.md).
 
 > **Headline: `46/46` running under the core** (the metric from
 > [`DIRECTION.md`](DIRECTION.md) §6). Measured 2026-10-30 at `ec789371`: each combo as fighter 0

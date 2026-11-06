@@ -1,4 +1,7 @@
-# Direction status — the task list and the work reports
+# Direction status — historical task list and work reports
+
+> Archived: this records superseded milestones, gates and work orders. For current
+> direction see [`../DIRECTION.md`](../DIRECTION.md); use GitHub issues for current work.
 
 > The working document. [`DIRECTION.md`](DIRECTION.md) says **why** and sets the
 > gates; this file says **what is next, who is on it, and what came out**. The

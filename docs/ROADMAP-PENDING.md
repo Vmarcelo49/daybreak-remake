@@ -878,8 +878,8 @@ against its own position, so it was always zero; and a per-victim hit set needs 
 record each hit, so calling `try_melee_hit` twice without `note_melee_hit` correctly
 connects twice.
 
-**Next dig, highest value**: the ~46 per-character handler classes behind vtable slot
-0x20, which is where per-character melee hitboxes, damage and timing actually live.
+**Historical note:** the old investigation identified ~46 per-character handler classes
+behind vtable slot 0x20. This is not a current work order; combat now uses the reference core.
 
 ## B. Battle visuals
 

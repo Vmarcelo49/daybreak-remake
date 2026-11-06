@@ -3,7 +3,7 @@
 > Read this first, then [`docs/DIRECTION.md`](docs/DIRECTION.md). You are in a
 > repo with **two halves**: a playable remake and a reverse-engineering corpus.
 > This file is the map, the enforcement point and the permanent rules;
-> `docs/DIRECTION.md` owns the plan.
+> `docs/DIRECTION.md` describes the current direction.
 
 ## What this project is
 
@@ -29,55 +29,19 @@ first stable release, and the game updates itself from then on.
 | Options and settings | Our own settings file, never the original's | `src/frontend/screen_options.cpp`, `docs/USER-SETTINGS.md` |
 | Texture packs | Read from beside the executable; extractor and verifier exist. Download and prompt wait for a pack | `docs/TEXTURE-PACKS.md`, `tools/asset-tools/texture_pack.py` |
 | Web | Builds, fights and finishes a match: the round's end and its result screen are part of the match group since #88. Not in CI since 0.2.1, where its build stalled | `docs/BUILD-web.md`, `webdelivery/` |
-| Online | **The current priority.** Built through step 7: menus, lobby, shared selection, rollback and room codes. Step 8, real play on real networks, is the owner's, and then #3 closes | `docs/ONLINE-PLAN.md`, `src/net/`, `src/frontend/screen_online.cpp`, `server/` |
+| Online | Menus, lobby, shared selection, rollback and room codes exist; real-network play has begun, and open issues track remaining problems | `docs/ONLINE-PLAN.md`, `src/net/`, `src/frontend/screen_online.cpp`, `server/` |
 | Not built | macOS | |
 
 Open issues are on GitHub (`Vmarcelo49/daybreak-remake`), and they are the current bug list.
 
-## Work mandate
-
-The project is in **M6**: the owner orders product work directly, and the priority is
-[`docs/ONLINE-PLAN.md`](docs/ONLINE-PLAN.md). The milestones and why the core exists are in
-[`docs/DIRECTION.md`](docs/DIRECTION.md).
-
-### Is your task allowed?
-
-1. The owner asked for it in this conversation; or
-2. it is a fix for a concrete, cited failure: a named test or scenario, or an open issue.
-
-Otherwise ask. Do not infer a task from an old report, a TODO, a "next steps" list or a
-milestone table.
-
-### Still forbidden
-
-- **Hand-written combat.** It was deleted at M5; do not bring it back. Behaviour changes belong
-  in the core, cited and listed in `src/battle/core/PATCHES.md`. The last revision with the old
-  path is `e9347627`.
-- Frame-perfect original-game control, a new capture/replay platform, and save-state or
-  emulator projects, unless the owner asks.
-
-### Stop and ask
-
-- Ask *before acting* if a step would touch the owner's live desktop session, inject input
-  anywhere other than this repo's own game process, or reach outside the repository.
-- If the owner cannot be reached, write the question in [`docs/QUESTIONS.md`](docs/QUESTIONS.md)
-  and end the session or take another allowed task. Never invent work to stay busy.
-
-### Attempt ceilings
-
-Each focused investigation gets **3 attempts or 2 hours**, whichever comes first; only the
-owner raises it. Past it, stop, report the missing capability and ask or re-scope. Do not
-restart the same investigation under a new name, or descend into DLLs, memory writers or
-screen-replay tooling. Unproven original automation is never required.
-
-### Where to find things
+## Where to find things
 
 | You need | Read |
 |---|---|
 | How to build and how the code is organized | `DEVELOPMENT.md`. `README.md` is for players: keep it plain, and keep its tested list true |
-| The plan and milestones | `docs/DIRECTION.md` |
-| What was done, newest entries last in the work log | `docs/DIRECTION-STATUS.md` |
-| Binding product decisions | `docs/decisions.md` (D1–D14) |
+| Current direction | `docs/DIRECTION.md` |
+| Open work and completed changes | GitHub issues and git history |
+| Binding product decisions | `docs/decisions.md` (D1–D15) |
 | The core and its changes | `src/battle/core/README.md`, `PATCHES.md`, `MANIFEST.sha256` |
 | Regression hashes | `bash tools/fingerprints.sh $PWD/build/linux/simctl $PWD/build/linux/daybreak <outdir> tests/scripts`. Expected on 2026-11-04: SIM `746ce7a9cbe6e44a`, `941f3dcd7a679d74`, `f19e8d6d58c37151`; PIX `ff54a85d`, `1fc12c64`, `9ecda8ec` (title720 moved with issue #98's live title; title4p photographs the selection, not the title). On 2026-11-04 the CPU's `rsqrtss` estimate was replaced by an exactly rounded `1/sqrt` for issue #107, which moved the second and third SIM and title4p: those two were only ever true on one CPU vendor. A deliberate behaviour change moves them; say so in its report |
 | Builds and release | `docs/BUILD-*.md`, `docs/RELEASE-CHECKLIST.md`. CI runs when `VERSION` changes on `main` (`.github/workflows/build.yml`) |
@@ -109,11 +73,10 @@ retired plan. Use the table above.
 Path moves are mapped once in [`docs/PATHS.md`](docs/PATHS.md) — use it instead of
 the historical text of an archived document.
 
-Status goes to four places and nowhere else: [`docs/DIRECTION-STATUS.md`](docs/DIRECTION-STATUS.md)
-(the task list and the work reports), [`docs/SCOREBOARD.md`](docs/SCOREBOARD.md)
-(the one metric and verdicts), [`docs/QUESTIONS.md`](docs/QUESTIONS.md)
-(blockers) and [`docs/EXCEPTIONS.md`](docs/EXCEPTIONS.md) (owner overrides), under
-the plan in `docs/DIRECTION.md`. Do not open other ledgers or progress documents.
+Track current bugs and work in GitHub issues. Report changes, checks and limitations
+with the task; use [`docs/QUESTIONS.md`](docs/QUESTIONS.md) only when the owner cannot
+be reached for a required decision. The old scoreboard, work log and freeze exceptions
+are historical records in `docs/archive/`, not current gates.
 
 ## Original-binary skill routing
 
@@ -134,7 +97,7 @@ repository tools; they do not require REA.
   indirect calls. Static evidence supports source-backed expectations, not
   original-runtime parity. `rea trace` follows static references, not execution.
 - Reuse saved results and avoid concurrent writers to a shared snapshot cache or
-  unnecessary parallel Ghidra imports. The normal attempt ceiling still applies.
+  unnecessary parallel Ghidra imports.
 - Loading this skill does **not** authorize launching the original, runtime
   instrumentation, frame-perfect input automation, analysis-annotation changes,
   installing tools or configuring integrations. Those require separately scoped
@@ -154,11 +117,9 @@ Every verification claim names its tier; the highest one wins:
 
 **"Built" is not "verified". A capture is not a live run (D9). A skip is not a
 pass.** A tier-6 rule is never presented as recovered behaviour, and a tier-5
-capture never substitutes for a tier-1 trace. Acceptance under the approved
-coverage contract is distinct from original-runtime parity. Shared-source body
-and adapter agreement is a consistency check, not independent original proof.
-Required missing or skipped cases block acceptance; contract exclusions and
-changes need owner approval, never a silent denominator reduction.
+capture never substitutes for a tier-1 trace. Shared-source body and adapter
+agreement is a consistency check, not independent original proof. Report missing
+or skipped cases honestly rather than treating them as passed.
 
 ## The two halves
 
@@ -169,52 +130,17 @@ changes need owner approval, never a silent denominator reduction.
 | Entry docs | `DEVELOPMENT.md` → `docs/decisions.md` | `docs/overview.md` → `docs/pipeline.md` |
 | Build | `./build.sh deps` (once), then `./build.sh {linux,windows,web}` | `python3 research/tools/coverage_report.py` (no deps) |
 
-## Hard rules (violations = reverted work)
+## Comment policy
 
-1. **Never hand-edit or commit `research/recomp/`.** It is optional, ignored generated
-   output, not game code; regenerate it from `research/decompiled/` and
-   `research/symbols/` only when researching. The product does not depend on it.
-2. **The product keeps the original `.X` files — no conversion pipeline.** The
-   renderer is **SDL3 + WebGPU** (D2): `webgpu.h`, wgpu-native natively and
-   emdawnwebgpu on the web, built from the repository root. DX9 was dropped in the
-   Phase 5 cutover (2026-10-02) and its tree is deleted, so
-   `research/evidence/parity-baseline/` is **history and framing evidence only**, not
-   the appearance or behaviour target. Appearance references are the original's prints
-   in `docs/reference/`. Read `docs/decisions.md` (D1–D14) before touching the
-   product tree.
-3. **`mvp/` is gone.** Retired 2026-10-01 after its contents were ported. Don't
-   recreate it; decomp provenance lives in `research/`.
-4. **Comment policy in the product tree:** explain *why*, cite RE provenance (`FUN_xxxxxx`,
-   addresses). No restatement comments, no dead code.
-5. **Run `research/tools/coverage_report.py` before committing** research changes.
-6. **Full diff review before EVERY commit** — see below. Not optional, no size
-   exemption.
-7. **Character+weapon combos, never bare fighters.** Every attack is a weapon attack
-   (issue #26): battles, traces and tests bind a character AND a weapon (move table
-   + item data). A bare fighter is a false claim, not a simplification — tests that
-   exercise one without the other are rejected. Name combos as Name+N (`Rena 1` is
-   her second weapon) or Name+Weapon (`Keiichi Invincible Iron`; atlas names in
-   `docs/ASSET-CATALOG.md` §3.2). In code the helper is
-   `gameplay::comboSlotLabel`; NN.dat number IS the weapon slot and file offset
-   `0x114` carries the weapon id (verified 46/46 against `kWeaponIds`). A roster
-   fighter that ends up with no weapon fails the launch loudly — only unknown
-   (custom) characters fall back with a warning.
+In the product tree, explain *why* and cite reverse-engineering provenance
+(`FUN_xxxxxx`, addresses). Avoid restatement comments and dead code.
 
-## MANDATORY — full diff review before EVERY commit
+## Mandatory full diff review before every commit
 
-Read `git diff` **and** `git diff --cached`. This step cannot be skipped, no matter
-how small the change. Review every changed file for:
-
-- **Unused code** — dead branches, unused includes/members/functions left behind.
-- **Debug helpers that are no longer useful** — temporary log lines, traces,
-  fingerprints, counters added while investigating; remove them or gate them behind
-  an env flag if genuinely valuable.
-- **Repeated logic** — duplicated blocks that should be unified into one helper.
-- **Verbose and useless comments** — comments narrating obvious code, stale
-  references to removed code, or long-winded explanations of what the diff shows.
-
-Fix everything found (or explicitly justify keeping it) before committing. A
-skipped review is a process violation.
+Full diff review before EVERY commit — not optional, with no size exemption.
+Read both `git diff` and `git diff --cached`, and review every changed file for
+unused code, temporary diagnostics, repeated logic, and stale or unhelpful comments.
+Fix findings or explicitly justify keeping them before committing.
 
 ## Original-binary work
 
@@ -279,7 +205,7 @@ rules: `docs/conventions.md`.
   `refactor/*` and `fix/*` worktrees that sat 198–223 commits behind were the
   evidence for why; they were removed on 2026-10-16 (owner-reviewed: every tip was
   already an ancestor of `main`, zero unique commits, all worktrees clean), and the
-  recorded listing is in [`docs/DIRECTION-STATUS.md`](docs/DIRECTION-STATUS.md) P0-2.
+  recorded listing is in [`docs/archive/DIRECTION-STATUS.md`](docs/archive/DIRECTION-STATUS.md) P0-2.
 - **Never force push.**
 - **Never** `reset --hard`, `clean -fd`, `checkout .`, or delete a branch or
   worktree without first listing its unique commits (`git log main..<branch>`) and
@@ -290,10 +216,9 @@ rules: `docs/conventions.md`.
 - Push scope: `research/decompiled`, `research/binary_data`, reviewed
   `research/symbols`, `research/progress`, docs, and reviewed source/tests/runtime
   caption assets under the product tree.
-- Never commit: `research/recomp/`, game files, keys, `*.full.json`, build outputs
+- Never commit: game files, keys, `*.full.json`, build outputs
   (`build/`), fetched dependencies (`third_party/`), ignored local leftovers of the
   retired layout, and `.local-analysis/`.
-- Full diff review before every commit — see above.
 
 ## Local-only (present on disk, absent from git)
 

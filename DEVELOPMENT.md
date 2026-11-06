@@ -23,12 +23,10 @@ at runtime has not been verified.
 | Multiplayer | Local, LAN and online for 2 to 4 players, with rollback and Linux and Windows together. In testing: first real-network playtest 2026-11-04. |
 | macOS | Not attempted. |
 
-This is not an exhaustive bug list. The plan and its live state are
-[`docs/DIRECTION.md`](docs/DIRECTION.md) (what is being done and why),
-[`docs/DIRECTION-STATUS.md`](docs/DIRECTION-STATUS.md) (the task list and the work log),
-[`docs/SCOREBOARD.md`](docs/SCOREBOARD.md) (the one metric) and
-[`docs/QUESTIONS.md`](docs/QUESTIONS.md) (open owner decisions). Open bugs are the GitHub issues. Read
-[`AGENTS.md`](AGENTS.md) before changing anything: it is the map and the enforcement point.
+This is not an exhaustive bug list. The current direction is in
+[`docs/DIRECTION.md`](docs/DIRECTION.md); open bugs and current work are GitHub issues.
+Read [`AGENTS.md`](AGENTS.md) before changing anything: it is the map and enforcement point.
+Historical plans and work reports are in `docs/archive/`, not current work orders.
 
 ## Repository layout
 

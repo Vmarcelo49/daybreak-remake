@@ -91,7 +91,7 @@ the text, when following one of them.
 These documents declared themselves historical, or recorded work that was already closed.
 They keep their original text, plus a one-line archive banner where the title still read as
 current. Current documents use the new path; the historical work logs in
-`DIRECTION-STATUS.md` and `docs/agents/` keep the old one.
+`docs/archive/DIRECTION-STATUS.md` and `docs/agents/` keep the old one.
 
 | Before | After |
 |---|---|
@@ -103,3 +103,8 @@ current. Current documents use the new path; the historical work logs in
 | `docs/RELEASE-LINUX.md` | `docs/archive/RELEASE-LINUX.md` |
 | `docs/reports/checks-audit-2026-10-10.md` | `docs/archive/checks-audit-2026-10-10.md` |
 | `docs/reports/reorganization-brief-2026-10-30.md` | `docs/archive/reorganization-brief-2026-10-30.md` |
+| `docs/DIRECTION.md` (retired milestone plan) | `docs/archive/DIRECTION.md`; current direction remains at `docs/DIRECTION.md` |
+| `docs/DIRECTION-STATUS.md` | `docs/archive/DIRECTION-STATUS.md` |
+| `docs/SCOREBOARD.md` | `docs/archive/SCOREBOARD.md` |
+| `docs/EXCEPTIONS.md` | `docs/archive/EXCEPTIONS.md` |
+| `docs/QUESTIONS.md` (historical entries) | `docs/archive/QUESTIONS.md`; current questions remain at `docs/QUESTIONS.md` |

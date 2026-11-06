@@ -1,9 +1,9 @@
 # Status — research status snapshot (2026-10-01)
 
 > **Historical, archived 2026-11-05.** This was the living status page; its paths are
-> the pre-2026-10-30 layout and its "Next steps" table is not a work order. Current
-> state is in [`DIRECTION-STATUS.md`](../DIRECTION-STATUS.md),
-> [`SCOREBOARD.md`](../SCOREBOARD.md) and `research/progress/coverage.json`.
+> the pre-2026-10-30 layout and its "Next steps" table is not a work order. The
+> old work records are in [`DIRECTION-STATUS.md`](DIRECTION-STATUS.md) and
+> [`SCOREBOARD.md`](SCOREBOARD.md); current direction is [`DIRECTION.md`](../DIRECTION.md).
 >
 > Metric snapshots below are historical — the official metric is always
 > `research/progress/coverage.json` (regenerate with

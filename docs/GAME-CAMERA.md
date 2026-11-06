@@ -125,7 +125,7 @@ quoted does not support the eye formula in `render/arena_camera.h`:
   separate two fighters closer than 60 units horizontally and vertically.
 
 The real follow lives in `fcn.006333b0` (`mode95 == 0 && mode94 == 0`), and is recovered in
-`docs/PILOT-EVIDENCE-CONTRACT.md` V3-14: eye height `dist*0.03 + 140`, a `+200` vertical clamp, a
+`docs/archive/PILOT-EVIDENCE-CONTRACT.md` V3-14: eye height `dist*0.03 + 140`, a `+200` vertical clamp, a
 `-120` vertical bias, and aim `+20 - dist*0.2`. Because the port's flat 300/+50 keeps eye and aim
 rising together, a jump translates the view without tilting it — which is the reported symptom.
 Implementing it needs the `+0x18` rig chain recovered first.

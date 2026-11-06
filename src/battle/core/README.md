@@ -9,7 +9,7 @@ calls into the original.
   compiled combat-body modules. No Windows, Direct3D or DirectSound code, and no game assets.
 - **Layout:** files keep their bundle names. `MANIFEST.sha256` records the hash of every file
   as copied, so `sha256sum -c MANIFEST.sha256` (run here) shows exactly what has diverged.
-- **Rules:** nothing outside `src/sim/` includes these files. Do not reformat them; generated
+- **Rules:** product code accesses the core through the `src/battle/` wrapper. Do not reformat them; generated
   bodies stay byte-identical. Every local change goes in [`PATCHES.md`](PATCHES.md) with its
   evidence.
 - **Standard headers:** the bundle relies on transitive includes that libstdc++ does not
@@ -18,4 +18,4 @@ calls into the original.
   It is outside the manifest, which covers the simulation files.
 
 Running here shows only that the code runs. Its author calls full compatibility with the
-original unproven, and so do we: see [`docs/DIRECTION.md`](../../../../../docs/DIRECTION.md) §2.
+original unproven, and so do we: see the [current direction](../../../docs/DIRECTION.md).

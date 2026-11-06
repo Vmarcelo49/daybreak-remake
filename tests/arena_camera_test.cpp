@@ -763,7 +763,7 @@ void splitViewCameraCases() {
 // ===========================================================================
 //  Recovered normal follow — FUN_006333b0 (+0x95 == 0 && +0x94 == 0)
 //  Every constant is from the pinned binary's .rdata; see
-//  docs/PILOT-EVIDENCE-CONTRACT.md V3-15. The behavioural claim this covers is
+//  docs/archive/PILOT-EVIDENCE-CONTRACT.md V3-15. The behavioural claim this covers is
 //  the owner's: raising the rig must change the eye->aim ANGLE (a jump tilts the
 //  camera), which the old flat height/aim formula could never do.
 // ===========================================================================
