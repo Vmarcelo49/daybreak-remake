@@ -109,7 +109,7 @@ static bool enterFrontendBattle(App& app);
 static bool initScreens(App& app);
 static bool hasAsset(const Options& o);
 static void splitSuffix(const std::string& spec, std::string& path, int& value);
-static void usage();
+static void usage(std::FILE* stream = stderr);
 static bool parseNprColour(const std::string& text, glm::vec3& out);
 static bool parseNprSpec(const std::string& spec, render::Appearance& a, std::string& error);
 static bool parseArgs(int argc, char** argv, Options& o, std::string& error);

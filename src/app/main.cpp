@@ -2017,6 +2017,10 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
         usage();
         return SDL_APP_FAILURE;
     }
+    if (app->opts.help) {
+        usage(stdout);
+        return SDL_APP_SUCCESS;
+    }
 #if !defined(__EMSCRIPTEN__)
     if (!app->opts.extractPsp.empty()) {
         if (!runPspExtraction(app->opts, app->error)) {

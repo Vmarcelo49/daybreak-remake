@@ -32,8 +32,8 @@ static bool resolveFighterWeapon(const std::string& charDir,
                                  const std::string& explicitSpec, std::string& meshSpec,
                                  int& itemId);
 
-void usage() {
-    std::fprintf(stderr,
+void usage(std::FILE* stream) {
+    std::fprintf(stream,
         "usage: daybreak [<model.x> | --model=<file.x> | --stage=<dir> |\n"
         "                       --character=<baseDir>/<name>[:costume] |\n"
         "                       --weapon=<dir or .x>[:slot] | --effect=<file.x]] [options]\n"
@@ -121,9 +121,14 @@ void usage() {
         "                     aim cross, desired-eye cross under --camera=arena)\n"
         "  --install=<dir>    use this game install's daybreakXX.dat bundles; when\n"
         "                     omitted, the install is inferred from the asset paths\n"
-        "  --extract-psp=<iso>  read a Higurashi Daybreak Portable ISO, verify every file\n"
-        "                     against assets/psp/manifest.txt, write the raw files and the\n"
-        "                     converted models into psp-data/, then exit\n"
+        "  --extract-psp=<iso>  read a Higurashi Daybreak Portable ISO and write the player's\n"
+        "                     own psp-data/, then exit. Every file is checked against\n"
+        "                     assets/psp/manifest.txt, and the run writes the raw files, the\n"
+        "                     converted models and frame tables, and the select, VS and\n"
+        "                     result art (docs/psp/README.md). --psp-data=<dir> says where,\n"
+        "                     --install=<game> lets it build the frame tables. The value joins\n"
+        "                     with '=': --extract-psp=<iso>, not --extract-psp <iso>\n"
+        "  -h, --help         print this text and exit\n"
         "  --no-camera-clamp  A/B switch: skip the arena eye's collision_camera clamp\n"
         "  --headless         no window, no surface, no swapchain: render straight to\n"
         "                     offscreen captures (needs --out). Lets verification run\n"
@@ -336,6 +341,11 @@ bool parseNprSpec(const std::string& spec, render::Appearance& a, std::string& e
 bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
+        // Asked for the text: nothing after it matters, and no option has to parse.
+        if (a == "-h" || a == "--help") {
+            o.help = true;
+            return true;
+        }
         auto val = [&](const char* key) {
             return a.rfind(key, 0) == 0 ? a.substr(std::strlen(key)) : std::string();
         };
