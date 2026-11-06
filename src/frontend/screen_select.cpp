@@ -3,19 +3,36 @@
 #include "assets/exe_strings.h"
 #include "battle/weapon_definition.h"
 #include "frontend/frontend_launch.h"
-#include "hud/hud_atlas.h"
+#include "frontend/roster_name.h"
 #include "frontend/screen_stage_select.h"
+#include "hud/hud.h"
+#include "hud/hud_atlas.h"
+#include "ui/caption.h"
 #include <algorithm>
 #include <cstdio>
 
 namespace ui {
 namespace {
-// The roster tables in screen_select.h are transcriptions of the binary's 16-character roster;
-// gameplay::kCharacterCount is what the launch validates against, so the two must agree.
+// The roster tables in screen_select.h are transcriptions of the binary's 16-character roster
+// extended by the PSP three; gameplay::kRosterCharacterCount is the whole roster, so the four
+// tables and the roster itself must agree or a slot is unreachable.
 static_assert(sizeof(kSelectRosterX) / sizeof(kSelectRosterX[0]) ==
-                  (size_t)gameplay::kCharacterCount,
-              "the roster tables must cover every character gameplay knows");
+                  (size_t)gameplay::kRosterCharacterCount &&
+              sizeof(kSelectRosterY) / sizeof(kSelectRosterY[0]) ==
+                  (size_t)gameplay::kRosterCharacterCount &&
+              sizeof(kSelectRosterOrder) / sizeof(kSelectRosterOrder[0]) ==
+                  (size_t)gameplay::kRosterCharacterCount &&
+              sizeof(kSelectCostumes) / sizeof(kSelectCostumes[0]) ==
+                  (size_t)gameplay::kRosterCharacterCount,
+              "the roster tables must cover every character the roster can offer");
 int cycle(int value, int delta, int count) { return (value + count + delta) % count; }
+// The caption face's design height for a roster name plate, and the width a name may use before it
+// is narrowed. The plate is 256x64 drawn at scale 1 in the character phase and at scale .5 on the
+// summary line, so the TEXT keeps one on-screen size (the height the p03 art's own name has there)
+// instead of following the plate's scale. The VS screen draws its plates at scale 1 and uses a
+// 40 px face for the same reason (screen_vs.cpp).
+constexpr float kNameCellHeight = 20.f;
+constexpr float kNamePlateWidth = 240.f;
 // The team cursor's grid, the original's own cell numbering (+0x3c48): two columns of three
 // rows, packed column-major (cursor = column * kSelectPanelRows + row). The bottom row is the
 // decide row — its left cell goes to the stage page and its right cell is back — and the other
@@ -70,9 +87,9 @@ RosterPos rosterPos(int i) {
 // it. Both take the FIRST icon in roster order, so one walk recording each pass's first hit is
 // the original's two loops — and the confirm path's off-grid test reads the same outer pass.
 struct RosterHits { int outer = -1, inner = -1; };
-RosterHits nearestRosterIcon(float x, float y) {
+RosterHits nearestRosterIcon(float x, float y, int count) {
     RosterHits hits;
-    for (int i = 0; i < gameplay::kCharacterCount; ++i) {
+    for (int i = 0; i < count; ++i) {
         const RosterPos p = rosterPos(i);
         const float dx = p.x - x;
         const float dy = p.y - y;
@@ -96,7 +113,7 @@ int SelectMenu::owner(int p) const {
 // override and cannot reach further, so this one test decides the question.
 bool SelectMenu::cursorOffGrid(int c) const {
     if (c < 0 || c >= 4) return false;
-    return nearestRosterIcon(cursorX_[c], cursorY_[c]).outer < 0;
+    return nearestRosterIcon(cursorX_[c], cursorY_[c], selectableRosterCount(state_)).outer < 0;
 }
 void SelectMenu::tick() {
     for (int c=0;c<4;++c)
@@ -137,11 +154,14 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
                 if (claimed < state_.onlineHumans) return SelectAction::None;
             }
             // FUN_0040d130: unset panels become COM with random character, weapon, mode and costume.
+            // The roll stays on the PC sixteen even when the PSP three are offered: a random COM
+            // must not be able to fail a launch on data another track has not produced yet, so the
+            // new three are reachable only by a deliberate pick (docs/psp/FRONTEND-ART.md §6).
             for (int i=0;i<4;++i) if (state_.slots[i].character < 0) {
                 auto& slot = state_.slots[i];
                 slot.character = state_.nextRandom() % gameplay::kCharacterCount;
                 slot.weapon =
-                    state_.nextRandom() % gameplay::weaponCountForCharacter(slot.character);
+                    state_.nextRandom() % gameplay::rosterWeaponCount(slot.character);
                 slot.hypermode = state_.nextRandom() % 3;
                 slot.costume = state_.nextRandom() % kSelectCostumes[slot.character];
                 slot.controller = 4;
@@ -194,7 +214,7 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
                 slot.costume = (int)(state_.nextRandom() %
                                      (uint32_t)kSelectCostumes[slot.character]);
                 slot.weapon =
-                    std::min(slot.weapon, gameplay::weaponCountForCharacter(slot.character) - 1);
+                    std::min(slot.weapon, gameplay::rosterWeaponCount(slot.character) - 1);
                 phase = SelectPhase::Hypermode;
                 return SelectAction::Changed;
             }
@@ -238,7 +258,8 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
             }
         }
         // Selection, every call (:272-300): see nearestRosterIcon for the two passes.
-        const RosterHits hits = nearestRosterIcon(cursorX_[c], cursorY_[c]);
+        const RosterHits hits = nearestRosterIcon(cursorX_[c], cursorY_[c],
+                                                  selectableRosterCount(state_));
         const int chosen = hits.inner >= 0 ? hits.inner : hits.outer;
         if (chosen < 0) {
             // Off the diamond: the panel's PORTRAIT ROLLS THROUGH RANDOM CHARACTERS, one per
@@ -259,6 +280,8 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
             // non-None action with no button to sound 2) — one roll per tick would be a machine
             // gun. Empty space stays silent, which is also the original's own rule at :294.
             slot.character = -1;
+            // The PC sixteen, for the reason the COM fill above states: this roll can be confirmed
+            // into the selection, so it must not name a fighter whose data may not exist yet.
             rolled_[panel(c)] = (int)(state_.nextRandom() % (uint32_t)gameplay::kCharacterCount);
             return SelectAction::None;
         }
@@ -273,7 +296,7 @@ SelectAction SelectMenu::updatePanel(const ScreenInput& in, int c) {
     if (phase == SelectPhase::Weapon) {
         if (in.up || in.down)
             slot.weapon = cycle(slot.weapon, in.up ? -1 : 1,
-                               gameplay::weaponCountForCharacter(slot.character));
+                               gameplay::rosterWeaponCount(slot.character));
         if (in.confirm) phase = SelectPhase::Hypermode;
         else if (in.cancel) { phase = SelectPhase::Character; slot.weapon = 0; }
     } else if (phase == SelectPhase::Hypermode) {
@@ -361,17 +384,60 @@ SelectScreen::SelectScreen(SpriteRenderer& batch, FrontendState& state, std::str
     };
     char path[64];
     for(int i=0;i<10;++i) { std::snprintf(path,sizeof(path),"data/select/%s",paths[i]); load(path,shared_[i]); }
-    for(int i=0;i<16;++i) {
+    offered_ = selectableRosterCount(state_);
+    // The PC sixteen's art is the install's own and every screen has always needed all of it.
+    for(int i=0;i<gameplay::kCharacterCount;++i) {
         std::snprintf(path,sizeof(path),"data/select/%02d",i); load(path,portraits_[i]);
         std::snprintf(path,sizeof(path),"data/select/i%02d",i); load(path,chibi_[i]);
         std::snprintf(path,sizeof(path),"data/select/cos%02d",i); load(path,costumes_[i]);
         std::snprintf(path,sizeof(path),"data/select/w%02d",i); load(path,weapons_[i]);
     }
+    // The PSP three's art comes from psp-data (docs/psp/FRONTEND-ART.md) and is OPTIONAL, per
+    // character: an icon that is not there yet draws nothing, which is what lets the three be
+    // selectable and visible before every sheet exists. A failure is logged, never an error.
+    auto optional = [&](const char* stem,int& slot) {
+        std::string failure;
+        slot=-1;
+        if (!uploadCnvSheet(batch,stem,slot,failure))
+            std::fprintf(stderr,"[select] %s: %s\n",stem,failure.c_str());
+    };
+    for(int i=gameplay::kCharacterCount;i<offered_;++i) {
+        std::snprintf(path,sizeof(path),"data/select/%02d",i); optional(path,portraits_[i]);
+        std::snprintf(path,sizeof(path),"data/select/i%02d",i); optional(path,chibi_[i]);
+        std::snprintf(path,sizeof(path),"data/select/cos%02d",i); optional(path,costumes_[i]);
+        std::snprintf(path,sizeof(path),"data/select/w%02d",i); optional(path,weapons_[i]);
+    }
+    // The two name plates those three cannot take from the p03 atlas: see rosterNameText(). The
+    // layouts are prepared once, before the atlas is uploaded, because new glyphs would otherwise
+    // arrive after the texture describing them.
+    std::string nameError;
+    if (offered_ > gameplay::kCharacterCount && loadCaptionFont(nameText_, kNameCellHeight, nameError)) {
+        bool any = false;
+        for (int i = gameplay::kCharacterCount; i < offered_; ++i) {
+            const std::string name = rosterNameText(i);
+            if (name.empty()) continue;
+            nameLayout_[i] = nameText_.layout(name.c_str());
+            // The plate is 256x64, and the big one is drawn at scale 1: a name wider than the plate
+            // is narrowed instead of running past it.
+            const float width = nameLayout_[i].width(1.f);
+            nameScale_[i] = width > kNamePlateWidth ? kNamePlateWidth / width : 1.f;
+            any = true;
+        }
+        std::string atlasError;
+        if (any) nameSlot_ = batch.addTexture(nameText_.atlasWidth(), nameText_.atlasHeight(),
+                                              nameText_.atlasRGBA().data(), atlasError);
+    } else if (!nameError.empty()) {
+        // Not fatal: the three are still selectable and their portraits still identify them.
+        std::fprintf(stderr, "[select] name plates: %s\n", nameError.c_str());
+    }
     if (state_.stagePage) stage_=makeStageSelectScreen(batch,state_,error);
 }
 bool SelectScreen::loaded() const {
     for (int i : shared_) if(i<0) return false;
-    for(int i=0;i<16;++i) if(portraits_[i]<0 || chibi_[i]<0 || costumes_[i]<0 || weapons_[i]<0) return false;
+    for(int i=0;i<gameplay::kCharacterCount;++i)
+        if(portraits_[i]<0 || chibi_[i]<0 || costumes_[i]<0 || weapons_[i]<0) return false;
+    // 16..18 are not required: their art is psp-data's and a missing sheet only drops that one
+    // icon (the class comment on `offered_`).
     return !state_.stagePage || stage_!=nullptr;
 }
 ScreenId SelectScreen::update(const ScreenInput& in) {
@@ -422,6 +488,23 @@ void SelectScreen::draw(SpriteRenderer& b) const {
         if(dst.w<=0.f||dst.h<=0.f||!b.textureSize(tex,w,h)) return;
         b.pushTextured(tex,dst,{src.x/w,src.y/h,src.w/w,src.h/h},UiColor{});
     };
+    // A roster name plate. The PC sixteen read their 256x64 cell out of the shared p03 atlas
+    // (2 columns x 8 rows, cell (character/8, character%8)); indices 16..18 are outside it and are
+    // drawn with the caption face instead, at the same on-screen height the p03 art has there —
+    // which is why the text does not follow the plate's own scale. Drawn about the plate's centre,
+    // like the sprite's (128,32) pivot.
+    auto namePlate=[&](int character,float x,float y,float plateScale) {
+        if(character<0) return;
+        if(character<gameplay::kCharacterCount) {
+            sprite(shared_[5],{float(character/8)*256,float(character%8)*64,256,64},128,32,x,y,plateScale);
+            return;
+        }
+        if(nameSlot_<0 || nameLayout_[character].items.empty()) return;
+        const float scale=nameScale_[character];
+        const float width=nameLayout_[character].width(scale);
+        drawCaptionLayout(b,nameText_,nameLayout_[character],nameSlot_,nameBitmap_,
+                          x-width*.5f,y-kNameCellHeight*scale*.5f,scale,kHudWhite,2.f);
+    };
     sprite(shared_[0],{0,0,800,600},0,0,0,0);
     // Portrait pivots are (128,256), resolving the apparent 150px panel-anchor mismatch (§2.3).
     // menu_.shown(i), not the slot: off the diamond the slot is empty on purpose (so no chibi
@@ -436,7 +519,10 @@ void SelectScreen::draw(SpriteRenderer& b) const {
         if(row<kSelectDecideCell) sprite(shared_[6+c],{0,float((row+col)%2)*300,400,300},200,0,col*400.f+200,row*300.f);
         else sprite(shared_[2],{float(c)*128,384,128,128},64,64,col==0?336:464,550);
     }
+    // Only the characters this selection offers, and only the ones with art: without psp-data
+    // `offered_` is 16 and this loop draws exactly the pixels it always did.
     for(int i:kSelectRosterOrder) {
+        if(i>=offered_ || chibi_[i]<0) continue;
         bool selected=false;
         for(const auto& slot:state_.slots) selected |= slot.character==i;
         // FUN_0040b2b0:106-131: a selected slot's idle-cycle cell, else the (2,1) flashing cell
@@ -456,7 +542,7 @@ void SelectScreen::draw(SpriteRenderer& b) const {
         auto phase=owner<0 ? SelectPhase::Team : menu_.phase(owner);
         float summary=(p/2)*660.f+70;
         if(slot.character>=0) {
-            sprite(shared_[5],{float(slot.character/8)*256,float(slot.character%8)*64,256,64},128,32,summary,y+210,.5f);
+            namePlate(slot.character,summary,y+210,.5f);
             sprite(costumes_[slot.character],{float(slot.costume%3)*80,float(slot.costume/3)*128,80,128},40,80,summary,y+120,1,p<2);
             if(phase!=SelectPhase::Weapon && phase!=SelectPhase::Character) sprite(weapons_[slot.character],{0,float(slot.weapon)*64,256,64},128,32,summary,y+240,.5f);
             if(phase==SelectPhase::Controller || slot.ready) sprite(shared_[2],{320,float(slot.hypermode)*64,192,64},96,32,summary,y+265,.5f);
@@ -485,8 +571,7 @@ void SelectScreen::draw(SpriteRenderer& b) const {
         if(phase==SelectPhase::Character) {
             // The nameplate exists only for a real selection: the free cursor can sit in empty
             // space with character == -1 (FUN_00409340:294).
-            if(slot.character>=0)
-                sprite(shared_[5],{float(slot.character/8)*256,float(slot.character%8)*64,256,64},128,32,x+slide,y+90);
+            if(slot.character>=0) namePlate(slot.character,x+slide,y+90,1.f);
             // The marker rides the CURSOR's position, not the selected icon's (+400/+150 are
             // the icon draw's own offsets): the two come apart by up to the 30-unit select
             // radius, and the cursor has to stay visible while it is over empty space. PORT
@@ -495,7 +580,7 @@ void SelectScreen::draw(SpriteRenderer& b) const {
         } else if(phase==SelectPhase::Controller) {
             for(int row=0;row<2;++row) sprite(shared_[4],{0,float(320+row*128),256,64},128,32,x+slide+row*8,y+110+row*20,1,false,{1,1,1,slot.controller==(row==0?owner:4)?1.f:.5f});
         } else {
-            int count=phase==SelectPhase::Weapon?gameplay::weaponCountForCharacter(slot.character):3;
+            int count=phase==SelectPhase::Weapon?gameplay::rosterWeaponCount(slot.character):3;
             int choice=phase==SelectPhase::Weapon?slot.weapon:slot.hypermode;
             for(int row=count-1;row>=0;--row) sprite(phase==SelectPhase::Weapon?weapons_[slot.character]:shared_[2],
                 {phase==SelectPhase::Weapon?0.f:320.f,float((choice+row)%count)*64,phase==SelectPhase::Weapon?256.f:192.f,64},phase==SelectPhase::Weapon?128.f:96.f,32,x+slide+row*8,y+110+row*20,1,false,{1,1,1,1.f/(1<<row)});
