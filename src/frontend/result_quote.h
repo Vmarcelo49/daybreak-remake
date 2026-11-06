@@ -45,6 +45,11 @@ int resultQuoteEntryIndex(int entries, int winnerSide, uint64_t matchFrame);
 
 // FUN_00635d40:255-273 + FUN_00409340:180-186: the persona id for one winner, or its own
 // character index when it has no persona variant.
+//
+// This is the ART identity (data/win/%02d%c), and the two persona ids it invents — 16 for Rena
+// weapon 2, 17 for Rika weapon 2 — are also script ids. A PSP-roster index of 16 or 17 (Satoshi,
+// Miyoko) therefore must never be used as a script id: planWinnerQuote gives those winners no
+// script path at all rather than reading Rena's or Rika's line (docs/psp/FRONTEND-ART.md §5).
 inline int resultPersonaId(int character, int weapon) {
     if (character == 0 && weapon == 2) return 16;
     if (character == 4 && weapon == 2) return 17;

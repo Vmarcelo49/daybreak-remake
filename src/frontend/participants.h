@@ -35,7 +35,7 @@
 #include <algorithm>
 #include <cstdint>
 
-#include "battle/weapon_definition.h"   // kWeaponIds / comboSlotLabel (header-only)
+#include "battle/weapon_definition.h"   // the roster tables / comboSlotLabel (header-only)
 #include "frontend/frontend_state.h"
 
 namespace ui {
@@ -81,7 +81,10 @@ inline int buildParticipants(const FrontendSlot slots[kParticipantCount],
         p.team = panel < 2 ? 0 : 1;
         p.character = slot.character;
         p.weapon = slot.weapon;
-        p.weaponId = gameplay::kWeaponIds[slot.character][slot.weapon];
+        // Bounds-checked: a slot can carry a character and weapon the tables do not define (a
+        // stale selection, or the PSP three with their data gone), and this runs before any battle
+        // validates the pair. The guard answers 0, which the launch rejects as an invalid choice.
+        p.weaponId = gameplay::rosterWeaponItemId(slot.character, slot.weapon);
         p.controller = slot.controller;
         p.peer = slot.peer;
         p.local = slot.local;

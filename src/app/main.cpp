@@ -2114,6 +2114,34 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv) {
     }
     const size_t packImages = fnd::assets::assetSource().openTexturePacks(packs);
     if (packImages > 0) std::printf("[pack] %zu image(s)\n", packImages);
+    // The converted PSP data (D-3a) is one extra asset root, consulted after the install's bundles:
+    // everything it holds sits at the game's own paths, so no reader learns a second syntax. The
+    // root is also what turns the three extra fighters on — a selection that offers them without
+    // their data would fail every launch (gameplay::rosterCharacterCount).
+    //
+    // A verification run mounts only the folder it names, the same rule the texture packs follow:
+    // a psp-data beside the executable must not be able to move a capture or a fingerprint, and
+    // the fingerprint cases are verification runs.
+    {
+        std::string root = app->opts.pspData;
+        if (root.empty() && !verificationRun(app->opts)) {
+            if (const char* base = SDL_GetBasePath()) root = std::string(base) + "psp-data";
+        }
+        if (!root.empty()) {
+            if (!fnd::assets::assetSource().mountDataRoot(root)) {
+                // An explicit folder that is not one is a mistake worth failing on, exactly like
+                // an unusable --install=; the implicit one is simply absent.
+                if (!app->opts.pspData.empty()) {
+                    app->error = "psp-data: \"" + root + "\" is not a folder";
+                    return SDL_APP_FAILURE;
+                }
+            } else {
+                gameplay::setPspRosterMounted(true);
+                std::printf("psp-data     : %s (%d extra fighter(s))\n", root.c_str(),
+                            gameplay::rosterCharacterCount() - gameplay::kCharacterCount);
+            }
+        }
+    }
     const bool ok = (!app->opts.screen.empty() || app->opts.bootOpening) ? initScreens(*app)
                    : hasAsset(app->opts)                                ? initScene(*app)
                                                                         : initTriangle(*app);

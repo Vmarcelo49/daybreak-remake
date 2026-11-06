@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <sstream>
 
+#include "battle/weapon_definition.h"
+
 namespace ui {
 
 std::vector<ResultQuoteEntry> parseResultQuotes(const std::string& utf8) {
@@ -63,6 +65,12 @@ WinnerQuotePlan planWinnerQuote(const int characters[2], const int weapons[2], i
         slot.weapon = weapons[source];
         slot.persona = slot.character != characters[source];
     }
+    // The PSP three ship no win script, and their roster index is NOT a script id: 16 and 17 are
+    // Rena's and Rika's weapon-2 personas, so building data/scenario/win/16-16-1.txt for Satoshi
+    // would read their lines. They get no path at all, which the result screen reports
+    // ("no shipped victory quotation resolved") instead of showing another character's quote.
+    for (int i = 0; i < 2; ++i)
+        if (characters[members == 1 ? 0 : i] >= gameplay::kCharacterCount) return plan;
     const int lo = std::min(plan.winners[0].character, plan.winners[1].character);
     const int hi = std::max(plan.winners[0].character, plan.winners[1].character);
     plan.pairA = lo;
