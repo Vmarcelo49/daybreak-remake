@@ -32,6 +32,10 @@ Higurashi-Daybreak/
 # Raw binary Evidence, captures and generated experiment reports.
 local-data/harness/
 
+# The PSP extraction: the player's own disc, converted for this port. Whole and in part it
+# is the original rights holders' data, so only the file list in assets/psp/ is tracked.
+psp-data/
+
 # Generated research output; regenerate from decompiled/ and symbols/ when needed.
 /research/recomp/
 

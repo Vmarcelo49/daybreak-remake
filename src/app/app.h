@@ -73,6 +73,11 @@ struct Options {
     std::string camera = "auto";   // auto|player|front|top|bounds
     bool        headless = false;  // no window/surface: offscreen captures only
     std::string install;           // dir holding daybreakXX.dat; auto-detected when empty
+    // --extract-psp=<iso>: collect the PSP version's files into psp-data/ and exit
+    // (docs/psp/README.md). --psp-data=<dir> moves the output folder, which otherwise sits
+    // beside the executable the way a texture pack does.
+    std::string extractPsp;
+    std::string pspData;
     bool        noCameraClamp = false;   // A/B switch for the arena eye clamp
     bool        noTextures = false;
     bool        fog        = false;   // opt-in: the DX9 reference renders unfogged

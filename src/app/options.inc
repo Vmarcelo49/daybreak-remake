@@ -116,6 +116,9 @@ void usage() {
         "                     aim cross, desired-eye cross under --camera=arena)\n"
         "  --install=<dir>    use this game install's daybreakXX.dat bundles; when\n"
         "                     omitted, the install is inferred from the asset paths\n"
+        "  --extract-psp=<iso>  read a Higurashi Daybreak Portable ISO, verify every file\n"
+        "                     against assets/psp/manifest.txt and write psp-data/, then\n"
+        "                     exit. --psp-data=<dir> moves the output folder\n"
         "  --no-camera-clamp  A/B switch: skip the arena eye's collision_camera clamp\n"
         "  --headless         no window, no surface, no swapchain: render straight to\n"
         "                     offscreen captures (needs --out). Lets verification run\n"
@@ -476,6 +479,8 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
                 return false;
             }
         }
+        else if (!(v = val("--extract-psp=")).empty()) o.extractPsp = v;
+        else if (!(v = val("--psp-data=")).empty()) o.pspData = v;
         else if (a == "--lock-taps") o.lockTaps = true;
         else if (a.rfind("--", 0) == 0) {
             error = "unknown option " + a;
@@ -579,7 +584,8 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
 // simply ignores them (input_backend's focus gate).
 static bool verificationRun(const Options& o) {
     return o.headless || !o.out.empty() || !o.script.empty() || !o.script2.empty() ||
-           o.match || o.versus || o.hudTest || o.bench > 0 || o.list;
+           o.match || o.versus || o.hudTest || o.bench > 0 || o.list ||
+           !o.extractPsp.empty();
 }
 
 // The update check never runs in a verification, capture or test launch (issue #100,

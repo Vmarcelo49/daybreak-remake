@@ -271,6 +271,23 @@ if(NOT EMSCRIPTEN)
     endif()
 endif()
 
+# The PSP extractor (docs/psp/README.md): the player's own disc, inflated and checked against
+# assets/psp/manifest.txt, into psp-data/. Native only — the web build has no ISO, no disc and
+# nowhere to write — and kept out of `daybreak`'s own translation unit so a test can drive it
+# without SDL.
+if(NOT EMSCRIPTEN)
+    add_library(psp_extract STATIC
+        src/psp/iso9660.cpp
+        src/psp/psp_pack.cpp
+        src/psp/psp_manifest.cpp
+        src/psp/psp_extract.cpp
+        src/psp/psp_convert.cpp)
+    # zlib's header lives with its vendored sources (src/battle/core/zlib); SHA-256 is the
+    # updater's, so the tree keeps one hash and one inflater instead of two.
+    target_include_directories(psp_extract PUBLIC src PRIVATE src/battle/core/zlib)
+    target_link_libraries(psp_extract PUBLIC update PRIVATE battle_core_zlib)
+endif()
+
 set(BATTLE_CORE_SOURCES
     src/battle/battle.cpp
     src/battle/core/compiled_native_bodies/dash.cpp
@@ -368,6 +385,7 @@ target_link_libraries(daybreak PRIVATE battle_backend)
 if(NOT EMSCRIPTEN)
     target_link_libraries(daybreak PRIVATE net_session)
     target_link_libraries(daybreak PRIVATE update)
+    target_link_libraries(daybreak PRIVATE psp_extract)
 endif()
 if(WIN32)
     set_target_properties(daybreak PROPERTIES WIN32_EXECUTABLE TRUE)
@@ -396,13 +414,15 @@ else()
     # --test-update-key path. A DAYBREAK_RELEASE_BUILD refuses to compile it.
     add_executable(daybreak_e2e src/app/main.cpp)
     target_compile_definitions(daybreak_e2e PRIVATE DAYBREAK_UPDATE_TEST_BUILD=1)
-    target_link_libraries(daybreak_e2e PRIVATE battle_backend net_session update
+    target_link_libraries(daybreak_e2e PRIVATE battle_backend net_session update psp_extract
         render ui media game_interfaces physics gameplay movie)
     add_custom_target(caption_fonts
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts" "$<TARGET_FILE_DIR:daybreak>/assets/fonts"
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_CURRENT_SOURCE_DIR}/assets/locale" "$<TARGET_FILE_DIR:daybreak>/assets/locale")
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/locale" "$<TARGET_FILE_DIR:daybreak>/assets/locale"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/psp" "$<TARGET_FILE_DIR:daybreak>/assets/psp")
     add_dependencies(daybreak caption_fonts)
     add_dependencies(daybreak_e2e caption_fonts)
     if(EXISTS "${CAPTION_CJK_FONT}")
@@ -435,6 +455,7 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     install(FILES "$<TARGET_FILE:webgpu>" DESTINATION lib)
     install(FILES "$<TARGET_FILE:SDL3::SDL3>" DESTINATION lib RENAME "$<TARGET_SONAME_FILE_NAME:SDL3::SDL3>")
     install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts" "${CMAKE_CURRENT_SOURCE_DIR}/assets/locale"
+                      "${CMAKE_CURRENT_SOURCE_DIR}/assets/psp"
             DESTINATION assets PATTERN "README.md" EXCLUDE)
     # The Japanese fallback is fetched (scripts/fetch_deps.sh) rather than committed, so it
     # is installed by name; package_linux.sh refuses to build a package without it (D7).
