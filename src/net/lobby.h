@@ -10,7 +10,21 @@
 
 namespace net {
 
-constexpr std::uint16_t kProtocolVersion = 4;
+// The packet formats. Bump when a lobby or game packet changes shape.
+constexpr std::uint8_t kProtocolVersion = 5;
+// What the battle computes from the same inputs. Bump with EVERY change that can alter a
+// simulated tick: the core, its patches, det_math, the tick rate, the rules the wrapper feeds
+// it. A change that moves a SIM fingerprint (AGENTS.md) moves this. Two builds that simulate
+// differently would otherwise pass the lobby and desync in the match (issue #121: 1.0.0 and
+// 1.0.1 did, on protocol 4).
+constexpr std::uint8_t kSimulationVersion = 1;
+// What a hello carries: both, so either difference is refused before a match. Protocol 4 and
+// older sent the bare protocol number, which no value of this can equal.
+constexpr std::uint16_t compatibility_version(std::uint8_t protocol, std::uint8_t simulation) {
+    return static_cast<std::uint16_t>(protocol << 8 | simulation);
+}
+constexpr std::uint16_t kCompatibilityVersion = compatibility_version(kProtocolVersion, kSimulationVersion);
+static_assert(kSimulationVersion != 0, "a zero simulation version could equal an old bare protocol number");
 constexpr std::uint8_t kLobbyPacket = 'L';
 constexpr std::uint8_t kGamePacket = 'G';
 constexpr std::uint8_t kServerPacket = 'R';
@@ -59,7 +73,7 @@ struct LocalChoice {
 
 // A joiner's whole state, as a hello packet says it.
 struct Hello {
-    std::uint16_t version = kProtocolVersion;
+    std::uint16_t version = kCompatibilityVersion;
     std::uint64_t gameData = 0;
     bool started = false;
     LocalChoice choice;

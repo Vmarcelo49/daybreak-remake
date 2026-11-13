@@ -5,6 +5,7 @@
 #include <cstring>
 #include <string>
 #include <thread>
+#include <utility>
 
 #include "net/lobby.h"
 
@@ -56,7 +57,7 @@ void test_round_trips() {
     net::parse_address("192.168.1.7:4000", hello.privateAddress);
     net::Hello read;
     check(net::decode_hello(net::encode_hello(hello), read), "a good hello is refused");
-    check(read.version == net::kProtocolVersion && read.gameData == 99 && read.started && read.sequence == 9 && read.pingMs == 33, "hello fields");
+    check(read.version == net::kCompatibilityVersion && read.gameData == 99 && read.started && read.sequence == 9 && read.pingMs == 33, "hello fields");
     check(read.choice.name == "me" && read.choice.ready, "hello choice");
     check(read.clientId == 44 && read.links == 5 && read.publicAddress == hello.publicAddress && read.privateAddress == hello.privateAddress, "hello addresses");
     net::Refusal refusal;
@@ -400,20 +401,34 @@ void test_over_sockets() {
     settle({&host, &a, &wrongData}, [&] { return wrongData.refused() != net::Refusal::None; });
     check(wrongData.refused() == net::Refusal::WrongGameData, "different game data was not refused");
 
-    auto foreign = net::encode_hello(net::Hello{});
-    foreign[2] = static_cast<std::uint8_t>(net::kProtocolVersion + 1);
+    const std::uint8_t peersBeforeStrangers = host.plan().peerCount;
+    // Same data, but another packet format, another simulation, or a build from before the two
+    // were told apart (protocol 4 sent the bare number): each is refused before a match.
     net::UdpSocket foreignSocket;
     check(foreignSocket.open(0, error), "open: " + error);
-    foreignSocket.send(hostAddress, foreign.data(), foreign.size());
-    net::Refusal refusal = net::Refusal::None;
-    net::Address from;
-    std::vector<std::uint8_t> packet;
-    for (int i = 0; i < 400 && refusal == net::Refusal::None; ++i) {
-        host.poll(10);
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        while (foreignSocket.receive(from, packet)) net::decode_refusal(packet, refusal);
+    const std::pair<std::uint16_t, const char*> strangers[] = {
+        {net::compatibility_version(net::kProtocolVersion + 1, net::kSimulationVersion), "another protocol"},
+        {net::compatibility_version(net::kProtocolVersion, net::kSimulationVersion + 1), "another simulation"},
+        {4, "a build from before the simulation version"},
+    };
+    for (const auto& [version, who] : strangers) {
+        net::Hello hello;
+        hello.version = version;
+        hello.gameData = 42;
+        hello.clientId = 0x51000000u | version;
+        const auto foreign = net::encode_hello(hello);
+        foreignSocket.send(hostAddress, foreign.data(), foreign.size());
+        net::Refusal refusal = net::Refusal::None;
+        net::Address from;
+        std::vector<std::uint8_t> packet;
+        for (int i = 0; i < 400 && refusal == net::Refusal::None; ++i) {
+            host.poll(10);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            while (foreignSocket.receive(from, packet)) net::decode_refusal(packet, refusal);
+        }
+        check(refusal == net::Refusal::WrongVersion, std::string(who) + " was not refused");
     }
-    check(refusal == net::Refusal::WrongVersion, "a different version was not refused");
+    check(host.plan().peerCount == peersBeforeStrangers, "a refused build took a seat");
 
     host.start();
     settle({&host, &a}, [&] { return host.ready() && a.ready(); });

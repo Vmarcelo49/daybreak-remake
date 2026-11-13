@@ -519,7 +519,7 @@ void Lobby::handle(const Address& from, const std::vector<std::uint8_t>& packet)
         const auto out = encode_refusal(why);
         m_socket->send(from, out.data(), out.size());
     };
-    if (hello.version != kProtocolVersion) return refuse(Refusal::WrongVersion);
+    if (hello.version != kCompatibilityVersion) return refuse(Refusal::WrongVersion);
     if (hello.gameData != m_gameData) return refuse(Refusal::WrongGameData);
     if (!known) {
         if (m_plan.started || m_plan.peerCount >= 4) return refuse(Refusal::RoomFull);

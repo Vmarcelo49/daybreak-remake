@@ -18,8 +18,10 @@ Chosen here, and easy to change:
 
 - The default is 2 frames of input delay and a prediction window of 8, both adjustable. The original
   used about 3 frames of delay with no rollback (`docs/game-spec.md`).
-- Peers must have an identical game: same protocol version and same bundle hash. A mismatch is
-  refused in the lobby with a message.
+- Peers must have an identical game: same protocol version, same simulation version and same
+  bundle hash. A mismatch is refused in the lobby with a message. `kSimulationVersion`
+  (`src/net/lobby.h`) is bumped with every change that can alter a simulated tick, which
+  includes every change that moves a SIM fingerprint (issue #121).
 - Pause is off online. One round per match, as offline, then back to the lobby.
 - Spectators, ranking, chat, reconnecting and a relay are not in this plan.
 - This does not connect to the original game's netplay.
