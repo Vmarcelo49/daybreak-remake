@@ -1,0 +1,2 @@
+src/battle/det_math.c
+src/battle/det_estimate.c

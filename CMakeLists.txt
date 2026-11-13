@@ -289,8 +289,12 @@ target_include_directories(battle_core
 target_compile_definitions(battle_core PRIVATE DAYBREAK_COMPILED_NATIVE_BODIES=1)
 # Online peers must compute the same floats: no fused multiply-adds where only some targets have them,
 # and one sin, cos and atan2 instead of each C runtime's, and one reciprocal and reciprocal square
-# root instead of each CPU model's estimate.
-add_library(det_math STATIC src/battle/det_math.c src/battle/det_estimate.c)
+# root instead of each CPU model's estimate. Keep this manifest shared with the standalone
+# cross-platform fingerprint workflow so the verification target cannot omit implementation sources.
+set(DET_MATH_SOURCE_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/src/battle/det_math_sources.txt")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${DET_MATH_SOURCE_MANIFEST}")
+file(STRINGS "${DET_MATH_SOURCE_MANIFEST}" DET_MATH_SOURCES)
+add_library(det_math STATIC ${DET_MATH_SOURCES})
 target_include_directories(det_math PUBLIC src)
 target_compile_options(det_math PRIVATE -w -ffp-contract=off)
 target_link_libraries(battle_core PUBLIC det_math)

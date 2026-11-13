@@ -18,10 +18,19 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y g++-mingw-w64-x86-64
       - name: Build for both targets
         run: |
-          gcc -c -O3 -w -ffp-contract=off -Isrc src/battle/det_math.c -o det_math.o
-          g++ -std=c++17 -O3 -ffp-contract=off -Isrc tests/math_fingerprint.cpp det_math.o -o math_fingerprint
-          x86_64-w64-mingw32-gcc -c -O3 -w -ffp-contract=off -Isrc src/battle/det_math.c -o det_math.obj
-          x86_64-w64-mingw32-g++ -std=c++17 -O3 -ffp-contract=off -static -Isrc tests/math_fingerprint.cpp det_math.obj -o math_fingerprint.exe
+          mapfile -t det_math_sources < src/battle/det_math_sources.txt
+          test "${#det_math_sources[@]}" -gt 0
+          det_math_objects=()
+          det_math_mingw_objects=()
+          for i in "${!det_math_sources[@]}"; do
+            source=${det_math_sources[$i]}
+            gcc -c -O3 -w -ffp-contract=off -Isrc "$source" -o "det_math_${i}.o"
+            x86_64-w64-mingw32-gcc -c -O3 -w -ffp-contract=off -Isrc "$source" -o "det_math_${i}.obj"
+            det_math_objects+=("det_math_${i}.o")
+            det_math_mingw_objects+=("det_math_${i}.obj")
+          done
+          g++ -std=c++17 -O3 -ffp-contract=off -Isrc tests/math_fingerprint.cpp "${det_math_objects[@]}" -o math_fingerprint
+          x86_64-w64-mingw32-g++ -std=c++17 -O3 -ffp-contract=off -static -Isrc tests/math_fingerprint.cpp "${det_math_mingw_objects[@]}" -o math_fingerprint.exe
       - name: Run on Linux
         run: ./math_fingerprint > linux.txt
       - uses: actions/upload-artifact@v4
