@@ -10,12 +10,18 @@
 
 #ifdef _WIN32
 
+#include <chrono>
 #include <cstdint>
-#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <system_error>
 #include <vector>
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
 
 #include "update/apply_platform.h"
 #include "update/crypto.h"
@@ -164,25 +170,101 @@ update::ApplySettings settingsFor(const fs::path& root,
     return settings;
 }
 
+std::string fileContents(const fs::path& path) {
+    std::ifstream input(path, std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(input)),
+                       std::istreambuf_iterator<char>());
+}
+
 std::string installedVersion(const fs::path& root) {
     update::PackageManifest manifest;
     std::string error;
-    std::ifstream input(root / update::kPackageManifestName, std::ios::binary);
-    std::string text((std::istreambuf_iterator<char>(input)),
-                     std::istreambuf_iterator<char>());
-    if (update::PackageManifest::parse(text, &manifest, &error) != update::ParseStatus::Ok) {
+    if (update::PackageManifest::parse(fileContents(root / update::kPackageManifestName),
+                                       &manifest, &error) != update::ParseStatus::Ok) {
         return "?";
     }
     return manifest.version;
 }
 
+bool launchRenameProbe(const fs::path& executable, std::string* error) {
+    std::wstring command = L"\"" + executable.wstring() +
+                           L"\" --selftest-rename-running-image";
+    STARTUPINFOW startup{};
+    startup.cb = sizeof startup;
+    PROCESS_INFORMATION process{};
+    const fs::path workingDirectory = executable.parent_path();
+    if (!CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, FALSE, 0,
+                        nullptr, workingDirectory.c_str(), &startup, &process)) {
+        *error = "cannot start rename probe (error " +
+                 std::to_string(GetLastError()) + ")";
+        return false;
+    }
+    CloseHandle(process.hThread);
+    const DWORD wait = WaitForSingleObject(process.hProcess, INFINITE);
+    DWORD exitCode = 1;
+    const bool gotExitCode = wait == WAIT_OBJECT_0 &&
+                             GetExitCodeProcess(process.hProcess, &exitCode);
+    CloseHandle(process.hProcess);
+    if (!gotExitCode) {
+        *error = "cannot wait for rename probe (error " +
+                 std::to_string(GetLastError()) + ")";
+        return false;
+    }
+    if (exitCode != 0) {
+        *error = "rename probe exited with code " + std::to_string(exitCode);
+        return false;
+    }
+    return true;
+}
+
 }  // namespace
 
+int runUpdateWindowsRenameProbe() {
+    fs::path self;
+    std::string error;
+    if (!update::platform::selfPath(&self, &error)) {
+        std::fprintf(stderr, "update_selftest: cannot locate probe executable: %s\n",
+                     error.c_str());
+        return 1;
+    }
+    fs::path aside = self;
+    aside += L".old";
+    if (!update::platform::renameAside(self, aside, &error)) {
+        std::fprintf(stderr, "update_selftest: cannot rename running copy aside: %s\n",
+                     error.c_str());
+        return 1;
+    }
+    if (update::platform::renameIntoPlace(aside, self, &error)) return 0;
+
+    // Do not leave even the disposable probe renamed if the primary restore fails.
+    std::error_code restoreError;
+    fs::rename(aside, self, restoreError);
+    std::fprintf(stderr, "update_selftest: cannot rename running copy back: %s%s%s\n",
+                 error.c_str(), restoreError ? "; fallback restore failed: " : "",
+                 restoreError ? restoreError.message().c_str() : "");
+    return 1;
+}
+
 int runUpdateApplyWindowsTests() {
-    const fs::path base = fs::temp_directory_path() / "daybreak-update-selftest";
     std::error_code code;
-    fs::remove_all(base, code);
-    fs::create_directories(base, code);
+    const fs::path temporary = fs::temp_directory_path();
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    fs::path base;
+    bool created = false;
+    for (int attempt = 0; attempt < 8; ++attempt) {
+        base = temporary / ("daybreak-update-selftest-" + std::to_string(stamp) + "-" +
+                            std::to_string(attempt));
+        if (fs::create_directory(base, code)) {
+            created = true;
+            break;
+        }
+        if (code) break;
+    }
+    if (code || !created) {
+        update_test::check(false, "windows: create a disposable self-test directory" +
+                                      (code ? ": " + code.message() : ""));
+        return update_test::report("update_apply_windows_test");
+    }
 
     const auto files = packageFiles();
     const std::string manifestText = manifestFor(files, "2.0.0", "DaybreakRemake.exe");
@@ -226,31 +308,51 @@ int runUpdateApplyWindowsTests() {
     }
     {
         const fs::path root = makeRoot(base);
-        update::ApplySettings settings = settingsFor(root, archive);
-        settings.failAt = [](int) { return false; };
-        update::apply(settings);
-        update::recoverOnStartup(root);
+        const std::string manifestSha = update::sha256Hex(manifestText.data(),
+                                                           manifestText.size());
+        const fs::path target = root / "DaybreakRemake.exe";
+        writeFile(target, "new exe");
+        writeFile(root / "DaybreakRemake.exe.old", "old exe");
+        const fs::path workspace = root / update::kWorkspaceDirectory / "2.0.0";
+        writeFile(workspace / "journal",
+                  "format = 1\nstate = applying\nversion = 2.0.0\nmanifest = " +
+                      manifestSha + "\n[operations]\nreplace DaybreakRemake.exe\n");
+
+        const bool recovered = update::recoverOnStartup(root);
+        update_test::check(recovered,
+                           "windows: recovery acts on the planted interrupted transaction");
+        update_test::check(fileContents(target) == "old exe",
+                           "windows: recovery restores the old executable from .old");
+        update_test::check(!fs::exists(root / "DaybreakRemake.exe.old"),
+                           "windows: recovery consumes the old executable backup");
         update_test::check(installedVersion(root) == "1.0.0",
-                           "windows: recovery restores the old manifest");
+                           "windows: recovery preserves the old manifest");
         update_test::check(!fs::exists(root / update::kWorkspaceDirectory),
-                           "windows: recovery removes the workspace");
+                           "windows: recovery removes the interrupted workspace");
     }
     {
-        // The design's Windows premise: the running .exe can be renamed aside and back.
         fs::path self;
         std::string error;
-        update_test::check(update::installRoot(&self, &error),
-                           "windows: installRoot finds the running binary: " + error);
-        fs::path aside = self;
-        aside += ".old";
-        update_test::check(update::platform::renameAside(self, aside, &error),
-                           "windows: a running exe can be renamed aside: " + error);
-        update_test::check(update::platform::renameIntoPlace(aside, self, &error),
-                           "windows: and renamed back: " + error);
+        const bool located = update::platform::selfPath(&self, &error);
+        update_test::check(located, "windows: selfPath locates the running executable: " + error);
+        if (located) {
+            const fs::path copy = base / "rename-probe.exe";
+            fs::copy_file(self, copy, fs::copy_options::overwrite_existing, code);
+            update_test::check(!code, "windows: copy the executable into the disposable directory" +
+                                          (code ? ": " + code.message() : ""));
+            if (!code) {
+                error.clear();
+                update_test::check(launchRenameProbe(copy, &error),
+                                   "windows: the running disposable exe can be renamed aside "
+                                   "and back: " + error);
+            }
+        }
     }
 
     fs::remove_all(base, code);
-    return 0;
+    update_test::check(!code, "windows: remove the disposable self-test directory" +
+                                  (code ? ": " + code.message() : ""));
+    return update_test::report("update_apply_windows_test");
 }
 
 #endif  // _WIN32

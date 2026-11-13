@@ -20,6 +20,16 @@ inline int& failures() {
     return value;
 }
 
+inline int& reportedChecks() {
+    static int value = 0;
+    return value;
+}
+
+inline int& reportedFailures() {
+    static int value = 0;
+    return value;
+}
+
 inline void check(bool condition, const std::string& what) {
     ++checks();
     if (!condition) {
@@ -41,8 +51,12 @@ inline void expectEqual(std::uint64_t actual, std::uint64_t expected,
 }
 
 inline int report(const char* suite) {
-    std::printf("%s: %d checks, %d failure(s)\n", suite, checks(), failures());
-    return failures() == 0 ? 0 : 1;
+    const int suiteChecks = checks() - reportedChecks();
+    const int suiteFailures = failures() - reportedFailures();
+    std::printf("%s: %d checks, %d failure(s)\n", suite, suiteChecks, suiteFailures);
+    reportedChecks() = checks();
+    reportedFailures() = failures();
+    return suiteFailures == 0 ? 0 : 1;
 }
 
 }  // namespace update_test
@@ -55,4 +69,5 @@ int runUpdateArchiveTests();
 #ifdef _WIN32
 // The step-3 apply cases a real Windows run proves (running exe rename, rollback, recovery).
 int runUpdateApplyWindowsTests();
+int runUpdateWindowsRenameProbe();
 #endif

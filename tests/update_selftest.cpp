@@ -54,16 +54,25 @@ int live(const std::string& url) {
 
 int main(int argc, char** argv) {
     if (argc == 3 && std::strcmp(argv[1], "--live") == 0) return live(argv[2]);
+#ifdef _WIN32
+    if (argc == 2 && std::strcmp(argv[1], "--selftest-rename-running-image") == 0) {
+        return runUpdateWindowsRenameProbe();
+    }
+#endif
+    if (argc == 2 && std::strcmp(argv[1], "--selftest-fail") == 0) {
+        update_test::check(false, "update_selftest negative control");
+        update_test::report("update_selftest negative control");
+        return update_test::failures() == 0 ? 0 : 1;
+    }
     if (argc != 1) {
-        std::fprintf(stderr, "usage: update_selftest [--live <url>]\n");
+        std::fprintf(stderr, "usage: update_selftest [--live <url>] [--selftest-fail]\n");
         return 2;
     }
-    int failures = 0;
-    failures += runUpdateLogicTests();
-    failures += runUpdateCryptoTests(0, nullptr);
-    failures += runUpdateArchiveTests();
+    runUpdateLogicTests();
+    runUpdateCryptoTests(0, nullptr);
+    runUpdateArchiveTests();
 #ifdef _WIN32
-    failures += runUpdateApplyWindowsTests();
+    runUpdateApplyWindowsTests();
 #endif
-    return failures == 0 ? 0 : 1;
+    return update_test::failures() == 0 ? 0 : 1;
 }

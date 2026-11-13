@@ -478,6 +478,13 @@ if(NOT EMSCRIPTEN)
         # The apply cases only a real Windows run proves (issue #100, step 3).
         target_sources(update_selftest PRIVATE tests/update_apply_win_test.cpp)
     endif()
+    if(NOT CMAKE_CROSSCOMPILING)
+        # The self-test is the Windows gate, so its exit status must be trustworthy: the
+        # control fails a check on purpose and the suite has to report that as a failure.
+        add_test(NAME update_selftest COMMAND update_selftest)
+        add_test(NAME update_selftest_negative_control COMMAND update_selftest --selftest-fail)
+        set_tests_properties(update_selftest_negative_control PROPERTIES WILL_FAIL TRUE)
+    endif()
 endif()
 
 # Host-side tests. Native-only on purpose: the Windows target is cross-compiled and
@@ -1326,6 +1333,7 @@ set(DAYBREAK_AREA_PLATFORM
     unicode_path_check check_tools_test package_manifest_test update_manifest_test
     release_sign_test update_logic_test update_crypto_test update_archive_test
     update_http_test update_crosscheck_test update_apply_test update_release_guard_test
+    update_selftest update_selftest_negative_control
     update_recovery_test update_no_network_test update_e2e_test update_screens_test
 )
 
