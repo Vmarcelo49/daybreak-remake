@@ -127,10 +127,24 @@ expect "remembered: is named as the source" "$err" "(the remembered folder)"
 # is ignored and the search goes on (the binary would reject that whole document too).
 future_config="$work/config-future/daybreak-decomp"
 mkdir -p "$future_config"
-printf 'version = 8\n\n[game]\ninstall_dir = %s\n' "$game" > "$future_config/settings.conf"
+printf 'version = 9999\n\n[game]\ninstall_dir = %s\n' "$game" > "$future_config/settings.conf"
 run "$pkg" "$work/home" "$work/config-future" "$work/data" "$work/cwd"
 [ "$status" = 1 ] || bad "unknown schema: expected the search to continue (exit 1), got $status"
 reject "unknown schema: its folder is not used" "$out" "STUB"
+
+# The schema the binary writes TODAY must be one the launcher reads (issue #124): the
+# version comes from the binary's own header, so a schema bump that forgets the launcher
+# fails here instead of silently forgetting every player's folder.
+schema_header="$(dirname "$launcher")/../src/settings/user_settings.h"
+current_schema=$(sed -n 's/^inline constexpr int kSchemaVersion = \([0-9][0-9]*\);.*/\1/p' "$schema_header")
+[ -n "$current_schema" ] && ok || bad "current schema: kSchemaVersion not found in $schema_header"
+current_config="$work/config-current/daybreak-decomp"
+mkdir -p "$current_config"
+printf 'version = %s\n\n[game]\ninstall_dir = %s\nlanguage = \n\n[network]\nname = PLAYER\n' \
+    "$current_schema" "$game" > "$current_config/settings.conf"
+run "$pkg" "$work/home" "$work/config-current" "$work/data" "$work/cwd"
+[ "$status" = 0 ] || bad "current schema ($current_schema): expected exit 0, got $status"
+expect "current schema ($current_schema): the remembered folder is used" "$out" "STUB --install=$game --screen=title"
 
 env_home="$work/home-env"
 mkdir -p "$env_home" "$work/config-env"

@@ -178,14 +178,15 @@ config_dir() {
 # folder, and this launcher only reads the key back. The version line is checked first,
 # because the binary's own parser ignores a document whose version it does not know — so
 # reading a folder out of one would promise the binary something it will not use. A schema
-# bump therefore updates the number here as well.
+# bump therefore updates the list here as well; tests/launcher_test.sh fails when the
+# binary's current kSchemaVersion is missing from it.
 saved_choice() {
     conf=$(config_dir)
     [ -n "$conf" ] || return 0
     [ -f "$conf/settings.conf" ] || return 0
     case "$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*//p' "$conf/settings.conf" |
              head -n 1)" in
-        4|5|6|7) ;;
+        4|5|6|7|8|9) ;;
         *) return 0 ;;
     esac
     awk -F= '
