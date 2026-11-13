@@ -1,6 +1,7 @@
 #include "update/updater.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -338,14 +339,18 @@ bool rollback(const std::filesystem::path& root, const std::filesystem::path& wo
 
 // Deletes the .old files a committed apply left behind. A failure (a locked file on
 // Windows) keeps the workspace so the next start retries instead of losing the journal.
-bool finishCommitted(const std::filesystem::path& root,
-                     const std::filesystem::path& workspace,
-                     const std::vector<Operation>& operations, std::string* error) {
+bool finishCommitted(
+    const std::filesystem::path& root, const std::filesystem::path& workspace,
+    const std::vector<Operation>& operations, std::string* error,
+    const std::function<bool(const std::filesystem::path&, std::string*)>& removeBackup = {}) {
     for (const Operation& operation : operations) {
         if (operation.kind == OperationKind::Add) continue;
         std::filesystem::path aside = root / std::filesystem::u8path(operation.path);
         aside += ".old";
-        if (!platform::removeFile(aside, error)) return false;
+        if (removeBackup ? !removeBackup(aside, error)
+                         : !platform::removeFile(aside, error)) {
+            return false;
+        }
     }
     removeWorkspace(root, workspace);
     return true;
@@ -755,7 +760,12 @@ ApplyResult apply(const ApplySettings& settings) {
         &ignored);
     // A leftover .old that cannot be deleted yet (Windows) is retried on the next start.
     std::string cleanupError;
-    finishCommitted(root, workspace, operations, &cleanupError);
+    if (!finishCommitted(root, workspace, operations, &cleanupError,
+                         settings.removeCommittedBackup)) {
+        workspaceGuard.keep = true;
+        result.cleanupWarning = "cleanup deferred for startup retry: " + cleanupError;
+        std::fprintf(stderr, "[update] %s\n", result.cleanupWarning.c_str());
+    }
     result.status = ApplyStatus::Ok;
     result.launch = newManifest.launch;
     result.committed = true;

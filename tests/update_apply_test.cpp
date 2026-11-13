@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "update/apply_platform.h"
 #include "update/crypto.h"
 #include "update/package_manifest.h"
 #include "update/updater.h"
@@ -116,7 +117,9 @@ update::ApplyResult runApply(const Context& context, const std::string& scenario
                              std::function<bool(int)> failAt = {},
                              std::function<bool(std::uint64_t)> hasSpace = {},
                              std::function<bool()> cancelled = {},
-                             std::function<bool(std::uint64_t, std::uint64_t)> progress = {}) {
+                             std::function<bool(std::uint64_t, std::uint64_t)> progress = {},
+                             std::function<bool(const fs::path&, std::string*)>
+                                 removeCommittedBackup = {}) {
     update::ApplySettings settings;
     settings.root = root;
     settings.manifest = loadManifest(context, scenario);
@@ -125,6 +128,7 @@ update::ApplyResult runApply(const Context& context, const std::string& scenario
     settings.hasSpace = std::move(hasSpace);
     settings.cancelled = std::move(cancelled);
     settings.progress = std::move(progress);
+    settings.removeCommittedBackup = std::move(removeCommittedBackup);
     return update::apply(settings);
 }
 
@@ -307,6 +311,77 @@ void testFaultInjection(const Context& context, int operations) {
     }
 }
 
+void testCommittedCleanupRetry(const Context& context) {
+    const fs::path root = freshRoot(context, "cleanup-retry");
+    const fs::path aside = root / "assets/font.otf.old";
+    bool failedInApply = false;
+    const update::ApplyResult result = runApply(
+        context, "good", root, {}, {}, {}, {},
+        [&failedInApply, &aside](const fs::path& path, std::string* error) {
+            if (path == aside) {
+                failedInApply = true;
+                if (error != nullptr) *error = "deterministic simulated lock";
+                return false;
+            }
+            return update::platform::removeFile(path, error);
+        });
+    check(failedInApply, "apply reaches committed cleanup and fails old-file deletion");
+    check(result.status == update::ApplyStatus::Ok && result.committed,
+          "deferred cleanup does not turn the committed update into failure");
+    check(result.cleanupWarning.find("startup retry") != std::string::npos &&
+              result.cleanupWarning.find("simulated lock") != std::string::npos,
+          "successful apply reports a useful deferred-cleanup warning");
+    expect(installedVersion(root), "2.0.0", "the committed new version remains installed");
+    check(fs::exists(aside), "failed committed cleanup leaves the old file for retry");
+    const fs::path workspace = root / ".daybreak-update" / "2.0.0";
+    const std::string journal = readFile(workspace / "journal");
+    check(journal.find("state = committed") != std::string::npos,
+          "apply preserves the committed journal when cleanup fails");
+
+#ifndef _WIN32
+    // Root can unlink through mode-restricted directories, so the runner must use an
+    // unprivileged user for this real filesystem failure case.
+    if (geteuid() == 0) {
+        check(false, "persistent recovery failure test requires a non-root user");
+        return;
+    }
+    const fs::perms originalPermissions = fs::status(root / "assets").permissions();
+    std::error_code permissionError;
+    fs::permissions(root / "assets", fs::perms::none, fs::perm_options::replace,
+                    permissionError);
+    if (permissionError) {
+        check(false, "test setup makes the backup directory unwritable: " +
+                         permissionError.message());
+        return;
+    }
+    const bool firstRecovery = update::recoverOnStartup(root);
+    const bool secondRecovery = update::recoverOnStartup(root);
+    fs::permissions(root / "assets", originalPermissions, fs::perm_options::replace,
+                    permissionError);
+    if (permissionError) {
+        check(false, "test setup restores backup directory permissions: " +
+                         permissionError.message());
+        return;
+    }
+    check(!firstRecovery && !secondRecovery,
+          "persistent cleanup failure is retained on repeated startup recovery");
+    check(fs::exists(aside) && fs::exists(workspace / "journal"),
+          "persistent recovery failure keeps the backup and journal");
+    expect(installedVersion(root), "2.0.0", "recovery failure never rolls back the new version");
+#else
+    check(false, "persistent recovery failure test is POSIX-only");
+    return;
+#endif
+
+    const bool recovered = update::recoverOnStartup(root);
+    const bool repeated = update::recoverOnStartup(root);
+    check(recovered, "recovery removes the backup after the simulated lock is released");
+    check(!repeated, "a second recovery after cleanup is harmless");
+    check(!fs::exists(aside) && !fs::exists(root / ".daybreak-update"),
+          "successful retry removes the backup and workspace");
+    expect(installedVersion(root), "2.0.0", "successful cleanup preserves the new version");
+}
+
 void testCrashRecovery(const Context& context, int operations) {
     for (int crashAt = 0; crashAt < operations; ++crashAt) {
         const fs::path root = freshRoot(context, "crash");
@@ -403,6 +478,7 @@ int main(int argc, char** argv) {
     testLayout(context);
     const int operations = operationCount(context);
     testFaultInjection(context, operations);
+    testCommittedCleanupRetry(context);
     testCrashRecovery(context, operations);
     testEndToEnd(context, keyHex);
 

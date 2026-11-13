@@ -9,6 +9,7 @@ step-1 + 2 + 3 chain is exercised with no game data and no internet.
     run_update_apply_test.py <update_apply_test> <update_stub> <release_sign>
 """
 import hashlib
+import os
 import shutil
 import subprocess
 import sys
@@ -224,13 +225,19 @@ def main():
         key_hex = build(fixtures, stub, release_sign)
         server, _thread, base_url = http_fixture.start(root=fixtures)
         try:
+            # The C++ test uses a fixed suffix under fs::temp_directory_path(); point it at
+            # a fresh directory so it can only remove its own disposable scratch tree.
+            test_tmp = Path(temporary) / "test-tmp"
+            test_tmp.mkdir()
+            environment = dict(os.environ)
+            environment["TMPDIR"] = str(test_tmp)
             completed = subprocess.run([
                 str(apply_test),
                 "--fixtures=" + str(fixtures),
                 "--base=" + base_url + "/",
                 "--key=" + key_hex,
                 "--stub=" + str(stub),
-            ])
+            ], env=environment)
             return completed.returncode
         finally:
             server.shutdown()

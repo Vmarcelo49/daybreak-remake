@@ -64,6 +64,7 @@ enum class ApplyPhase { Downloading, Verifying, Installing };
 struct ApplyResult {
     ApplyStatus status = ApplyStatus::Failed;
     std::string error;
+    std::string cleanupWarning;
     std::string launch;
     Version version;
     bool committed = false;
@@ -76,11 +77,13 @@ struct ApplySettings {
     std::function<bool(std::uint64_t received, std::uint64_t total)> progress;
     std::function<bool()> cancelled;
     std::function<void(ApplyPhase)> phase;
-    // Test-only seams. The game leaves all three empty.
+    // Test-only seams. The game leaves these empty.
     std::function<bool(const UpdateArchive&, std::vector<std::uint8_t>*, std::string*)>
         fetchArchive;
     std::function<bool(std::uint64_t required)> hasSpace;
     std::function<bool(int operation)> failAt;
+    std::function<bool(const std::filesystem::path&, std::string*)>
+        removeCommittedBackup;
 };
 
 ApplyResult apply(const ApplySettings& settings);
