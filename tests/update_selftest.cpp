@@ -59,12 +59,11 @@ int main(int argc, char** argv) {
         return runUpdateWindowsRenameProbe();
     }
 #endif
-    if (argc == 2 && std::strcmp(argv[1], "--selftest-fail") == 0) {
+    const bool negativeControl =
+        argc == 2 && std::strcmp(argv[1], "--selftest-fail") == 0;
+    if (negativeControl) {
         update_test::check(false, "update_selftest negative control");
-        update_test::report("update_selftest negative control");
-        return update_test::failures() == 0 ? 0 : 1;
-    }
-    if (argc != 1) {
+    } else if (argc != 1) {
         std::fprintf(stderr, "usage: update_selftest [--live <url>] [--selftest-fail]\n");
         return 2;
     }
@@ -72,7 +71,7 @@ int main(int argc, char** argv) {
     runUpdateCryptoTests(0, nullptr);
     runUpdateArchiveTests();
 #ifdef _WIN32
-    runUpdateApplyWindowsTests();
+    if (!negativeControl) runUpdateApplyWindowsTests();
 #endif
     return update_test::failures() == 0 ? 0 : 1;
 }
