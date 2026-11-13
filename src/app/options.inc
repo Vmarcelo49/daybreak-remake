@@ -425,6 +425,16 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
         else if (!(v = val("--net-host=")).empty()) { o.netHost = v; o.screen = "netplaylobby"; }
         else if (!(v = val("--net-join=")).empty()) { o.netJoin = v; o.screen = "netplaylobby"; }
         else if (!(v = val("--net-stress=")).empty()) o.netStress = static_cast<unsigned>(std::atoi(v.c_str()));
+        else if (!(v = val("--test-net-corrupt-hash-frame=")).empty()) {
+            char* end = nullptr;
+            const long frame = std::strtol(v.c_str(), &end, 10);
+            if (*end || frame < 0 || frame > 10000000) {
+                error = "--test-net-corrupt-hash-frame needs a non-negative frame";
+                return false;
+            }
+            o.netCorruptHashFrame = static_cast<int>(frame);
+        }
+        else if (!(v = val("--test-net-proxy=")).empty()) o.netTestProxy = v;
         else if (!(v = val("--rollback-stress=")).empty()) o.rollbackStress = static_cast<unsigned>(std::atoi(v.c_str()));
         else if (!(v = val("--pause-overlay=")).empty()) {
             o.pauseOverlay = std::atoi(v.c_str());
@@ -550,6 +560,11 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& error) {
             error = "--movie needs --screen=opening: that is the scene that plays a movie";
             return false;
         }
+    }
+    if ((o.netCorruptHashFrame >= 0 || !o.netTestProxy.empty()) &&
+        (o.out.empty() || (o.netHost.empty() && o.netJoin.empty()))) {
+        error = "online test flags require an online capture";
+        return false;
     }
     if (!o.out.empty()) {
         if (!hasAsset(o) && o.screen.empty() && o.movie.empty()) {

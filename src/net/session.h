@@ -22,6 +22,9 @@ struct SessionStats {
     unsigned replayedTicks = 0;
     unsigned desyncs = 0;
     int firstDesyncFrame = -1;
+    int firstDesyncPeer = -1;
+    std::uint32_t firstDesyncLocalChecksum = 0;
+    std::uint32_t firstDesyncRemoteChecksum = 0;
     unsigned disconnects = 0;
     unsigned skippedTicks = 0;
     std::chrono::microseconds worstUpdate{0};
@@ -81,12 +84,15 @@ public:
     // A wrong prediction can end a round that a correction brings back, so the game may leave only
     // once no rollback can reach the end.
     bool round_over_confirmed() const { return m_roundOverFrame >= 0 && m_frame > m_roundOverFrame + kPredictionWindow; }
+    bool outcome_finished() const;
     int round_over_frame() const { return m_roundOverFrame; }
+    void prepare_outcome();
     // Peers compare these. A frame old enough for no rollback to reach holds its final value.
     using HashLog = std::vector<std::pair<int, std::uint32_t>>;
     void log_hashes(HashLog* log) { m_hashLog = log; }
-    // Test seam: the next saved state claims a wrong hash, as a real divergence would look.
+    // Test seams: GekkoNet sees a wrong checksum without altering the battle state.
     void corrupt_next_hash_for_test() { m_corruptNextHash = true; }
+    void corrupt_hash_at_frame_for_test(int frame) { m_corruptAtFrame = frame; }
 
 private:
     explicit Session(sim::CoreBattle& battle);
@@ -101,8 +107,14 @@ private:
     sim::CoreBattle& m_battle;
     GekkoSession* m_session = nullptr;
     std::array<sim::CoreBattle::Snapshot, kSlots> m_slots{};
+    struct SavedDigest { int frame = -1; std::uint64_t hash = 0; };
+    std::array<SavedDigest, kSlots> m_savedDigests{};
+    int m_digestFrame = -1;
+    std::uint64_t m_digest = 14695981039346656037ull;
+    Lobby* m_onlineLobby = nullptr;
     SessionStats m_stats;
     bool m_corruptNextHash = false;
+    int m_corruptAtFrame = -1;
     int m_frame = 0;
     unsigned m_ticks = 0;
     int m_roundOverFrame = -1;

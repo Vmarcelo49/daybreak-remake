@@ -1,6 +1,7 @@
 #include "net/session.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <gekkonet.h>
@@ -65,6 +66,10 @@ GekkoNetResult** adapter_receive(int* length) {
         if (packet.empty()) continue;
         if (packet[0] == kLobbyPacket) {
             if (g_lobby) g_lobby->handle(from, packet);
+            continue;
+        }
+        if (packet[0] == kOutcomePacket) {
+            if (g_lobby) g_lobby->handle_battle_outcome(from, packet);
             continue;
         }
         // The host keeps its room alive during a match (issue #110), so the server answers here now.
@@ -211,6 +216,8 @@ std::unique_ptr<Session> Session::online(sim::CoreBattle& battle, UdpSocket& soc
     std::unique_ptr<Session> session(new Session(battle));
     if (!gekko_create(&session->m_session, GekkoGameSession)) throw std::runtime_error("net: no session");
     begin_adapter(socket, lobby, plan, localPeer, plan.token);
+    lobby.begin_battle_outcome(plan, localPeer);
+    session->m_onlineLobby = &lobby;
 
     GekkoConfig config{};
     config.num_players = plan.peerCount;
@@ -245,12 +252,44 @@ void Session::read_session_events() {
     for (int i = m_sessionEventsRead; i < count; ++i) {
         if (events[i]->type == GekkoPlayerDisconnected) ++m_stats.disconnects;
         if (events[i]->type != GekkoDesyncDetected) continue;
-        if (m_stats.desyncs++ == 0) m_stats.firstDesyncFrame = events[i]->data.desynced.frame;
+        if (m_stats.desyncs++ == 0) {
+            const auto& desync = events[i]->data.desynced;
+            m_stats.firstDesyncFrame = desync.frame;
+            m_stats.firstDesyncPeer = desync.remote_handle;
+            m_stats.firstDesyncLocalChecksum = desync.local_checksum;
+            m_stats.firstDesyncRemoteChecksum = desync.remote_checksum;
+            std::fprintf(stderr, "[net] first desync: frame %d peer %d local=%08x remote=%08x protocol=%u simulation=%u build=%s\n",
+                         desync.frame, desync.remote_handle, desync.local_checksum, desync.remote_checksum,
+                         static_cast<unsigned>(kProtocolVersion), static_cast<unsigned>(kSimulationVersion),
+                         DAYBREAK_BUILD_VERSION);
+        }
     }
     m_sessionEventsRead = count;
 }
 
+bool Session::outcome_finished() const {
+    return m_onlineLobby && m_onlineLobby->battle_outcome()->state() != BattleOutcome::State::Playing;
+}
+
+void Session::prepare_outcome() {
+    if (!m_onlineLobby || !round_over_confirmed()) return;
+    auto* outcome = m_onlineLobby->battle_outcome();
+    if (outcome->state() != BattleOutcome::State::Playing) return;
+    // The digest is advanced exactly to the round-over frame by the normal tick path.
+    // A missing save is unsafe, not a valid result.
+    if (m_digestFrame != m_roundOverFrame) {
+        std::fprintf(stderr, "[net] cannot certify outcome: digest frame %d, round frame %d\n", m_digestFrame, m_roundOverFrame);
+        outcome->abort();
+    } else outcome->propose(m_roundOverFrame, m_digest);
+}
+
 game::BattleFrame Session::run(const sim::Inputs& inputs) {
+    if (m_onlineLobby && m_onlineLobby->battle_outcome()->state() != BattleOutcome::State::Playing) {
+        gekko_network_poll(m_session);
+        read_session_events();
+        if (m_stats.desyncs) m_onlineLobby->battle_outcome()->abort();
+        return {};
+    }
     const auto start = std::chrono::steady_clock::now();
     game::BattleFrame frame;
     // Running ahead of the slowest peer only causes rollbacks, so give it a tick now and then. Not
@@ -260,6 +299,7 @@ game::BattleFrame Session::run(const sim::Inputs& inputs) {
         gekko_network_poll(m_session);
         // The next update clears what this poll raised.
         read_session_events();
+        if (m_onlineLobby && m_stats.desyncs) m_onlineLobby->battle_outcome()->abort();
         return frame;
     }
     if (m_localPlayer >= 0) {
@@ -296,8 +336,9 @@ game::BattleFrame Session::run(const sim::Inputs& inputs) {
             m_battle.save_state(m_slots[slot]);
             const std::uint64_t hash = m_battle.state_hash();
             const auto folded = static_cast<std::uint32_t>(hash ^ (hash >> 32));
-            *event.data.save.checksum = folded + (m_corruptNextHash ? 1u : 0u);
+            *event.data.save.checksum = folded + ((m_corruptNextHash || event.data.save.frame == m_corruptAtFrame) ? 1u : 0u);
             m_corruptNextHash = false;
+            m_savedDigests[slot] = {event.data.save.frame, hash};
             *event.data.save.state_len = sizeof slot;
             std::memcpy(event.data.save.state, &slot, sizeof slot);
             if (m_hashLog) {
@@ -314,6 +355,21 @@ game::BattleFrame Session::run(const sim::Inputs& inputs) {
     }
 
     read_session_events();
+    if (m_onlineLobby && m_stats.desyncs) m_onlineLobby->battle_outcome()->abort();
+    // Frames beyond the prediction window cannot be changed by rollback. Fold their
+    // existing state hashes into a bounded transcript, rather than trusting only the
+    // final state: a divergence can disappear before the round ends.
+    while (m_onlineLobby && m_digestFrame + 1 < m_frame - kPredictionWindow) {
+        const int next = m_digestFrame + 1;
+        if (m_roundOverFrame >= 0 && next > m_roundOverFrame) break;
+        const auto& saved = m_savedDigests[static_cast<std::uint32_t>(next + 1) % kSlots];
+        if (saved.frame != next) break;
+        for (unsigned byte = 0; byte < 8; ++byte) {
+            m_digest ^= static_cast<std::uint8_t>(saved.hash >> (byte * 8));
+            m_digest *= 1099511628211ull;
+        }
+        m_digestFrame = next;
+    }
 
     const auto spent = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start);
     m_stats.worstUpdate = std::max(m_stats.worstUpdate, spent);

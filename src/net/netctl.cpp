@@ -25,6 +25,8 @@ const char kUsage[] =
     "  --proxy IP:PORT  send everything through tools/net_proxy.py\n"
     "  --log FILE       write `frame hash` per frame, for comparing peers\n"
     "  --game-hash N    claim this hash of the game data, to test a refusal\n"
+    "  --test-outcome   exercise the battle result confirmation protocol\n"
+    "  --test-corrupt-frame N  inject a wrong GekkoNet checksum for one frame\n"
     "Exit code: 0 played, 1 failed, 3 refused.\n";
 
 std::string find_game(const std::string& explicitDir) {
@@ -78,6 +80,8 @@ int main(int argc, char** argv) try {
     std::uint32_t seed = 1;
     std::string join, joinCode, server, proxy, gameDir, logPath;
     long long forcedHash = -1;
+    int corruptFrame = -1;
+    bool outcomeTest = false;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         const auto value = [&]() -> const char* {
@@ -97,6 +101,8 @@ int main(int argc, char** argv) try {
         else if (arg == "--proxy") proxy = value();
         else if (arg == "--log") logPath = value();
         else if (arg == "--game-hash") forcedHash = std::atoll(value());
+        else if (arg == "--test-corrupt-frame") corruptFrame = std::atoi(value());
+        else if (arg == "--test-outcome") outcomeTest = true;
         else {
             std::cout << kUsage;
             return arg == "--help" ? 0 : 1;
@@ -159,7 +165,8 @@ int main(int argc, char** argv) try {
     const std::array<const gameplay::CharacterMoves*, 4> moves{};
     const std::array<const gameplay::WeaponDefinition*, 4> weapons{};
     battle.start(battle_config(plan, game), moves, weapons);
-    const auto session = net::Session::online(battle, socket, lobby, plan, lobby.local_peer(), delay);
+    auto session = net::Session::online(battle, socket, lobby, plan, lobby.local_peer(), delay);
+    if (corruptFrame >= 0) session->corrupt_hash_at_frame_for_test(corruptFrame);
     net::Session::HashLog log;
     if (!logPath.empty()) session->log_hashes(&log);
 
@@ -178,6 +185,12 @@ int main(int argc, char** argv) try {
         // (issue #110): a host keeps asking, as the game's frame loop does.
         lobby.keep_alive(16);
         if (roundOverFrame < 0 && session->round_over_confirmed()) roundOverFrame = session->round_over_frame();
+        if (outcomeTest) {
+            session->prepare_outcome();
+            const auto state = lobby.battle_outcome()->state();
+            if (state == net::BattleOutcome::State::Valid || state == net::BattleOutcome::State::Desync ||
+                state == net::BattleOutcome::State::Timeout) break;
+        }
         next += tickLength;
         std::this_thread::sleep_until(next);
     }
@@ -188,14 +201,32 @@ int main(int argc, char** argv) try {
         for (const auto& [frame, hash] : log)
             if (frame + 16 < session->frame()) out << frame << ' ' << hash << '\n';
     }
-    const auto& stats = session->stats();
+    const auto stats = session->stats();
+    const int finalFrame = session->frame();
+    if (outcomeTest) {
+        // Exercise the same routing as the lobby after the game destroys its session.
+        session.reset();
+        for (int i = 0; i < 120; ++i) {
+            lobby.poll(16);
+            std::this_thread::sleep_for(tickLength);
+        }
+    }
     std::string owners;
     for (unsigned i = 0; i < 4; ++i) owners += battle.slot_is_cpu(i) ? "C" : "H";
     std::printf("{\"peer\":%d,\"frames\":%d,\"rollbacks\":%u,\"replayed\":%u,\"desyncs\":%u,\"first_desync\":%d,"
                 "\"disconnects\":%u,\"skipped\":%u,\"round_over\":%d,\"slots\":\"%s\",\"worst_ms\":%.2f}\n",
-                lobby.local_peer(), session->frame(), stats.rollbacks, stats.replayedTicks, stats.desyncs, stats.firstDesyncFrame,
+                lobby.local_peer(), finalFrame, stats.rollbacks, stats.replayedTicks, stats.desyncs, stats.firstDesyncFrame,
                 stats.disconnects, stats.skippedTicks, roundOverFrame, owners.c_str(), stats.worstUpdate.count() / 1000.0);
-    return session->frame() >= static_cast<int>(ticks) && stats.desyncs == 0 ? 0 : 1;
+    if (outcomeTest) {
+        const auto state = lobby.battle_outcome()->state();
+        const char* word = state == net::BattleOutcome::State::Valid ? "valid" :
+                           state == net::BattleOutcome::State::Desync ? "desync" :
+                           state == net::BattleOutcome::State::Timeout ? "timeout" : "unfinished";
+        std::printf("{\"outcome\":\"%s\",\"rollbacks\":%u,\"desyncs\":%u,\"abort_acknowledged\":%s}\n",
+                    word, stats.rollbacks, stats.desyncs, lobby.battle_outcome()->abort_acknowledged() ? "true" : "false");
+        return state == net::BattleOutcome::State::Playing || state == net::BattleOutcome::State::Pending ? 1 : 0;
+    }
+    return finalFrame >= static_cast<int>(ticks) && stats.desyncs == 0 ? 0 : 1;
 } catch (const std::exception& error) {
     std::fprintf(stderr, "netctl: %s\n", error.what());
     return 1;

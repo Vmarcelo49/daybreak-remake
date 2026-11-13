@@ -100,6 +100,9 @@ void test_desync_is_caught(const std::string& game) {
     for (unsigned t = 120; t < 140; ++t) session->run(busy_inputs(t));
     std::printf("a wrong hash: %u desyncs, first at frame %d\n", session->stats().desyncs, session->stats().firstDesyncFrame);
     check(session->stats().desyncs > 0, "changed state went unnoticed");
+    check(session->stats().firstDesyncFrame >= 0, "first desync frame was not recorded");
+    check(session->stats().firstDesyncLocalChecksum != session->stats().firstDesyncRemoteChecksum,
+          "first desync checksums do not show the mismatch");
 }
 
 }  // namespace

@@ -53,6 +53,21 @@ server/   the rendezvous server, in Go
 
 Only `src/net/` includes `gekkonet.h`, as `src/battle/battle.cpp` is the only door to the core.
 
+**Invalid matches (issue #122).** A GekkoNet checksum mismatch immediately invalidates the
+battle, logs the first frame, peer, checksums and build/protocol/simulation versions, and sends a
+match-token-scoped abort. Peers acknowledge aborts, which are retransmitted to unacknowledged
+peers for a bounded period. At round end peers exchange the round frame and a rolling digest of the
+confirmed state hashes from frame zero through that frame. Each peer seals only after every offer
+matches, and presents a result only after receiving every seal. A ten-second missing-peer timeout
+fails closed; decisions are retransmitted after leaving battle, and late invalidation exits the
+result screen. Periodic retransmission lasts ten seconds; the room keeps the outcome until the
+next battle, so a late offer can still receive a response. A peer can leave the room rather than
+waiting. The digest is bounded and is not a cryptographic proof of equality; the underlying state
+hash is likewise not a proof of all possible simulation state. UDP cannot guarantee timely delivery
+during a partition, so an already displayed result can be withdrawn on a late abort, but no protocol
+can ensure simultaneous knowledge at all peers. This is a port-side online policy, not
+original-runtime evidence. Protocol 6 is incompatible with older builds.
+
 **State.** GekkoNet saves a block of bytes, and ours holds heap. So `state_size` is 4: the block is an
 index into a ring of snapshots we own. This cannot serve spectators who join late, which are out of
 this plan. `limited_saving` stays off, because desync detection needs it off.

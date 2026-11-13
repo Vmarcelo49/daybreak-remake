@@ -40,6 +40,25 @@ static SDL_AppResult tickOnlineMenus(App& state) {
         if (player.down[menuCancelAction(*app, slot)]) local |= BitCancel;
     }
 
+    auto* outcome = online.lobby->battle_outcome();
+    const auto invalidResult = [&] {
+        return app->screens.current() == ui::ScreenId::Result && outcome &&
+               (outcome->state() == net::BattleOutcome::State::Desync || outcome->state() == net::BattleOutcome::State::Timeout);
+    };
+    const auto leaveInvalidResult = [&] {
+        app->netMenu.reset();
+        app->netMenuHeld = {};
+        app->resultOverScene = false;
+        app->frontend.onlineMessage = ui::sheetLanguage().empty()
+            ? "試合結果を確認できませんでした。無効試合です。"
+            : "Match invalid: players could not confirm the result.";
+        std::printf("[net] Match invalid: late abort while displaying result\n");
+        std::printf("[online] %s\n", app->frontend.onlineMessage.c_str());
+        app->screens.requestInstant(ui::ScreenId::NetplayLobby);
+        return applyFrontendInput(*app, {});
+    };
+    if (invalidResult()) return leaveInvalidResult();
+
     // The two screens this drives. Neither is left by backing out: the selection ends by everyone
     // reaching VS, the result by everyone reaching its last beat.
     auto sharedScreen = [&] {
@@ -52,7 +71,7 @@ static SDL_AppResult tickOnlineMenus(App& state) {
         [&](const net::MenuLockstep::Held& held) {
             ui::ScreenInput in;
             in.separatePlayers = true;
-    applyMenuScript(*app, in);
+            applyMenuScript(*app, in);
             for (size_t p = 0; p < held.size(); ++p) {
                 const std::uint8_t now = held[p], pressed = static_cast<std::uint8_t>(now & ~app->netMenuHeld[p]);
                 auto& buttons = in.players[p];
@@ -78,8 +97,8 @@ static SDL_AppResult tickOnlineMenus(App& state) {
                 in.rightHeld = in.rightHeld || buttons.rightHeld;
                 app->netMenuHeld[p] = now;
             }
-            // Moved on: the frames GekkoNet still hands out belong to a screen that is gone.
-            if (!sharedScreen()) return;
+            // The network poll may have invalidated the result before this callback.
+            if (!sharedScreen() || invalidResult()) return;
             const SDL_AppResult applied = applyFrontendInput(*app, in);
             if (applied != SDL_APP_CONTINUE) result = applied;
         },
@@ -87,6 +106,7 @@ static SDL_AppResult tickOnlineMenus(App& state) {
     if (result != SDL_APP_CONTINUE) return result;
 
     const ui::ScreenId now = app->screens.current();
+    if (invalidResult()) return leaveInvalidResult();
     if (now == ui::ScreenId::VsIntro) {
         // Normally a no-op: the VS factory already handed the seats off, before it built the match.
         handOffOnlineSeats(*app);
@@ -332,7 +352,7 @@ static SDL_AppResult appIterate(App* app) {
     // at the server, and the one place reached on every such screen is here, once per frame — the
     // match branch below runs its own tick loop and never calls tickFrontend, and the VS, the pause
     // and the result screen are not the lobby's poll either. A joiner and a room with no server do
-    // nothing. 16 ms, the step the lobby's own poll uses.
+    // nothing. The outcome channel uses wall time while the battle or menu owns packet routing.
     if (app->frontend.online) app->frontend.online->lobby->keep_alive(16);
 #endif
 
@@ -433,8 +453,15 @@ static SDL_AppResult appIterate(App* app) {
                 continue;
             }
             if (debugFreezeHolds(*app)) continue;
-            if (!capturing) advanceAnimation(*app, gameplay::FixedStep::seconds);
-            tickMatch(*app, capturing ? app->opts.dt : gameplay::FixedStep::seconds);
+#ifdef DAYBREAK_ONLINE
+            if (app->frontend.online && app->netSession && app->netSession->outcome_finished()) {
+                app->netSession->run({});
+            } else
+#endif
+            {
+                if (!capturing) advanceAnimation(*app, gameplay::FixedStep::seconds);
+                tickMatch(*app, capturing ? app->opts.dt : gameplay::FixedStep::seconds);
+            }
             traceMatch(*app);
             // --local-players evidence: the per-view cameras/HUD values every 128 ticks,
             // bounded by the run's own length so a long run cannot flood the log.
@@ -444,6 +471,8 @@ static SDL_AppResult appIterate(App* app) {
 #ifdef DAYBREAK_ONLINE
             // Online there is no pause to leave from, so this key leaves. The others get a COM.
             if (app->frontend.online && app->netSession && !capturing && battlePausePressed(*app)) {
+                if (app->frontend.online->lobby->battle_outcome()->state() == net::BattleOutcome::State::Pending)
+                    app->frontend.online->lobby->battle_outcome()->abort();
                 app->frontend.onlineMessage.clear();
                 endOnlineMatch(*app);
                 stopCombatAudio(*app);
@@ -458,8 +487,25 @@ static SDL_AppResult appIterate(App* app) {
                 leaveBattleTo(*app, ui::ScreenId::NetplayMenu);
                 continue;
             }
-            const bool roundOver = app->frontend.online && app->netSession ? app->netSession->round_over_confirmed()
-                                                                           : app->battle->economy().roundOver();
+            bool roundOver = app->battle->economy().roundOver();
+            if (app->frontend.online && app->netSession) {
+                auto* outcome = app->frontend.online->lobby->battle_outcome();
+                app->netSession->prepare_outcome();
+                if (outcome->state() == net::BattleOutcome::State::Desync ||
+                    outcome->state() == net::BattleOutcome::State::Timeout) {
+                    const bool desync = outcome->state() == net::BattleOutcome::State::Desync;
+                    app->frontend.onlineMessage = ui::sheetLanguage().empty()
+                        ? (desync ? "試合の状態が一致しません。無効試合です。" : "試合結果を確認できませんでした。無効試合です。")
+                        : (desync ? "Match invalid: players' battle states differed." : "Match invalid: could not confirm the result.");
+                    std::printf("[net] Match invalid: %s\n", desync ? "battle state mismatch" : "result confirmation timed out");
+                    std::printf("[online] %s\n", app->frontend.onlineMessage.c_str());
+                    endOnlineMatch(*app);
+                    stopCombatAudio(*app);
+                    leaveBattleTo(*app, ui::ScreenId::NetplayLobby);
+                    continue;
+                }
+                roundOver = outcome->state() == net::BattleOutcome::State::Valid;
+            }
 #else
             const bool roundOver = app->battle->economy().roundOver();
 #endif

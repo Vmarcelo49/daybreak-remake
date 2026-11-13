@@ -1465,6 +1465,14 @@ bool initScreens(App& app) {
         const bool opened = app.opts.netHost.empty() ? ui::beginOnlineJoin(app.frontend, app.opts.netJoin, app.error)
                                                      : ui::beginOnlineHost(app.frontend, std::atoi(app.opts.netHost.c_str()), false, app.error);
         if (!opened) return false;
+        if (!app.opts.netTestProxy.empty()) {
+            net::Address proxy;
+            if (!net::parse_address(app.opts.netTestProxy, proxy)) {
+                app.error = "invalid --test-net-proxy address";
+                return false;
+            }
+            app.frontend.online->socket.use_proxy(proxy);
+        }
     }
 #endif
     if (app.opts.screen.empty()) {

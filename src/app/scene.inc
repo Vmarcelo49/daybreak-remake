@@ -748,6 +748,8 @@ static bool startCoreBattle(App& app, const MatchSetup& config) {
             const std::uint8_t local = context.lobby->local_peer();
             app.netSession = net::Session::online(app.coreBattle, context.socket, *context.lobby, context.matchPlan, local,
                                                   static_cast<unsigned>(ui::frontendSettings().netInputDelay));
+            if (app.opts.netCorruptHashFrame >= 0 && !app.opts.out.empty())
+                app.netSession->corrupt_hash_at_frame_for_test(app.opts.netCorruptHashFrame);
             app.coreBattle.set_driver(app.netSession.get());
             for (size_t slot = 0; slot < context.matchPlan.slots.size(); ++slot)
                 if (context.matchPlan.slots[slot].peer == local) app.coreBattle.set_hearing_slot(static_cast<unsigned>(slot));

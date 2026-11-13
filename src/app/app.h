@@ -130,6 +130,8 @@ struct Options {
     unsigned rollbackStress = 0;
     // --net-stress=N: the same through a GekkoNet stress session, which also compares state hashes.
     unsigned netStress = 0;
+    int netCorruptHashFrame = -1;
+    std::string netTestProxy;
     // --net-host=PORT and --net-join=IP:PORT open the online lobby at once.
     std::string netHost, netJoin;
     // --texture-pack=<folder>: PNGs at the game's paths, replacing its textures at any size.

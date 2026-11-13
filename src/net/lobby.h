@@ -3,15 +3,17 @@
 // its whole current state until the other's state shows it arrived, so a lost packet costs a resend.
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "net/battle_outcome.h"
 #include "net/udp_socket.h"
 
 namespace net {
 
 // The packet formats. Bump when a lobby or game packet changes shape.
-constexpr std::uint8_t kProtocolVersion = 5;
+constexpr std::uint8_t kProtocolVersion = 6;
 // What the battle computes from the same inputs. Bump with EVERY change that can alter a
 // simulated tick: the core, its patches, det_math, the tick rate, the rules the wrapper feeds
 // it. A change that moves a SIM fingerprint (AGENTS.md) moves this. Two builds that simulate
@@ -27,6 +29,7 @@ constexpr std::uint16_t kCompatibilityVersion = compatibility_version(kProtocolV
 static_assert(kSimulationVersion != 0, "a zero simulation version could equal an old bare protocol number");
 constexpr std::uint8_t kLobbyPacket = 'L';
 constexpr std::uint8_t kGamePacket = 'G';
+constexpr std::uint8_t kOutcomePacket = 'O';
 constexpr std::uint8_t kServerPacket = 'R';
 constexpr size_t kRoomCodeLength = 4;
 constexpr size_t kMaxNameLength = 12;
@@ -112,7 +115,11 @@ public:
     // During a match the session owns the socket, so no poll() runs. A host still has to hold its room
     // at the server: a minute of silence and the next poll() is answered with a new code (issue #110).
     // Sends only, never receives, so a session packet is not taken from under the session.
+    // Also advances the retained battle outcome channel using its monotonic clock.
     void keep_alive(unsigned elapsedMs);
+    void begin_battle_outcome(const MatchPlan& plan, std::uint8_t localPeer);
+    BattleOutcome* battle_outcome() const { return m_battleOutcome.get(); }
+    void handle_battle_outcome(const Address& from, const std::vector<std::uint8_t>& packet);
 
     void set_choice(const LocalChoice& choice);
     bool is_host() const { return m_isHost; }
@@ -159,6 +166,7 @@ private:
     void apply_choice(std::uint8_t peer, const LocalChoice& choice);
     void remove_peer(std::uint8_t peer);
 
+    std::unique_ptr<BattleOutcome> m_battleOutcome;
     UdpSocket* m_socket;
     std::uint64_t m_gameData;
     bool m_isHost = false;

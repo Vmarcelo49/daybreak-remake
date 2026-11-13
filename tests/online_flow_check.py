@@ -113,6 +113,88 @@ def walk(daybreak, install, players, host_presses, join_presses, folder, tag):
     return passed
 
 
+def result_race(daybreak, install, folder):
+    def free_port():
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.bind(("127.0.0.1", 0))
+            return probe.getsockname()[1]
+
+    proxy_port, host_port = free_port(), free_port()
+    import multiprocessing
+    from online_result_race import relay_packets
+    (folder / "host.txt").write_text(host_script(False))
+    (folder / "join.txt").write_text(join_script(False))
+    relay = multiprocessing.Process(target=relay_packets, args=(proxy_port,))
+    relay.start()
+    common = ["--headless", "--no-audio", "--language=en", f"--install={install}", "--frames=6400", "--size=320x180",
+              f"--test-net-proxy=127.0.0.1:{proxy_port}"]
+    games = []
+    try:
+        for role, connection in [("host", f"--net-host={host_port}"), ("join", f"--net-join=127.0.0.1:{host_port}")]:
+            games.append((role, subprocess.Popen([daybreak, *common, connection, f"--script={folder}/{role}.txt",
+                                                  f"--out={folder}/race-{role}.ppm"],
+                                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")))
+        passed = True
+        for role, process in games:
+            out, _ = process.communicate(timeout=180)
+            seen = scenes(out)
+            print(f"result race {role}: {' '.join(seen)}")
+            print("\n".join(line for line in out.splitlines() if "[net]" in line or "[online]" in line))
+            if process.returncode != 0 or seen.count("netplaylobby") < 2:
+                print(f"FAIL: {role} did not return to the lobby")
+                passed = False
+            if role == "host" and ("result" not in seen or seen.index("result") > len(seen) - 2 or
+                                   "late abort while displaying result" not in out or
+                                   "Match invalid: players could not confirm the result." not in out):
+                print("FAIL: host never displayed and then left the result screen")
+                passed = False
+            if role == "join" and ("result" in seen or
+                                   "Match invalid: could not confirm the result." not in out):
+                print("FAIL: joiner did not fail closed after the lost seals")
+                passed = False
+        return passed
+    finally:
+        for _, process in games:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+        relay.terminate()
+        relay.join()
+
+
+def desync_walk(daybreak, install, folder):
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    (folder / "host.txt").write_text(host_script(False))
+    (folder / "join.txt").write_text(join_script(False))
+    common = ["--headless", "--no-audio", "--language=en", f"--install={install}", "--frames=2200", "--size=320x180"]
+    games = []
+    passed = True
+    try:
+        for role, args in [("host", [f"--net-host={port}", "--test-net-corrupt-hash-frame=120"]),
+                           ("join", [f"--net-join=127.0.0.1:{port}"])]:
+            games.append((role, subprocess.Popen([daybreak, *common, *args, f"--script={folder}/{role}.txt",
+                                                   f"--out={folder}/desync-{role}.ppm"],
+                                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")))
+        for role, process in games:
+            out, _ = process.communicate(timeout=120)
+            seen = scenes(out)
+            print(f"desync {role}: {' '.join(seen)}")
+            print("\n".join(line for line in out.splitlines() if "[net]" in line or "[online]" in line))
+            if (process.returncode != 0 or "Match invalid:" not in out or
+                "Match invalid: players' battle states differed." not in out or
+                "result" in seen or seen.count("netplaylobby") < 2):
+                print(f"FAIL: {role} did not reject the divergent battle and return to the lobby")
+                passed = False
+        return passed
+    finally:
+        for _, process in games:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+
+
 def main():
     daybreak, install = sys.argv[1], sys.argv[2]
     if not (pathlib.Path(install) / "daybreak00.dat").exists():
@@ -120,6 +202,9 @@ def main():
         return 77
     failed = False
     with tempfile.TemporaryDirectory() as name:
+        print("--- checksum mismatch, one peer detects first")
+        if not desync_walk(daybreak, install, pathlib.Path(name)):
+            failed = True
         # Everyone pressing: four players walk the loop.
         print("--- four players, every one pressing")
         if not walk(daybreak, install, 4, True, True, pathlib.Path(name), "all-press"):

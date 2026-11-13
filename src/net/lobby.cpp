@@ -540,9 +540,17 @@ void Lobby::handle(const Address& from, const std::vector<std::uint8_t>& packet)
     send_plan(known);
 }
 
-// Its own timer, not poll()'s: the two never run on the same frames, and sharing one would carry the
-// session's elapsed time into the first poll after the result screen.
+void Lobby::begin_battle_outcome(const MatchPlan& plan, std::uint8_t localPeer) {
+    m_battleOutcome = std::make_unique<BattleOutcome>(*m_socket, plan, localPeer);
+}
+
+void Lobby::handle_battle_outcome(const Address& from, const std::vector<std::uint8_t>& packet) {
+    if (m_battleOutcome) m_battleOutcome->handle(from, packet);
+}
+
+// The room and outcome stay alive even while the battle owns socket reads.
 void Lobby::keep_alive(unsigned elapsedMs) {
+    if (m_battleOutcome) m_battleOutcome->update_clock();
     if (!m_isHost || !uses_server()) return;
     m_sinceKeptAlive += elapsedMs;
     if (m_sinceKeptAlive < kServerMs) return;
@@ -551,12 +559,14 @@ void Lobby::keep_alive(unsigned elapsedMs) {
 }
 
 void Lobby::poll(unsigned elapsedMs) {
+    if (m_battleOutcome) m_battleOutcome->update_clock();
     m_clock += elapsedMs;
     Address from;
     std::vector<std::uint8_t> packet;
     while (m_socket->receive(from, packet)) {
         if (packet.empty()) continue;
         if (packet[0] == kLobbyPacket) handle(from, packet);
+        else if (packet[0] == kOutcomePacket) handle_battle_outcome(from, packet);
         else if (packet[0] == kServerPacket && m_server.port != 0 && from == m_server) handle_server(packet);
     }
     m_sinceSend += elapsedMs;

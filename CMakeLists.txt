@@ -107,7 +107,7 @@ target_link_libraries(render PUBLIC runtime assets)
 # composition (src/hud/), the front-end screens (src/frontend/) and the fallback
 # diagnostics. Same shape as render; the historical verification is in docs/archive/UI-VERIFY.md.
 if(NOT EMSCRIPTEN)
-    add_library(net_core STATIC src/net/udp_socket.cpp src/net/lobby.cpp)
+    add_library(net_core STATIC src/net/udp_socket.cpp src/net/lobby.cpp src/net/battle_outcome.cpp)
     target_include_directories(net_core PUBLIC src)
     target_compile_definitions(net_core PUBLIC DAYBREAK_ONLINE)
     if(WIN32)
@@ -336,6 +336,7 @@ if(NOT EMSCRIPTEN)
     target_compile_options(gekkonet PRIVATE -w)
 
     add_library(net_session STATIC src/net/session.cpp)
+    target_compile_definitions(net_session PRIVATE "DAYBREAK_BUILD_VERSION=\"${DAYBREAK_VERSION}\"")
     target_link_libraries(net_session PUBLIC battle_backend net_core PRIVATE gekkonet)
 
     # Runs on Linux in CTest, and by hand under Wine for the MinGW build.
@@ -762,6 +763,9 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     add_test(NAME online_flow_check COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/online_flow_check.py
         $<TARGET_FILE:daybreak> ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak)
     set_tests_properties(online_flow_check PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 500 LABELS asset)
+    add_test(NAME online_result_race COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/online_result_race.py
+        $<TARGET_FILE:daybreak> ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak)
+    set_tests_properties(online_result_race PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 220 LABELS "asset;frontend;net;slow")
     add_test(NAME online_join_feedback COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/online_join_feedback.py
         $<TARGET_FILE:daybreak> $<TARGET_FILE:netctl> ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak)
     set_tests_properties(online_join_feedback PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300 LABELS asset)
@@ -775,6 +779,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
         add_test(NAME rendezvous_server_test COMMAND ${GO_EXECUTABLE} test ./...
                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/server)
     endif()
+    add_executable(battle_outcome_test tests/battle_outcome_test.cpp)
+    target_link_libraries(battle_outcome_test PRIVATE net_core)
+    add_test(NAME battle_outcome_test COMMAND battle_outcome_test)
+    set_tests_properties(battle_outcome_test PROPERTIES LABELS net TIMEOUT 30)
+    add_test(NAME battle_outcome_network COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/battle_outcome_network.py
+        $<TARGET_FILE:netctl> ${CMAKE_CURRENT_SOURCE_DIR}/Higurashi-Daybreak)
+    set_tests_properties(battle_outcome_network PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 220 LABELS "net;asset;slow")
     add_test(NAME net_lobby_test COMMAND net_lobby_test)
     add_executable(net_lobby_test tests/net_lobby_test.cpp)
     target_link_libraries(net_lobby_test PRIVATE net_session)
