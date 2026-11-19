@@ -1,9 +1,8 @@
 #pragma once
 // Draws an xm::Scene: depth buffer, textured pipeline, per-draw uniforms, stage
-// camera and fog. This is the second — and last — place outside gpu/ that includes
-// webgpu.h, because building render pipelines is not something gpu/ wraps; the
-// asset layer's xm::wgpuVertexLayout() is the contract between the two, which is
-// why the asset header has to be pulled in with XMODEL_WEBGPU defined.
+// camera and fog. This header builds pipelines directly, so it includes webgpu.h
+// itself; the asset layer's uniform/vertex-layout helpers now live in
+// render/xmodel_webgpu.h (issue #129), which carries the same dependency.
 #include <webgpu/webgpu.h>
 
 #include <cmath>
@@ -16,13 +15,10 @@
 
 #include "gpu/gpu.h"
 
-// xmodel.h only declares its WebGPU helpers when this is set, and webgpu.h is
-// already in scope above (the header has to be included first).
-#define XMODEL_WEBGPU
 #include "scene.h"
-// After scene.h on purpose: npr_normals.h includes xmodel.h for the plain data types, and
-// xmodel.h is #pragma once — pulling it in before XMODEL_WEBGPU is defined would hide the
-// WebGPU half from every later include in this translation unit.
+// Explicit helper header with its own guard and webgpu.h dependency: including it
+// before or after the CPU-only xmodel.h consumers below is equivalent (issue #129).
+#include "render/xmodel_webgpu.h"
 #include "render/npr_normals.h"
 #include "render/shadow_map.h"
 

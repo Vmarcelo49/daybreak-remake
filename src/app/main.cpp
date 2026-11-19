@@ -41,10 +41,8 @@
 #include "render/debug_prims.h"
 #include "render/scene_renderer.h"
 #include "render/title_camera.h"
-// After the renderer on purpose: raycast.h includes assets/xmodel.h without
-// XMODEL_WEBGPU (its queries need the mesh arrays, not the GPU helpers), and xmodel.h's
-// include guard means a first include without that macro would hide xm::CameraUniform
-// from scene_renderer.h further down.
+// raycast.h is a CPU-only xmodel.h consumer; the WebGPU helpers it must not hide now
+// live in render/xmodel_webgpu.h, so this order is no longer load-bearing (issue #129).
 #include "physics/raycast.h"
 #include "movie/movie_player.h"
 #include "hud/hud.h"

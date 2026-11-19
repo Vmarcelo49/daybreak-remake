@@ -900,6 +900,17 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(lighting_test PRIVATE assets webgpu glm)
     add_test(NAME lighting_test COMMAND lighting_test)
 
+    # Issue #129: the xmodel.h include-order hazard. Two translation units include the
+    # same real headers in opposite orders; the old #pragma once coupling made the
+    # CPU-first one fail to compile (xm::CameraUniform hidden). Device-free, no game data,
+    # and it links webgpu for the helper header's include path just like lighting_test.
+    add_executable(xmodel_include_order_test
+        tests/xmodel_include_order_cpu_first.cpp
+        tests/xmodel_include_order_webgpu_first.cpp)
+    target_include_directories(xmodel_include_order_test PRIVATE src)
+    target_link_libraries(xmodel_include_order_test PRIVATE assets webgpu glm)
+    add_test(NAME xmodel_include_order_test COMMAND xmodel_include_order_test)
+
     # Issue #46: the Controller/Model ownership across a scene swap. It compiles
     # src/app/main.cpp into its own TU (SDL_MAIN_HANDLED, so the app's SDL_App* entry points
     # do not collide with the test's main) to drive the real initScene/initMatch rather
@@ -1324,6 +1335,7 @@ set(DAYBREAK_AREA_NET
 
 set(DAYBREAK_AREA_RENDER
     toon_ramp character_shadow npr_experiments npr_normals_test lighting_test
+    xmodel_include_order_test
     shadow_map_test prims_view_geometry debug_prims_geometry unlit_cube_geometry
     fx_cards_test texture_fallback_check texture_pack_check rollback_pixels_check
     live_prims_budget_test
