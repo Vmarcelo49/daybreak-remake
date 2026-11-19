@@ -21,6 +21,86 @@ web (`third_party/webgpu/emdawnwebgpu/CMakeLists.txt:35`). Nothing in this
 project selects Dawn: the WebGPU-distribution CMake project switches to the
 Emscripten port on its own as soon as it is configured through `emcmake`.
 
+## Bounded build-only check (issue #128)
+
+The web target has no ordinary CI trigger. The **manual** workflow
+[`.github/workflows/web-build-check.yml`](../.github/workflows/web-build-check.yml)
+runs the same `./build.sh web-check` entry point documented here, with
+[`scripts/web_build_check.sh`](../scripts/web_build_check.sh) behind it. It checks
+that emcc is 6.0.10, creates a brand-new
+`build/web-check.XXXXXX` tree with `CMAKE_BUILD_TYPE=Debug`, and compiles and links
+under one 600 s timeout covering configure (including the emdawnwebgpu port fetch)
+and the verbose build. It then checks that `daybreak.html`, `daybreak.js`,
+`daybreak.wasm` and `daybreak.data` are non-empty. The CI job has a separate
+15 min hard cap covering SDK install and dependency fetch as well. Verbose ninja
+output includes the exact final link command; if it reaches linking before the
+cap is hit, that is the last command in the log. No build output is cached or reused.
+
+**What this validates:** the web target compiles and links, and the packaged asset
+files are produced. **What it does not validate:** optimized `wasm-opt` passes (the
+Debug command line carries no `-O` flag and the verbose log shows no `wasm-opt`
+invocation — a statement about the log, not about whether linking happened), binary
+size or performance, a browser session, any gameplay, or the original game. No
+artifact is uploaded, no game data is used, and the production `./build.sh web`
+build (Release) is unchanged. A green check is build coverage only: built is not
+verified (D9).
+
+From a clean checkout, dispatch the workflow in the Actions tab or run:
+
+```bash
+./build.sh deps        # once: pinned by scripts/fetch_deps.sh
+./build.sh web-check   # calls scripts/web_build_check.sh
+```
+
+Install the pinned SDK locally the same way the workflow does (or point `EMSDK=`
+at an existing 6.0.10 install — the check verifies the version itself):
+
+```bash
+git clone --depth 1 --branch 6.0.10 https://github.com/emscripten-core/emsdk ~/emsdk
+~/emsdk/emsdk install 6.0.10
+~/emsdk/emsdk activate 6.0.10
+```
+
+The pins are emcc 6.0.10 (toolchain revision
+`d6c521a7f05449857c76bd99e396895583cf2083`), the Emscripten SDL3 port, and the
+versions in `scripts/fetch_deps.sh`; the workflow installs that SDK tag by hand.
+Two caches are keyed to pinned inputs — `third_party` to
+`hashFiles('scripts/fetch_deps.sh')`, and emcc's ports/sysroot directory to that
+same hash plus the SDK version. **No build output is cached**: every run creates a
+fresh tree, so stale objects cannot hide a compile failure. A cache hit saves the
+dependency fetch and emcc port/sysroot generation; a miss pays them again on top
+of the SDK install. Caches and trees are disposable, and `build/` is ignored.
+
+Measured twice on this machine from clean tracked-only checkouts with an empty emcc
+cache: `deps` 7 s, configure 1 s, compile and link 66–67 s wall (42 s with a warm
+emcc cache). Those are local timings, **not a runner estimate**: a fresh GitHub
+runner also pays for `apt`, cloning/installing/activating emsdk, cache restore and
+upload, and network fetches. The workflow therefore states caps, not a predicted
+runtime — 600 s for configure + build and 15 min for the whole job. A cache miss
+adds the emcc port/sysroot generation (~20 s locally) and any network cost.
+
+The pre-fix baseline failed at `[80/87]` compiling `src/app/main.cpp`: the
+`--menu-script=` runtime state was inside
+`#if !__EMSCRIPTEN__` in `src/app/app.h` while its parser and the frame loop compile
+on every target. Moving only that state out of the guard fixed it; native
+update/relaunch state stays guarded. Outputs of a passing build were
+21,963 B html / 591,611 B js / about 80.5 MB wasm (Debug `-g`; the exact size varies
+with the build path and is not comparable with Release) / 16,641,668 B data, with
+no `wasm-opt` invocation in the log.
+
+The historical 0.2.1 CI job ([run 41263409116](https://github.com/Vmarcelo49/daybreak-remake/actions/runs/41263409116),
+[web job 124721103469](https://github.com/Vmarcelo49/daybreak-remake/actions/runs/41263409116/job/124721103469))
+reached its last compile step `[83/84]` at 02:03:08 UTC and was canceled at
+02:19:27 UTC while a `wasm-opt` child was alive; the runner then killed it. That
+supports a long final link. It does **not** establish why it was long, and no
+deadlock is claimed. This
+check bounds the time and logs the final link instead of changing production
+optimizer flags; the unoptimized Debug path is a separate, deliberately
+non-release configuration. For contrast, `./build.sh web` leaves the
+`CMakeLists.txt` default of `Release` in place, so emcc receives `-O3` and the
+final link runs `wasm-opt` — the 18-minute Release link recorded at the top of
+this page is that path, and no production flag was changed here.
+
 ## Reading the result
 
 Diagnostics go to the browser console. Browser arguments come from `?delivery=`

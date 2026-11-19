@@ -246,6 +246,14 @@ struct App {
     bool                         frontendBattleBuilt = false;
     bool                         rendererReady = false;
     ui::FrontendState            frontend;
+    // --menu-script=: a test/capture driver for the front end (issue #100, step 4). Each
+    // step waits a number of front-end frames, then holds one button for one frame.
+    // Unconditional: the --menu-script= parser and the frame loop that consumes it
+    // compile on Web too. Only the update/relaunch state below is native-only.
+    struct MenuScriptStep { int wait = 0; bool up = false, down = false, left = false, right = false, confirm = false, cancel = false; };
+    std::vector<MenuScriptStep> menuScript;
+    size_t menuScriptIndex = 0;
+    int menuScriptWait = 0;
 #if !defined(__EMSCRIPTEN__)
     // The update check and the relaunch it can lead to (issue #100, step 4). The
     // install root is the running binary's folder; launchArgs is argv without argv[0],
@@ -255,12 +263,6 @@ struct App {
     std::vector<std::string>     launchArgs;
     std::string                  relaunchLaunch;
     std::string                  relaunchFrom;
-    // --menu-script=: a test/capture driver for the front end (issue #100, step 4). Each
-    // step waits a number of front-end frames, then holds one button for one frame.
-    struct MenuScriptStep { int wait = 0; bool up = false, down = false, left = false, right = false, confirm = false, cancel = false; };
-    std::vector<MenuScriptStep> menuScript;
-    size_t menuScriptIndex = 0;
-    int menuScriptWait = 0;
 #ifdef DAYBREAK_UPDATE_TEST_BUILD
     // --test-update-key=<hex>: the throwaway key the loopback end-to-end signs with. Only
     // this test build parses it; a DAYBREAK_RELEASE_BUILD cannot take this path.

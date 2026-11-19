@@ -4,6 +4,7 @@
 #   ./build.sh linux    native Linux
 #   ./build.sh windows  Windows x64 via MinGW-w64
 #   ./build.sh web      Emscripten (needs emsdk; set EMSDK to override ~/emsdk)
+#   ./build.sh web-check  bounded, build-only Debug check on a fresh tree (#128)
 #   ./build.sh all      deps + all three
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -25,6 +26,7 @@ web)     # shellcheck disable=SC1090
          source "${EMSDK:-$HOME/emsdk}/emsdk_env.sh" >/dev/null
          emcmake cmake -S "$here" -B "$here/build/web" -GNinja "$@"
          cmake --build "$here/build/web" ;;
+web-check) "$here/scripts/web_build_check.sh" ;;
 all)     "$0" deps; "$0" linux; "$0" windows; "$0" web ;;
-*)       echo "usage: $0 [deps|linux|windows|web|all]" >&2; exit 2 ;;
+*)       echo "usage: $0 [deps|linux|windows|web|web-check|all]" >&2; exit 2 ;;
 esac

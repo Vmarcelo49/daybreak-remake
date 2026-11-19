@@ -1,0 +1,63 @@
+# Manual, build-only coverage for the web target (issue #128). No push trigger, no
+# game data, no uploaded artifacts, no release packaging — a green run means the C++
+# compiled and the wasm linked, nothing about a browser or the original game.
+# The historical Release link was still alive at ~16 min when CI was canceled; this
+# check uses a fresh non-release tree and both a build cap and a hard job cap.
+name: Web build check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-build-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-build:
+    runs-on: ubuntu-24.04
+    # Hard end-to-end cap, including emsdk install and dependency fetch.
+    timeout-minutes: 15
+    env:
+      EMSDK: ${{ github.workspace }}/.emsdk
+      EMSDK_VERSION: 6.0.10
+      # emsdk_env.sh clears EM_CACHE, so scripts/web_build_check.sh re-exports it
+      # after sourcing the SDK. This cache holds only emcc ports/sysroot, never a
+      # build tree; the key is the pinned SDK version and pinned dependency script.
+      WEB_EM_CACHE: ${{ github.workspace }}/.emcache
+      WEB_BUILD_TIMEOUT: 600
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+      - name: Cache pinned third-party sources
+        uses: actions/cache@v4
+        with:
+          path: third_party
+          key: third-party-${{ hashFiles('scripts/fetch_deps.sh') }}
+      - name: Cache emcc ports for the pinned toolchain
+        uses: actions/cache@v4
+        with:
+          path: .emcache
+          key: emcc-ports-${{ env.EMSDK_VERSION }}-${{ hashFiles('scripts/fetch_deps.sh') }}
+      - name: Install the pinned Emscripten SDK
+        run: |
+          git clone --depth 1 --branch "$EMSDK_VERSION" https://github.com/emscripten-core/emsdk "$EMSDK"
+          "$EMSDK/emsdk" install "$EMSDK_VERSION"
+          "$EMSDK/emsdk" activate "$EMSDK_VERSION"
+          # shellcheck disable=SC1090
+          source "$EMSDK/emsdk_env.sh" >/dev/null
+          emcc --version | head -1
+      - run: ./build.sh deps
+      # Verbose build output and a single configure+build timeout are in
+      # scripts/web_build_check.sh. The build tree is deliberately NOT cached:
+      # the old one predates a checkout relocation and stale objects would hide
+      # the compile failures this check finds.
+      - name: Bounded build-only web check (Debug, fresh tree)
+        run: ./build.sh web-check

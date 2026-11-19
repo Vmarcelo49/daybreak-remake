@@ -19,7 +19,7 @@ at runtime has not been verified.
 | Language | Menus and HUD in English or Japanese. Story dialogue is still Japanese. |
 | Texture packs | Optional PNG packs are read from beside the executable. No pack is published yet. |
 | Linux, Windows | Build and package. CI builds both when `VERSION` changes. |
-| Web | Builds, fights and finishes a match; the round's end is part of the match group since #88. Not in CI since 0.2.1, where its build stalled. |
+| Web | Builds, fights and finishes a match; the round's end is part of the match group since #88. A manual, bounded build-only check covers compilation and linking; no push-triggered web job ([`docs/BUILD-web.md`](docs/BUILD-web.md)). |
 | Multiplayer | Local, LAN and online for 2 to 4 players, with rollback and Linux and Windows together. In testing: first real-network playtest 2026-11-04. |
 | macOS | Not attempted. |
 
@@ -157,7 +157,13 @@ test, and neither flag changes saved volumes.
 
 Changing `VERSION` on `main` runs [`.github/workflows/build.yml`](.github/workflows/build.yml):
 it builds Linux and Windows, runs Linux tests without game data, and keeps the packages as
-workflow artifacts. Web is not currently built in CI. Run it by hand with `gh workflow run build.yml`.
+workflow artifacts. Web is not built there. A separate **manual** workflow,
+[`.github/workflows/web-build-check.yml`](.github/workflows/web-build-check.yml), does a
+bounded build-only Debug compile and link of a fresh tree with verbose logs and a hard
+timeout; it uploads no artifact and proves no browser behaviour. Run the release build
+by hand with `gh workflow run build.yml`, or the web check with
+`gh workflow run web-build-check.yml` (both also work locally; see
+[`docs/BUILD-web.md`](docs/BUILD-web.md)).
 
 ### The Linux release package
 
