@@ -68,6 +68,10 @@ int runUpdateArchiveTests();
 
 #ifdef _WIN32
 // The step-3 apply cases a real Windows run proves (running exe rename, rollback, recovery).
-int runUpdateApplyWindowsTests();
+// injectFailure makes the last suite fail one check so --selftest-fail proves that a failed
+// Windows apply assertion reaches the aggregate exit status.
+int runUpdateApplyWindowsTests(bool injectFailure);
 int runUpdateWindowsRenameProbe();
+// Internal child modes: each refuses to run outside the disposable fixture the parent made.
+int runUpdateWindowsInterruptProbe();
 #endif

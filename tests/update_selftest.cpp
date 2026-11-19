@@ -58,12 +58,13 @@ int main(int argc, char** argv) {
     if (argc == 2 && std::strcmp(argv[1], "--selftest-rename-running-image") == 0) {
         return runUpdateWindowsRenameProbe();
     }
+    if (argc == 2 && std::strcmp(argv[1], "--selftest-interrupt-apply") == 0) {
+        return runUpdateWindowsInterruptProbe();
+    }
 #endif
     const bool negativeControl =
         argc == 2 && std::strcmp(argv[1], "--selftest-fail") == 0;
-    if (negativeControl) {
-        update_test::check(false, "update_selftest negative control");
-    } else if (argc != 1) {
+    if (!negativeControl && argc != 1) {
         std::fprintf(stderr, "usage: update_selftest [--live <url>] [--selftest-fail]\n");
         return 2;
     }
@@ -71,7 +72,16 @@ int main(int argc, char** argv) {
     runUpdateCryptoTests(0, nullptr);
     runUpdateArchiveTests();
 #ifdef _WIN32
-    if (!negativeControl) runUpdateApplyWindowsTests();
+    // Run every suite even for the control: the failure is injected at the end of the last
+    // suite, so the exit status is the aggregate the real Windows gate returns.
+    runUpdateApplyWindowsTests(negativeControl);
+#else
+    // No Windows suite here; inject after the other suites have reported so their counts
+    // stay truthful and the control still exercises the final aggregate.
+    if (negativeControl) {
+        update_test::check(false, "update_selftest negative control");
+        update_test::report("update_selftest negative control");
+    }
 #endif
     return update_test::failures() == 0 ? 0 : 1;
 }

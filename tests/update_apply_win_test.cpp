@@ -32,6 +32,49 @@ namespace {
 
 namespace fs = std::filesystem;
 
+// Internal child modes are entry points into the same .exe, so they must never operate on
+// the developer's build or install tree. The parent creates a temp-directory fixture with
+// this prefix and marker; a child requires all three facts before touching any file.
+constexpr const wchar_t* kFixturePrefix = L"daybreak-update-selftest-";
+constexpr const char* kFixtureMarker = "selftest-fixture.marker";
+constexpr const char* kFixtureMarkerText = "daybreak-update-selftest disposable fixture\n";
+// A child applies with failAt(1) and dies with this code before apply can roll back.
+constexpr DWORD kInterruptExitCode = 0x5A1F;
+// A child must never outlive the parent's fixture cleanup.
+constexpr DWORD kProbeTimeoutMs = 120000;
+
+bool disposableFixture(const fs::path& directory, fs::path* canonical, std::string* error) {
+    std::error_code code;
+    const fs::path fixture = fs::weakly_canonical(directory, code);
+    if (code) {
+        *error = "cannot canonicalize the fixture directory: " + code.message();
+        return false;
+    }
+    const fs::path temp = fs::weakly_canonical(fs::temp_directory_path(), code);
+    if (code) {
+        *error = "cannot canonicalize the system temp directory: " + code.message();
+        return false;
+    }
+    // native() keeps the comparison in wide form: a rejected direct call must not run a
+    // path through the narrow ANSI conversion just to print its name.
+    const std::wstring name = fixture.filename().native();
+    const std::wstring prefix(kFixturePrefix);
+    if (fixture.parent_path() != temp || name.compare(0, prefix.size(), prefix) != 0) {
+        *error = "child mode requires a daybreak-update-selftest-* fixture directly under "
+                 "the system temp directory";
+        return false;
+    }
+    std::ifstream marker(fixture / kFixtureMarker, std::ios::binary);
+    const std::string text((std::istreambuf_iterator<char>(marker)),
+                           std::istreambuf_iterator<char>());
+    if (text != kFixtureMarkerText) {
+        *error = "fixture marker is missing or invalid";
+        return false;
+    }
+    if (canonical) *canonical = fixture;
+    return true;
+}
+
 std::uint32_t crc32Of(const std::vector<std::uint8_t>& data) {
     std::uint32_t crc = 0xFFFFFFFFu;
     for (const std::uint8_t byte : data) {
@@ -118,6 +161,8 @@ std::string manifestFor(const std::vector<std::pair<std::string, std::string>>& 
     return text;
 }
 
+// Synthetic file bodies: the "exe" entries are just bytes for the updater to replace, never
+// a binary this test launches. Only the copied selftest itself is ever a running process.
 std::vector<std::pair<std::string, std::string>> packageFiles() {
     return {
         {"DaybreakRemake.exe", "new exe"},
@@ -131,10 +176,23 @@ void writeFile(const fs::path& path, const std::string& text) {
     std::ofstream(path, std::ios::binary) << text;
 }
 
-fs::path makeRoot(const fs::path& base) {
-    const fs::path root = base / "root";
+bool makeRoot(const fs::path& root, std::string* error) {
     std::error_code code;
-    fs::remove_all(root, code);
+    // symlink_status does not follow a preplanted junction, so an existing root is rejected
+    // before a single file is written into it.
+    const fs::file_status status = fs::symlink_status(root, code);
+    if (!code && fs::exists(status)) {
+        *error = "the fresh test root already exists";
+        return false;
+    }
+    if (code && code != std::errc::no_such_file_or_directory) {
+        *error = "cannot inspect the test root: " + code.message();
+        return false;
+    }
+    if (!fs::create_directory(root, code)) {
+        *error = "cannot create the test root" + (code ? ": " + code.message() : "");
+        return false;
+    }
     writeFile(root / "DaybreakRemake.exe", "old exe");
     writeFile(root / "SDL3.dll", "old dll");
     writeFile(root / "assets/font.otf", "old font");
@@ -147,7 +205,7 @@ fs::path makeRoot(const fs::path& base) {
     };
     writeFile(root / "package-manifest.txt",
               manifestFor(old, "1.0.0", "DaybreakRemake.exe"));
-    return root;
+    return true;
 }
 
 update::ApplySettings settingsFor(const fs::path& root,
@@ -186,35 +244,56 @@ std::string installedVersion(const fs::path& root) {
     return manifest.version;
 }
 
-bool launchRenameProbe(const fs::path& executable, std::string* error) {
-    std::wstring command = L"\"" + executable.wstring() +
-                           L"\" --selftest-rename-running-image";
+// MayStillRun is deliberately distinct: the caller must not inspect, recover, clean the
+// fixture, or start another child while a probe could still be writing into it.
+enum class ProbeOutcome { Ok, Failed, MayStillRun, NotStarted };
+
+struct ProbeResult {
+    ProbeOutcome outcome = ProbeOutcome::NotStarted;
+    DWORD exitCode = 0;
+    std::string error;
+};
+
+ProbeResult launchProbe(const fs::path& executable, const std::wstring& arguments) {
+    ProbeResult result;
+    std::wstring command = L"\"" + executable.wstring() + L"\"";
+    if (!arguments.empty()) command += L" " + arguments;
     STARTUPINFOW startup{};
     startup.cb = sizeof startup;
     PROCESS_INFORMATION process{};
     const fs::path workingDirectory = executable.parent_path();
     if (!CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, FALSE, 0,
                         nullptr, workingDirectory.c_str(), &startup, &process)) {
-        *error = "cannot start rename probe (error " +
-                 std::to_string(GetLastError()) + ")";
-        return false;
+        result.error = "cannot start probe (error " + std::to_string(GetLastError()) + ")";
+        return result;
     }
+    result.outcome = ProbeOutcome::MayStillRun;
     CloseHandle(process.hThread);
-    const DWORD wait = WaitForSingleObject(process.hProcess, INFINITE);
-    DWORD exitCode = 1;
-    const bool gotExitCode = wait == WAIT_OBJECT_0 &&
-                             GetExitCodeProcess(process.hProcess, &exitCode);
+    const DWORD wait = WaitForSingleObject(process.hProcess, kProbeTimeoutMs);
+    if (wait == WAIT_OBJECT_0) {
+        if (GetExitCodeProcess(process.hProcess, &result.exitCode)) {
+            result.outcome = ProbeOutcome::Ok;  // caller still checks the code it returned
+        } else {
+            result.error = "cannot read the probe exit code (error " +
+                           std::to_string(GetLastError()) + ")";
+            result.outcome = ProbeOutcome::Failed;
+        }
+    } else if (wait == WAIT_TIMEOUT) {
+        if (!TerminateProcess(process.hProcess, 1)) {
+            result.error = "probe timed out and could not be terminated (error " +
+                           std::to_string(GetLastError()) + ")";
+        } else if (WaitForSingleObject(process.hProcess, kProbeTimeoutMs) != WAIT_OBJECT_0) {
+            result.error = "probe did not exit after termination";
+        } else {
+            result.error = "probe timed out after " + std::to_string(kProbeTimeoutMs) +
+                           " ms and was terminated";
+            result.outcome = ProbeOutcome::Failed;
+        }
+    } else {
+        result.error = "cannot wait for probe (error " + std::to_string(GetLastError()) + ")";
+    }
     CloseHandle(process.hProcess);
-    if (!gotExitCode) {
-        *error = "cannot wait for rename probe (error " +
-                 std::to_string(GetLastError()) + ")";
-        return false;
-    }
-    if (exitCode != 0) {
-        *error = "rename probe exited with code " + std::to_string(exitCode);
-        return false;
-    }
-    return true;
+    return result;
 }
 
 }  // namespace
@@ -226,6 +305,10 @@ int runUpdateWindowsRenameProbe() {
         std::fprintf(stderr, "update_selftest: cannot locate probe executable: %s\n",
                      error.c_str());
         return 1;
+    }
+    if (!disposableFixture(self.parent_path(), nullptr, &error)) {
+        std::fprintf(stderr, "update_selftest: rename probe refused: %s\n", error.c_str());
+        return 2;
     }
     fs::path aside = self;
     aside += L".old";
@@ -245,7 +328,47 @@ int runUpdateWindowsRenameProbe() {
     return 1;
 }
 
-int runUpdateApplyWindowsTests() {
+// No path is passed on the command line: a narrow argv path could be misdecoded when Temp
+// is outside the process ANSI code page. The child derives its own root from the validated
+// fixture it was copied into, so it cannot be aimed at a developer's install by a caller.
+int runUpdateWindowsInterruptProbe() {
+    fs::path self;
+    std::string error;
+    if (!update::platform::selfPath(&self, &error)) {
+        std::fprintf(stderr, "update_selftest: cannot locate interrupt probe: %s\n",
+                     error.c_str());
+        return 1;
+    }
+    fs::path fixture;
+    if (!disposableFixture(self.parent_path(), &fixture, &error)) {
+        std::fprintf(stderr, "update_selftest: interrupt probe refused: %s\n", error.c_str());
+        return 2;
+    }
+    const fs::path root = fixture / "crash-root";
+    const auto files = packageFiles();
+    const std::string manifestText = manifestFor(files, "2.0.0", "DaybreakRemake.exe");
+    std::vector<std::pair<std::string, std::string>> archiveFiles = files;
+    archiveFiles.push_back({"package-manifest.txt", manifestText});
+    const std::vector<std::uint8_t> archive = zipBytes(archiveFiles);
+    if (!makeRoot(root, &error)) {
+        std::fprintf(stderr, "update_selftest: interrupt probe cannot create its root: %s\n",
+                     error.c_str());
+        return 3;
+    }
+    update::ApplySettings settings = settingsFor(root, archive);
+    // failAt runs after the journal is written and after operation 0 replaced the exe and
+    // left its .old backup, but before apply's own rollback path can run. Dying here is a
+    // real interrupted transaction, not recovery invoked after an in-process failure.
+    settings.failAt = [](int operation) -> bool {
+        if (operation == 1) ExitProcess(kInterruptExitCode);
+        return true;
+    };
+    update::apply(settings);
+    std::fprintf(stderr, "update_selftest: interrupt probe returned without crashing\n");
+    return 4;
+}
+
+int runUpdateApplyWindowsTests(bool injectFailure) {
     std::error_code code;
     const fs::path temporary = fs::temp_directory_path();
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
@@ -266,92 +389,176 @@ int runUpdateApplyWindowsTests() {
         return update_test::report("update_apply_windows_test");
     }
 
+    // The parent owns the fixture marker; both internal child modes refuse any other dir.
+    writeFile(base / kFixtureMarker, kFixtureMarkerText);
+
+    fs::path self;
+    std::string selfError;
+    const bool located = update::platform::selfPath(&self, &selfError);
+    update_test::check(located, "windows: selfPath locates the running executable: " + selfError);
+    fs::path probe;
+    bool copied = false;
+    if (located) {
+        probe = base / "probe.exe";
+        fs::copy_file(self, probe, fs::copy_options::overwrite_existing, code);
+        copied = !code;
+        update_test::check(copied, "windows: copy the executable into the disposable fixture" +
+                                       (code ? ": " + code.message() : ""));
+    }
+
     const auto files = packageFiles();
     const std::string manifestText = manifestFor(files, "2.0.0", "DaybreakRemake.exe");
     std::vector<std::pair<std::string, std::string>> archiveFiles = files;
     archiveFiles.push_back({"package-manifest.txt", manifestText});
     const std::vector<std::uint8_t> archive = zipBytes(archiveFiles);
 
-    {
-        const fs::path root = makeRoot(base);
-        update::ApplySettings settings = settingsFor(root, archive);
-        const update::ApplyResult result = update::apply(settings);
-        update_test::check(result.status == update::ApplyStatus::Ok,
-                           "windows: a good update applies: " + result.error);
-        update_test::check(installedVersion(root) == "2.0.0",
-                           "windows: the new manifest is installed");
-        update_test::check(std::ifstream(root / "data/game.dat").good(),
-                           "windows: the game data is untouched");
-    }
-    {
-        const fs::path root = makeRoot(base);
-        writeFile(root / "player-notes.txt", "different player notes");
-        std::vector<std::pair<std::string, std::string>> colliding = archiveFiles;
-        colliding.push_back({"player-notes.txt", "package notes"});
-        const std::vector<std::uint8_t> collisionArchive = zipBytes(colliding);
-        update::ApplySettings settings = settingsFor(root, collisionArchive);
-        const update::ApplyResult result = update::apply(settings);
-        update_test::check(result.status == update::ApplyStatus::Failed,
-                           "windows: a player-file collision is refused");
-        update_test::check(result.error.find("player-notes.txt") != std::string::npos,
-                           "windows: the collision names the file");
-    }
-    {
-        const fs::path root = makeRoot(base);
-        update::ApplySettings settings = settingsFor(root, archive);
-        settings.failAt = [](int operation) { return operation != 1; };
-        const update::ApplyResult result = update::apply(settings);
-        update_test::check(result.status == update::ApplyStatus::Failed,
-                           "windows: an injected failure fails the apply");
-        update_test::check(installedVersion(root) == "1.0.0",
-                           "windows: the rollback restores the old manifest");
-    }
-    {
-        const fs::path root = makeRoot(base);
-        const std::string manifestSha = update::sha256Hex(manifestText.data(),
-                                                           manifestText.size());
-        const fs::path target = root / "DaybreakRemake.exe";
-        writeFile(target, "new exe");
-        writeFile(root / "DaybreakRemake.exe.old", "old exe");
-        const fs::path workspace = root / update::kWorkspaceDirectory / "2.0.0";
-        writeFile(workspace / "journal",
-                  "format = 1\nstate = applying\nversion = 2.0.0\nmanifest = " +
-                      manifestSha + "\n[operations]\nreplace DaybreakRemake.exe\n");
-
-        const bool recovered = update::recoverOnStartup(root);
-        update_test::check(recovered,
-                           "windows: recovery acts on the planted interrupted transaction");
-        update_test::check(fileContents(target) == "old exe",
-                           "windows: recovery restores the old executable from .old");
-        update_test::check(!fs::exists(root / "DaybreakRemake.exe.old"),
-                           "windows: recovery consumes the old executable backup");
-        update_test::check(installedVersion(root) == "1.0.0",
-                           "windows: recovery preserves the old manifest");
-        update_test::check(!fs::exists(root / update::kWorkspaceDirectory),
-                           "windows: recovery removes the interrupted workspace");
-    }
-    {
-        fs::path self;
+    // Each case gets its own fresh root: reusing one would need remove_all, which could
+    // follow a preplanted junction. makeRoot refuses anything that already exists.
+    const auto freshRoot = [&](const char* name, fs::path* root) {
+        *root = base / name;
         std::string error;
-        const bool located = update::platform::selfPath(&self, &error);
-        update_test::check(located, "windows: selfPath locates the running executable: " + error);
-        if (located) {
-            const fs::path copy = base / "rename-probe.exe";
-            fs::copy_file(self, copy, fs::copy_options::overwrite_existing, code);
-            update_test::check(!code, "windows: copy the executable into the disposable directory" +
-                                          (code ? ": " + code.message() : ""));
-            if (!code) {
-                error.clear();
-                update_test::check(launchRenameProbe(copy, &error),
-                                   "windows: the running disposable exe can be renamed aside "
-                                   "and back: " + error);
-            }
+        if (makeRoot(*root, &error)) return true;
+        update_test::check(false, std::string("windows: create fresh root ") + name +
+                                      ": " + error);
+        return false;
+    };
+    {
+        fs::path root;
+        if (freshRoot("root-good", &root)) {
+            update::ApplySettings settings = settingsFor(root, archive);
+            const update::ApplyResult result = update::apply(settings);
+            update_test::check(result.status == update::ApplyStatus::Ok,
+                               "windows: a good update applies: " + result.error);
+            update_test::check(installedVersion(root) == "2.0.0",
+                               "windows: the new manifest is installed");
+            update_test::check(std::ifstream(root / "data/game.dat").good(),
+                               "windows: the game data is untouched");
         }
+    }
+    {
+        fs::path root;
+        if (freshRoot("root-collision", &root)) {
+            writeFile(root / "player-notes.txt", "different player notes");
+            std::vector<std::pair<std::string, std::string>> collisionFiles = files;
+            collisionFiles.push_back({"player-notes.txt", "package notes"});
+            const std::string collisionManifest =
+                manifestFor(collisionFiles, "2.0.0", "DaybreakRemake.exe");
+            std::vector<std::pair<std::string, std::string>> colliding = collisionFiles;
+            colliding.push_back({"package-manifest.txt", collisionManifest});
+            const std::vector<std::uint8_t> collisionArchive = zipBytes(colliding);
+            update::ApplySettings settings = settingsFor(root, collisionArchive);
+            const update::ApplyResult result = update::apply(settings);
+            update_test::check(result.status == update::ApplyStatus::Failed,
+                               "windows: a player-file collision is refused");
+            update_test::check(result.error.find("player-notes.txt") != std::string::npos,
+                               "windows: the collision names the file: " + result.error);
+            update_test::check(fileContents(root / "player-notes.txt") == "different player notes",
+                               "windows: a refused collision leaves the player file "
+                               "byte-for-byte");
+        }
+    }
+    {
+        fs::path root;
+        if (freshRoot("root-rollback", &root)) {
+            update::ApplySettings settings = settingsFor(root, archive);
+            settings.failAt = [](int operation) { return operation != 1; };
+            const update::ApplyResult result = update::apply(settings);
+            update_test::check(result.status == update::ApplyStatus::Failed,
+                               "windows: an injected failure fails the apply");
+            update_test::check(installedVersion(root) == "1.0.0",
+                               "windows: the rollback restores the old manifest");
+        }
+    }
+    {
+        // The child dies inside apply before rollback, so the parent sees the exact on-disk
+        // state startup recovery must repair, including a genuinely modified file — the
+        // synthetic exe stand-in, not a real game executable.
+        const fs::path root = base / "crash-root";
+        std::error_code rootCode;
+        const bool absent = !fs::exists(fs::symlink_status(root, rootCode));
+        update_test::check(absent, "windows: the crash root is absent before the child starts");
+
+        ProbeResult interrupt;
+        bool owned = false;
+        if (!absent) {
+            update_test::check(false, "windows: the crash root was already present; "
+                                      "the child was not started");
+        } else if (!copied) {
+            update_test::check(false, "windows: no validated probe copy; the child was not started");
+        } else {
+            interrupt = launchProbe(probe, L"--selftest-interrupt-apply");
+            if (interrupt.outcome == ProbeOutcome::MayStillRun) {
+                update_test::check(false, "windows: interrupt probe may still be running: " +
+                                              interrupt.error);
+                // No inspection, recovery, cleanup or further child while it may still write.
+                return update_test::report("update_apply_windows_test");
+            }
+            owned = interrupt.outcome == ProbeOutcome::Ok &&
+                    interrupt.exitCode == kInterruptExitCode;
+            update_test::check(owned, "windows: the interrupt probe died inside apply at "
+                                      "operation 1 (exit " +
+                                          std::to_string(interrupt.exitCode) + "): " +
+                                          interrupt.error);
+        }
+
+        // The marker exit alone is not enough: confirm the root is the fresh directory the
+        // child made, not a preplanted junction, before any read or recovery call.
+        if (owned) {
+            std::error_code statusCode;
+            const fs::file_status status = fs::symlink_status(root, statusCode);
+            const bool fresh = !statusCode && fs::is_directory(status) &&
+                               !fs::is_symlink(status);
+            update_test::check(fresh, "windows: the interrupted root is a fresh real directory");
+            owned = fresh;
+        }
+        if (owned) {
+            const fs::path target = root / "DaybreakRemake.exe";
+            const fs::path backup = root / "DaybreakRemake.exe.old";
+            update_test::check(fileContents(target) == "new exe",
+                               "windows: the crash leaves the synthetic replacement on disk");
+            update_test::check(fileContents(backup) == "old exe",
+                               "windows: the crash leaves the synthetic backup in place");
+            update_test::check(fileContents(root / "SDL3.dll") == "old dll",
+                               "windows: the crash happened before the second file was replaced");
+            const std::string journal =
+                fileContents(root / update::kWorkspaceDirectory / "2.0.0" / "journal");
+            update_test::check(journal.find("state = applying") != std::string::npos,
+                               "windows: the crash leaves an applying journal");
+
+            const bool recovered = update::recoverOnStartup(root);
+            update_test::check(recovered,
+                               "windows: recovery acts on the genuinely interrupted transaction");
+            update_test::check(fileContents(target) == "old exe",
+                               "windows: recovery restores the synthetic executable byte-for-byte");
+            update_test::check(!fs::exists(backup),
+                               "windows: recovery consumes the synthetic backup");
+            update_test::check(installedVersion(root) == "1.0.0",
+                               "windows: recovery preserves the old manifest");
+            update_test::check(!fs::exists(root / update::kWorkspaceDirectory),
+                               "windows: recovery removes the interrupted workspace");
+        }
+    }
+    if (copied) {
+        const ProbeResult renameResult =
+            launchProbe(probe, L"--selftest-rename-running-image");
+        if (renameResult.outcome == ProbeOutcome::MayStillRun) {
+            update_test::check(false, "windows: rename probe may still be running: " +
+                                          renameResult.error);
+            return update_test::report("update_apply_windows_test");
+        }
+        update_test::check(renameResult.outcome == ProbeOutcome::Ok &&
+                               renameResult.exitCode == 0,
+                           "windows: the running disposable exe can be renamed aside and back "
+                           "(exit " + std::to_string(renameResult.exitCode) +
+                           "): " + renameResult.error);
     }
 
     fs::remove_all(base, code);
     update_test::check(!code, "windows: remove the disposable self-test directory" +
                                   (code ? ": " + code.message() : ""));
+    if (injectFailure) {
+        update_test::check(false, "windows: negative control injected into the last suite");
+    }
     return update_test::report("update_apply_windows_test");
 }
 
