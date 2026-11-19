@@ -2,9 +2,9 @@
 //
 // Shape of the machine: `poll()` drains whatever the browser callbacks finished,
 // then dispatches as many queued requests as the in-flight budget allows. It never
-// waits, so the frame loop can call it every frame; the two places that do wait
-// (`waitForGate`, `waitForMatch`) yield with emscripten_sleep(0), which is what keeps
-// the page's own event loop alive while wasm is parked on a barrier.
+// waits, so the frame loop can call it every frame; the three places that do wait
+// (`waitForGate`, `waitForMatch`, `waitForStory`) yield with emscripten_sleep(0), which
+// is what keeps the page's own event loop alive while wasm is parked on a barrier.
 #include "platform/asset_client.h"
 
 #include <cstdio>
@@ -113,12 +113,16 @@ bool readFile(const std::string& path, std::vector<uint8_t>& out) {
     return got == (std::size_t)size;
 }
 
+// Which manifest a transfer belongs to. A request set is chosen by this, not by a
+// boolean, now that story has a third group beside startup and match.
+enum class Group { Startup, Match, Story };
+
 // One transfer. The callback fills it; poll() drains it and deletes it.
 struct Fetch {
-    int  item = -1;          // index into the owning set, -1 for a manifest request
-    bool manifest = false;
-    bool startupSet = true;
-    bool ok = false;
+    int   item = -1;         // index into the owning set, -1 for a manifest request
+    bool  manifest = false;
+    Group group = Group::Startup;
+    bool  ok = false;
     long status = 0;
     std::vector<uint8_t> data;
 };
@@ -127,10 +131,10 @@ struct Fetch {
 // plain vector is enough; the callbacks only run while the runtime is yielding.
 std::vector<Fetch*> g_completed;
 
-void startFetch(const std::string& url, bool manifest, bool startupSet, int item) {
+void startFetch(const std::string& url, bool manifest, Group group, int item) {
     Fetch* job = new Fetch();
     job->manifest = manifest;
-    job->startupSet = startupSet;
+    job->group = group;
     job->item = item;
 
     emscripten_fetch_attr_t attr;
@@ -220,7 +224,7 @@ bool AssetClient::begin(const std::string& base) {
             std::fprintf(stderr, "[delivery] warning: cache populate failed\n");
     }
     ++networkRequests_;
-    startFetch(base_ + "/api/manifest/startup", true, true, -1);
+    startFetch(base_ + "/api/manifest/startup", true, Group::Startup, -1);
     return true;
 }
 
@@ -239,7 +243,7 @@ void AssetClient::poll() {
                                            parsed, parseError)) {
                 error_ = parseError;
                 failed_ = true;
-            } else if (job->startupSet) {
+            } else if (job->group == Group::Startup) {
                 manifest_ = parsed;
                 startupItems_.clear();
                 startup_ = AssetProgress{};
@@ -255,21 +259,26 @@ void AssetClient::poll() {
                             startup_.total, double(startup_.bytesTotal) / 1048576.0,
                             manifest_.gateCount(), manifest_.version.c_str());
             } else {
-                match_.total = parsed.entries.size();
-                match_.bytesTotal = parsed.transferBytes();
-                matchItems_.clear();
+                const bool isMatch = job->group == Group::Match;
+                AssetProgress& progress = isMatch ? match_ : story_;
+                std::vector<Item>& items = isMatch ? matchItems_ : storyItems_;
+                progress.total = parsed.entries.size();
+                progress.bytesTotal = parsed.transferBytes();
+                items.clear();
                 for (const WebAssetEntry& entry : parsed.entries) {
                     Item item;
                     item.entry = entry;
-                    matchItems_.push_back(item);
+                    items.push_back(item);
                 }
                 std::printf("[delivery] %s: %zu assets, %.1f MB\n", parsed.group.c_str(),
-                            match_.total, double(match_.bytesTotal) / 1048576.0);
+                            progress.total, double(progress.bytesTotal) / 1048576.0);
             }
         } else {
-            const bool startupSet = job->startupSet;
-            std::vector<Item>& items = startupSet ? startupItems_ : matchItems_;
-            AssetProgress& progress = startupSet ? startup_ : match_;
+            const Group group = job->group;
+            std::vector<Item>& items = group == Group::Startup ? startupItems_
+                                      : group == Group::Match  ? matchItems_ : storyItems_;
+            AssetProgress& progress = group == Group::Startup ? startup_
+                                      : group == Group::Match  ? match_ : story_;
             if (inflight_) --inflight_;
             if (progress.inflight) --progress.inflight;
 
@@ -334,7 +343,7 @@ void AssetClient::poll() {
 
     // ------------------------------------------------------------------- dispatch
     const auto dispatch = [&](std::vector<Item>& items, AssetProgress& progress,
-                              bool startupSet) {
+                              Group group) {
         // Gate assets go first. The manifest is in id order, which puts BGM and the
         // movie — fetched at startup but explicitly not part of the gate — ahead of the
         // title and menu art the first usable screen is waiting for; with a six-request
@@ -370,18 +379,20 @@ void AssetClient::poll() {
             ++inflight_;
             ++progress.inflight;
             ++networkRequests_;
-            startFetch(base_ + "/api/asset/" + item.entry.id, false, startupSet, (int)i);
+            startFetch(base_ + "/api/asset/" + item.entry.id, false, group, (int)i);
             }
         }
     };
-    dispatch(startupItems_, startup_, true);
-    if (matchRequested_) dispatch(matchItems_, match_, false);
+    dispatch(startupItems_, startup_, Group::Startup);
+    if (matchRequested_) dispatch(matchItems_, match_, Group::Match);
+    if (storyRequested_) dispatch(storyItems_, story_, Group::Story);
 
     // Write the cache back in batches: one IndexedDB transaction per asset would make
     // the store the bottleneck on a fast link, and the whole point of the per-asset
     // cache is that a later session skips the network entirely.
     const bool setSettled = (startup_.total && startup_.complete()) ||
-                            (matchRequested_ && match_.total && match_.complete());
+                            (matchRequested_ && match_.total && match_.complete()) ||
+                            (storyRequested_ && story_.total && story_.complete());
     if (dirty_ && cacheAvailable_ && (completedSinceSync_ >= 16 || setSettled)) {
         dirty_ = false;
         completedSinceSync_ = 0;
@@ -417,8 +428,26 @@ bool AssetClient::requestMatch(const std::string& stage,
     for (const std::string& slot : slots) url += "&slot=" + urlEncodePath(slot);
     for (const std::string& weapon : weapons) url += "&weapon=" + urlEncodePath(weapon);
     ++networkRequests_;
-    startFetch(url, true, false, -1);
+    startFetch(url, true, Group::Match, -1);
     return true;
+}
+
+bool AssetClient::requestStory() {
+    if (!running_ || storyRequested_) return false;
+    storyRequested_ = true;
+    ++networkRequests_;
+    startFetch(base_ + "/api/manifest/story", true, Group::Story, -1);
+    return true;
+}
+
+bool AssetClient::waitForStory() {
+    // An empty set is not complete while its manifest is still in flight, so this
+    // cannot return before the story group is known either.
+    while (storyRequested_ && !storyReady() && !failed_) {
+        poll();
+        emscripten_sleep(0);
+    }
+    return storyReady();
 }
 
 bool AssetClient::gateReady() const {
@@ -454,6 +483,8 @@ bool AssetClient::requestMatch(const std::string&, const std::vector<std::string
                                const std::vector<std::string>&) {
     return false;
 }
+bool AssetClient::requestStory() { return false; }
+bool AssetClient::waitForStory() { return false; }
 bool AssetClient::gateReady() const { return false; }
 
 }  // namespace plat

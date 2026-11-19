@@ -7,6 +7,7 @@ What it serves, and why each piece exists:
     /api/health           catalog identity + counts, for the client's probe
     /api/catalog          the versioned catalog (JSON, ETag/304)
     /api/manifest/startup the startup group as a per-asset manifest
+    /api/manifest/story   the story group for the screens between story battles (#101)
     /api/manifest/match   the match group for a confirmed stage + fighters + weapons
     /api/asset/<id>       one catalogued asset, ETag from its sha256, gzip when it helps
 
@@ -57,7 +58,8 @@ installation, prepared once.</p>
 <p><a style="color:#8cf" href="/client/daybreak.html?delivery=1">Start the client</a></p>
 <p>Catalog: <a style="color:#8cf" href="/api/catalog">/api/catalog</a> ·
 health: <a style="color:#8cf" href="/api/health">/api/health</a> ·
-startup manifest: <a style="color:#8cf" href="/api/manifest/startup">/api/manifest/startup</a></p>
+startup manifest: <a style="color:#8cf" href="/api/manifest/startup">/api/manifest/startup</a> ·
+story manifest: <a style="color:#8cf" href="/api/manifest/story">/api/manifest/story</a></p>
 <p id="status">checking…</p>
 <script>
 fetch('/api/health').then(r => r.json()).then(h => {
@@ -181,6 +183,8 @@ class Handler(BaseHTTPRequestHandler):
             self._catalog()
         elif route == "/api/manifest/startup":
             self._manifest_startup()
+        elif route == "/api/manifest/story":
+            self._manifest_story()
         elif route == "/api/manifest/match":
             self._manifest_match(query)
         elif route.startswith("/api/asset/"):
@@ -256,6 +260,24 @@ class Handler(BaseHTTPRequestHandler):
         ids = catalog_mod.startup_asset_ids(state.catalog)
         text = catalog_mod.manifest_text(state.catalog, ids, "startup")
         etag = f'"startup-{state.catalog["catalogVersion"]}"'
+        if self.headers.get("If-None-Match") == etag:
+            self._not_modified(etag)
+            return
+        self._send(200, text.encode("utf-8"), "text/plain; charset=utf-8",
+                   {"ETag": etag, "Cache-Control": "no-cache"})
+
+    def _manifest_story(self):
+        state = self.state
+        if state.catalog is None:
+            self._error(409, "incompatible-install", state.error or "not prepared")
+            return
+        stale = state.install_is_stale()
+        if stale:
+            self._error(409, "incompatible-install", stale)
+            return
+        label, ids = catalog_mod.story_manifest(state.catalog)
+        text = catalog_mod.manifest_text(state.catalog, ids, label)
+        etag = f'"story-{state.catalog["catalogVersion"]}"'
         if self.headers.get("If-None-Match") == etag:
             self._not_modified(etag)
             return

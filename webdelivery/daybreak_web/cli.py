@@ -54,6 +54,8 @@ def _cmd_prepare(args) -> int:
     print(f"prepare: startup — {counts['startupAssets']} assets, "
           f"{counts['startupTransferBytes'] / 1e6:.1f} MB "
           f"(gate: {counts['gateAssets']} assets, {counts['gateTransferBytes'] / 1e6:.1f} MB)")
+    print(f"prepare: story — {counts['storyAssets']} assets, "
+          f"{counts['storyTransferBytes'] / 1e6:.1f} MB")
     print(f"prepare: catalog {catalog['catalogVersion'][:16]}… -> {out / 'catalog.json'}")
     return 0
 
@@ -123,6 +125,10 @@ def _cmd_measure(args) -> int:
     startup = [a for a in catalog["assets"] if a["group"] == groups.STARTUP]
     raw, transfer, gz = totals(startup)
     print(f"\nstartup group\t{len(startup)}\t{raw / 1e6:.2f}\t{transfer / 1e6:.2f}\t"
+          f"{transfer / raw if raw else 1:.3f}\t{gz}")
+    story = [a for a in catalog["assets"] if a["group"] == groups.STORY]
+    raw, transfer, gz = totals(story)
+    print(f"story group\t{len(story)}\t{raw / 1e6:.2f}\t{transfer / 1e6:.2f}\t"
           f"{transfer / raw if raw else 1:.3f}\t{gz}")
     for match in args.match or []:
         # Fields are separated by '/', not ':', because a slot spec carries its own

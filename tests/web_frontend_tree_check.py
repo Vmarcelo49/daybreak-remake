@@ -11,6 +11,11 @@ Issue #88 is the failure this guards: the round's end reads a victory script and
 art, and neither was in any group, so a delivered match died on an uncaught
 "C++ exception" the moment the result screen opened.
 
+Issue #101 is the same class one screen earlier: story mode reads team-select art, dialogue
+art and scripts that neither group carries. The second half of this check rebuilds the tree
+with the story group and runs `--screen=storyteam` inside it. That is a tier-4 asset-read
+check, not a browser story run: no scripted story flow has been verified in a browser.
+
     usage: web_frontend_tree_check.py <daybreak binary> <install> <prepared tree> [--frames N]
 
 Exit 77 (skip) without a prepared tree: `python3 -m daybreak_web prepare` makes one.
@@ -38,11 +43,16 @@ MOVE_RE = re.compile(r"^\[moves\] fighter \d \(.+?\): data/(\w+)/", re.M)
 ITEM_RE = re.compile(r"^\[weapons\] fighter \d .+?: item (\d+)", re.M)
 
 
-def run(binary, cwd, script, frames, out, install=None):
-    """One headless front-end run; returns (exit code, output)."""
+def run(binary, cwd, script, frames, out, install=None, screen="title"):
+    """One headless front-end run; returns (exit code, output).
+
+    A story screen takes no input script: it reads its art and scripts in its constructor,
+    which is exactly the read the story group has to satisfy (issue #101).
+    """
     command = [str(binary), "--headless", "--no-audio", f"--out={out}",
-               "--screen=title", "--local-players=1", f"--script={script}",
-               f"--frames={frames}", "--size=1280x720"]
+               f"--screen={screen}", f"--frames={frames}", "--size=1280x720"]
+    if script is not None:
+        command.extend(("--local-players=1", f"--script={script}"))
     if install is not None:
         command.append(f"--install={install}")
     env = dict(os.environ)
@@ -134,6 +144,26 @@ def main():
         if bad or code != 0 or "RESULT: ok" not in output or not quoted:
             print(output[-2000:])
             return 1
+
+        # 4. The story screens between battles (issue #101): the browser fetches the fixed
+        #    story group when story mode is chosen. Build that tree and run the team-select
+        #    screen with no --install. Without the group this dies on data/teamselect/t09.cnv.
+        story_ids = groups.story_asset_ids(assets)
+        story_tree = tmp / "story-tree"
+        build_tree(story_tree, prepared, sorted(set(startup) | set(story_ids)))
+        code, output = run(binary, story_tree, None, 60, tmp / "story.ppm",
+                           screen="storyteam")
+        bad = [line for line in output.splitlines()
+               if re.search(r"Asset not found|in no open bundle|cannot read", line)]
+        reached = "[menu] scene: story team" in output
+        if bad or code != 0 or not reached:
+            print("story tree: exit %d, scene read %s" %
+                  (code, "yes" if reached else "no"))
+            for line in bad[:10]:
+                print("  " + line)
+            print(output[-2000:])
+            return 1
+        print("story tree: exit %d, %d story assets, scene read" % (code, len(story_ids)))
     print("web_frontend_tree_check: ok")
     return 0
 

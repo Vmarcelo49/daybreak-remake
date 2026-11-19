@@ -281,6 +281,9 @@ def prepare(install_dir: Path, out_dir: Path, *, includes: Sequence[str] = (),
             "startupAssets": sum(1 for a in assets if a["group"] == groups.STARTUP),
             "startupTransferBytes": sum(
                 (a["gzipSize"] or a["size"]) for a in assets if a["group"] == groups.STARTUP),
+            "storyAssets": sum(1 for a in assets if a["group"] == groups.STORY),
+            "storyTransferBytes": sum(
+                (a["gzipSize"] or a["size"]) for a in assets if a["group"] == groups.STORY),
             "gateAssets": sum(1 for a in assets if groups.is_gate(a["id"])),
             "gateTransferBytes": sum(
                 (a["gzipSize"] or a["size"]) for a in assets if groups.is_gate(a["id"])),
@@ -415,6 +418,11 @@ def manifest_text(catalog: dict, asset_ids: Sequence[str], label: str) -> str:
 
 def startup_asset_ids(catalog: dict) -> list[str]:
     return sorted(a["id"] for a in catalog["assets"] if a["group"] == groups.STARTUP)
+
+
+def story_manifest(catalog: dict) -> tuple[str, list[str]]:
+    """The fixed story group (issue #101); no per-run arguments, unlike a match."""
+    return "story", groups.story_asset_ids(catalog["assets"])
 
 
 def match_manifest(catalog: dict, stage: str, slots: Sequence[str],

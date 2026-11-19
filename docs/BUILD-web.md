@@ -207,6 +207,20 @@ optional startup assets (the movie, BGM) keep loading from `SDL_AppIterate`, and
 front-end match requests its group when the VS screen appears and waits for it in
 `enterFrontendBattle`.
 
+Story mode has a third group, `/api/manifest/story`, carrying `data/teamselect/`,
+`data/talk/` and the story scripts under `data/scenario/` (issue #101). The victory
+scripts in `data/scenario/win/` stay in the match group, where #88 put them, so a story
+battle does not fetch them twice. The client requests the story group when the prologue
+is built — the title's first row — so its measured ~106 MB (16.6 MB team select, 89.7 MB
+dialogue art, 0.15 MB scripts) transfers during the movie rather than on the title or on
+every match. It waits before constructing the team-select and dialogue screens, which
+read those files in their constructors; direct `--screen=storyteam` / `--screen=storyadv`
+captures request the group on entry. Adding the group changes
+`groups.rules_fingerprint()`, so a prepared catalogue made with the old grouping is
+rebuilt instead of served stale. This is delivery only: **no scripted story flow has been
+verified in a browser** (issues #58-#60). `tests/web_frontend_tree_check.py` checks the
+asset reads headlessly inside the tree a browser would hold (startup + match + story).
+
 ## Local asset preload for renderer verification
 
 The ordinary web build has no game data. For a local check, mount a small subset

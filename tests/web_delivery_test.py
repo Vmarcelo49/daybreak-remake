@@ -15,7 +15,7 @@ data, no network beyond 127.0.0.1):
   2. catalog — per-asset sha256/size, the group classification, and the transfer
      number a client would actually pay.
   3. verify — a tampered prepared file is reported.
-  4. the HTTP surface — health, catalog with ETag/304, the startup and match
+  4. the HTTP surface — health, catalog with ETag/304, the startup, story and match
      manifests, one asset with its ETag and gzip negotiation, and the error
      cases: unknown asset, traversal attempt, and a server with no catalog at all
      (the incompatible-install answer).
@@ -90,7 +90,12 @@ PLAN = {
                        ("data/rena/00.X", b"rena-body")],
     "daybreak00.dat": [("data/object/P01.cnv", b"hud-00"),
                        ("data/select/pbg00.cnv", b"select-bg"),
-                       ("movie/op.mpg", b"opening-movie-bytes")],
+                       ("movie/op.mpg", b"opening-movie-bytes"),
+                       ("data/teamselect/bg00.cnv", b"story-select-bg"),
+                       ("data/talk/window.cnv", b"dialogue-window"),
+                       ("data/scenario/D01-0.txt", b"dialogue-script"),
+                       ("data/scenario/team00.dat", b"team-fights"),
+                       ("data/scenario/win/01.txt", b"victory-script")],
     "daybreak05.dat": [("data/sysse/000.cnv", b"system-se")],
     "daybreak02.dat": [("data/voice/entry/rena_B01.cnv", b"voice-line")],
     "daybreak06.dat": [("data/bullet/081/00.X", b"weapon-model")],
@@ -180,6 +185,17 @@ def test_prepare(install: Path, out: Path) -> dict:
     check(next(a for a in catalog["assets"] if a["id"] == "movie/op.mpg")["group"] ==
           groups.STARTUP, "the opening movie is a startup asset")
 
+    by_id = {a["id"]: a for a in catalog["assets"]}
+    for asset_id in ("data/teamselect/bg00.cnv", "data/talk/window.cnv",
+                     "data/scenario/D01-0.txt", "data/scenario/team00.dat"):
+        check(by_id[asset_id]["group"] == groups.STORY,
+              f"{asset_id} is a story-screen asset (issue #101)")
+    check(by_id["data/scenario/win/01.txt"]["group"] == groups.OTHER,
+          "victory scripts stay in the match group, not the story group")
+    check(catalog["counts"]["storyAssets"] == 4 and
+          catalog["counts"]["storyTransferBytes"] > 0,
+          "the catalog must report the story group's size")
+
     # The prepared tree is derived from a game install: it must be self-ignoring
     # wherever the host put it.
     check((out / ".gitignore").read_text().strip() == "*",
@@ -191,6 +207,14 @@ def test_prepare(install: Path, out: Path) -> dict:
     stored = json.loads((out / "catalog.json").read_text())
     check(stored["prepare"]["rules"] == groups.rules_fingerprint(),
           "the catalog must record the grouping rules it was built with")
+    rules_before = groups.rules_fingerprint()
+    saved_story = groups.STORY_PREFIXES
+    try:
+        groups.STORY_PREFIXES = ("data/somewhere-else/",)
+        check(groups.rules_fingerprint() != rules_before,
+              "the story prefixes must be part of the rules fingerprint")
+    finally:
+        groups.STORY_PREFIXES = saved_story
     stored["prepare"]["rules"] = "stale-rules"
     (out / "catalog.json").write_text(json.dumps(stored))
     catalog_stale, stats_stale = catalog_mod.prepare(install, out)
@@ -253,7 +277,23 @@ def test_manifests(catalog: dict) -> None:
     check("data/bullet/081/00.X" in match_ids, "the match manifest must carry the weapon")
     check("data/title/logo.cnv" not in match_ids,
           "the match manifest must not re-list startup art")
-    print(f"  manifests: startup={len(ids)} assets, {label} -> {len(match_ids)} assets")
+
+    story_label, story_ids = catalog_mod.story_manifest(catalog)
+    check(story_label == "story" and "data/teamselect/bg00.cnv" in story_ids and
+          "data/talk/window.cnv" in story_ids and "data/scenario/D01-0.txt" in story_ids and
+          "data/scenario/team00.dat" in story_ids,
+          "the story manifest must carry team-select art, dialogue art and scripts")
+    check("data/scenario/win/01.txt" not in story_ids,
+          "the story manifest must not repeat the match group's victory scripts")
+    check("data/title/logo.cnv" not in story_ids,
+          "the story manifest must not re-list startup art")
+    story_text = catalog_mod.manifest_text(catalog, story_ids, story_label)
+    check("group=story" in story_text and
+          all(line.split("\t")[3] == "0" for line in story_text.splitlines()
+              if line and not line.startswith("#") and "=" not in line.split("\t")[0]),
+          "story assets are fetched on demand, never gated before the title")
+    print(f"  manifests: startup={len(ids)} assets, story={len(story_ids)} assets, "
+          f"{label} -> {len(match_ids)} assets")
 
 
 def test_http(install: Path, out: Path, catalog: dict) -> None:
@@ -275,6 +315,14 @@ def test_http(install: Path, out: Path, catalog: dict) -> None:
         status, _, body = client.get("/api/manifest/startup")
         check(status == 200 and b"movie/op.mpg" in body and b"data/stage21/00.X" not in body,
               "the startup manifest must be the startup group")
+
+        status, headers, body = client.get("/api/manifest/story")
+        check(status == 200 and b"data/teamselect/bg00.cnv" in body and
+              b"data/scenario/win/01.txt" not in body,
+              "the story manifest must be the story group, without victory scripts")
+        check(headers.get("ETag") is not None, "the story manifest must carry an ETag")
+        status, _, _ = client.get("/api/manifest/story", {"If-None-Match": headers["ETag"]})
+        check(status == 304, "the story manifest's ETag must answer 304")
 
         status, _, body = client.get("/api/manifest/match?stage=stage21&slot=rena:0&slot=mion:0"
                                      "&weapon=081")

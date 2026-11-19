@@ -7,7 +7,9 @@
 > not outstanding work. Current routes and browser execution limits are in
 > [`BUILD-web.md`](BUILD-web.md). The old `?pack=` flow remains only as a local
 > verification rig: production uses `?delivery=` and per-asset requests at the
-> install-relative paths expected by the frontend (`data/...`).
+> install-relative paths expected by the frontend (`data/...`). A third, story-only
+> group was added for issue #101 (§3); it is a delivery grouping, not a claim that a
+> scripted story flow runs in a browser.
 
 ## Original goal (design record)
 
@@ -15,7 +17,8 @@ The steps below are the original proposal, retained as provenance for issue #4;
 they are not a list of unimplemented work. Current delivery behavior and the
 measurements against it are summarized in “Where this plan was stale” and
 “Verified end to end.” The current 1v1/2v2 frontend requests all selected
-participants, weapons, and stage resources at the VS readiness barrier.
+participants, weapons, and stage resources at the VS readiness barrier; story mode has
+its own group, requested when the story path is chosen (§3).
 
 A host supplies their own Higurashi Daybreak installation to a Dockerized web
 server. The server prepares the game data once, then serves the web client and
@@ -73,6 +76,42 @@ The VS transition is a readiness barrier: keep its animation or show progress
 while assets download, verify, decode, and upload. Do not start the battle
 until every required resource is ready. The existing 109-update transition is
 not a fixed network timeout; it may need to wait longer on a slow connection.
+
+### 3. Story group at the story-mode choice (issue #101)
+
+The two groups above cover the title, a versus match and its result, but not the screens
+*between* story battles. The team select reads `data/teamselect/`
+(`screen_story_team.cpp:58-73`), the dialogue screen reads `data/talk/`
+(`screen_story.cpp:74`), and the story ladder reads `D%02d-%d.txt` scripts
+(`story_ladder.cpp:22`) and `team%02d.dat` (`screen_story.cpp:281`). None of those paths
+was in any group, so a delivered run that chose story died on the first one with
+`data/teamselect/t09.cnv is in no open bundle and on no filesystem path`. Story battles
+themselves were already covered: they go through the match group repaired by #88.
+
+The fix is a third group with its own manifest, `/api/manifest/story`, requested when
+story mode is chosen. The title's first row enters `ScreenId::Prologue`
+(`screen_title.h`), so the request goes out as that screen is built and the transfer
+overlaps the prologue movie; it never taxes the title screen or a versus match. The
+barrier before `StoryTeam`/`StoryAdv` is constructed is the story counterpart of the
+VS barrier. A direct `--screen=storyteam`/`--screen=storyadv` capture skips the prologue,
+so it requests the group on entry instead.
+
+Measured on the 2026-10 install: `data/teamselect/` 15 files / 16.6 MB, `data/talk/` 76
+files / 89.7 MB, and the non-victory part of `data/scenario/` 130 files / 0.15 MB — about
+106.5 MB in total, nearly all on the wire (the art is already-compressed `.cnv`). The
+89.7 MB is shared dialogue art: a per-team split cannot reduce it without parsing which
+portraits each team's scripts use, which is story logic and out of scope. Per-team would
+save at most ~1.7 MB of art and ~15 KB of scripts per selection while adding another
+handshake and failure state, so one fixed group is the honest shape. `data/scenario/win/`
+stays in the match group — story battles arrive through that group, and their victory
+scripts must not be fetched twice.
+
+Adding the group changes `groups.rules_fingerprint()`, which a prepared catalog records;
+a catalog prepared under the old rules is rebuilt rather than silently serving the old
+grouping — the same invalidation #88 used. These paths are a PORT DECISION derived from
+the loaders, not recovered original behaviour. **Story mode running in a browser remains
+unverified** (issues #58-#60): this group only supplies files. The check is tier-4 — the
+same reads inside the tree a browser would hold, run headlessly with no install.
 
 ## Original implementation plan (completed; retained as dated design record)
 
@@ -285,6 +324,13 @@ measurement or the code that decided it.
    (`webAssetCaseVariants`), and the host test pins them. This is a bounded set, not
    the case-equivalence class; resolving case-insensitively at lookup time is the
    general fix and is not implemented.
+
+8. **The plan's two groups left the story screens empty (issue #101).** The gap is one
+   screen earlier than #88: title row 0 is story, and the team select and dialogue screens
+   read directories neither startup nor match carried. The group, its trigger, its measured
+   cost and the reason a per-team split was rejected are in §3 above. As with #88, the
+   regression check is `tests/web_frontend_tree_check.py`, now extended to build the
+   story tree and run `--screen=storyteam` in it; a browser story flow is not claimed.
 
 ## Verified end to end (2026-10-06; dated software-WebGPU evidence)
 

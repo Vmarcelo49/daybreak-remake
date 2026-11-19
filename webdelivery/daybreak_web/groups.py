@@ -1,9 +1,9 @@
-"""Loading groups: what the front end needs, versus what a match needs.
+"""Loading groups: the front end, a confirmed match, and the story screens between battles.
 
 PORT DECISION, derived from the loaders rather than invented. The group lists in
-``docs/WEB-DELIVERY-PLAN.md`` ("startup group" / "match group at the VS
-transition") are expressed here as prefix and name rules whose provenance is the
-code that actually opens the files:
+``docs/WEB-DELIVERY-PLAN.md`` ("startup group", "match group at the VS
+transition" and "story group at the story-mode choice") are expressed here as
+prefix and name rules whose provenance is the code that actually opens the files:
 
   * The front end's own literals — ``data/title/``, ``data/select/``,
     ``data/vs/``, ``data/object/`` (shared HUD art, including P01.cnv),
@@ -19,6 +19,9 @@ code that actually opens the files:
     name and dress the menu, and the same files are the weapon's data at match
     time. It is small and shared, so it loads with the front end and the match
     needs no second copy.
+  * The story screens' own paths (``data/teamselect/``, ``data/talk/`` and the
+    story files under ``data/scenario/``) form the fixed story group (issue #101).
+    Its prefix table is defined below, next to the code that reads those files.
 
 Everything not matched by a rule is ``other``: it is fetched on demand and is
 never part of a group manifest. That is the safe default — a name nobody
@@ -32,6 +35,7 @@ from typing import Iterable, Sequence
 #: Group names in the catalog.
 STARTUP = "startup"
 MATCH = "match"
+STORY = "story"
 OTHER = "other"
 
 #: Loaded to reach and operate the front end (plan §"Startup group").
@@ -71,6 +75,19 @@ MATCH_SHARED_PREFIXES: tuple[str, ...] = ("data/effect/", "data/aura/", "data/bu
                                           "data/scenario/win/", "data/win/")
 
 
+#: The screens BETWEEN story battles (issue #101): the title's story row runs the prologue,
+#: then the team select opens ``data/teamselect/`` (screen_story_team.cpp:58-73), and the
+#: dialogue screen opens ``data/talk/`` (screen_story.cpp:74) plus the ``D%02d-%d.txt``
+#: scripts (story_ladder.cpp:22) and ``team%02d.dat`` (screen_story.cpp:281). Measured on the
+#: 2026-10 install: 16.6 MB + 89.7 MB + 0.15 MB. That is too much to hang on the title or on
+#: every match, so it is its own group, requested when story mode is chosen. The 89.7 MB is
+#: shared dialogue art that a per-team split cannot reduce without parsing story scripts.
+#: Story *battles* go through the match group, including the victory scripts, so
+#: ``data/scenario/win/`` stays in MATCH and is omitted here rather than fetched twice.
+STORY_PREFIXES: tuple[str, ...] = ("data/teamselect/", "data/talk/", "data/scenario/")
+STORY_EXCLUDED_PREFIXES: tuple[str, ...] = ("data/scenario/win/",)
+
+
 def rules_fingerprint() -> str:
     """Identity of the rule tables above.
 
@@ -80,17 +97,30 @@ def rules_fingerprint() -> str:
     """
     import hashlib
     blob = "\n".join(list(STARTUP_PREFIXES) + list(STARTUP_NAMES) +
-                     list(MATCH_SHARED_PREFIXES) + list(GATE_EXCLUDED_PREFIXES))
+                     list(MATCH_SHARED_PREFIXES) + list(GATE_EXCLUDED_PREFIXES) +
+                     list(STORY_PREFIXES) + list(STORY_EXCLUDED_PREFIXES))
     return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
 
+def is_story(asset_id: str) -> bool:
+    """True for a story-screen asset. Match-owned victory scripts are not story assets."""
+    return (asset_id.startswith(STORY_PREFIXES) and
+            not asset_id.startswith(STORY_EXCLUDED_PREFIXES))
+
+
 def classify(asset_id: str) -> str:
-    """Return ``startup``, ``match`` or ``other`` for one logical asset id."""
+    """Return ``startup``, ``story`` or ``other`` for one logical asset id.
+
+    Match assets are not classified here: their set depends on the confirmed roster
+    and is expanded by :func:`match_asset_ids` from the loaders' directory scopes.
+    """
     if asset_id in STARTUP_NAMES:
         return STARTUP
     for prefix in STARTUP_PREFIXES:
         if asset_id.startswith(prefix):
             return STARTUP
+    if is_story(asset_id):
+        return STORY
     return OTHER
 
 
@@ -166,3 +196,12 @@ def match_asset_ids(catalog_assets: Iterable[dict], stage: str, slots: Sequence[
         if asset_id.lower().startswith(prefixes):
             ids.append(asset_id)
     return sorted(set(ids))
+
+
+def story_asset_ids(catalog_assets: Iterable[dict]) -> list[str]:
+    """Catalog ids for the story group, sorted.
+
+    Derived from the rules rather than the catalog's recorded ``group`` field, so a
+    catalogue prepared under older rules cannot hide a newly classified asset.
+    """
+    return sorted({asset["id"] for asset in catalog_assets if is_story(asset["id"])})

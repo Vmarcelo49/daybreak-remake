@@ -64,6 +64,7 @@ duplicate groups differ in bytes), `--gzip auto|off`. `measure --match` takes
 | `GET /api/health` | Catalog version, asset count, prepared and transfer bytes. `503` when nothing is prepared. |
 | `GET /api/catalog` | The versioned catalog as JSON, with `ETag`/`304`. |
 | `GET /api/manifest/startup` | The startup group, one line per asset. |
+| `GET /api/manifest/story` | The fixed story group for the screens between battles (issue #101). |
 | `GET /api/manifest/match?stage=stage21&slot=rena:0&slot=mion:0&weapon=001` | The dependency set for a confirmed match. |
 | `GET /api/asset/<logical-id>` | One asset. `ETag` is its sha256, `Cache-Control: immutable`, gzip when the catalog has a compressed copy. |
 
@@ -88,11 +89,15 @@ many duplicate groups actually differ in bytes.
 ## Loading groups
 
 `startup` assets reach and operate the front end; `match` assets are the selected
-stage, fighters and weapons; everything else is `other` and is only ever fetched on
-demand. Within startup, the manifest marks **gate** assets — the ones the first usable
+stage, fighters and weapons; `story` assets are the fixed set of team-select, dialogue
+and script files the screens between story battles read (issue #101, ~106 MB, requested
+when story mode is chosen); everything else is `other` and is only ever fetched on
+demand. Victory scripts stay in `match`, so a story battle does not fetch them twice.
+Within startup, the manifest marks **gate** assets — the ones the first usable
 screen needs. The opening movie and BGM are fetched at startup but are not gate assets:
 the browser decodes the movie rather than wasm, and BGM is streamed, so neither may hold
-the front end back.
+the front end back. Adding a group changes `rules_fingerprint()`, which a prepared
+catalog records, so an old catalog is rebuilt rather than served with stale grouping.
 
 ## Compression
 

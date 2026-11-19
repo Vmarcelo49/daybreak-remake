@@ -957,6 +957,15 @@ static void requestWebMatchGroup(const std::string& stageDir,
                 stage.c_str(), slots.size(), weapons.size());
 }
 
+// Issue #101: the story screens between battles read team-select art, dialogue art and
+// scripts that neither group carries. There is no roster to expand here, so the server
+// needs no query arguments. A native run has no delivery client and is untouched.
+static void requestWebStoryGroup() {
+    plat::AssetClient& client = plat::assetClient();
+    if (!client.running() || !client.requestStory()) return;
+    std::printf("[delivery] story group requested\n");
+}
+
 // Issue #4 (web delivery): the same request for a standalone recipe. `--stage=`,
 // `--character=`/`--enemy=` and `--match` go straight to the battle with no VS
 // transition to hook, so the dependency set comes from the arguments instead — the
@@ -1627,6 +1636,31 @@ bool initScreens(App& app) {
             std::snprintf(stage, sizeof(stage), "stage%02d",
                           app.frontend.stage + app.frontend.variation * 10);
             requestWebMatchGroup(stage, slots, weaponIds);
+        }
+        // Issue #101: the title's story row enters the prologue (screen_title.h), which leads
+        // to the team select. Start the story group there so its ~106 MB transfers during the
+        // movie instead of on the title or in a versus match. A direct
+        // --screen=storyteam/storyadv capture skips the prologue, so request on entry too.
+        const bool storyScreen = sid == ui::ScreenId::Prologue ||
+                                 sid == ui::ScreenId::StoryTeam ||
+                                 sid == ui::ScreenId::StoryAdv;
+        if (storyScreen && plat::assetClient().running()) {
+            requestWebStoryGroup();
+            // StoryTeam and StoryAdv upload art and read scripts in their constructors, which
+            // run here: resolve the group before they are built, the same barrier shape
+            // enterFrontendBattle uses for a match.
+            if (sid != ui::ScreenId::Prologue) {
+                plat::AssetClient& client = plat::assetClient();
+                if (client.storyRequested()) {
+                    const bool ready = client.waitForStory();
+                    std::printf("[delivery] story group %s: %s\n", ready ? "ready" : "INCOMPLETE",
+                                client.storyProgress().line("story").c_str());
+                    if (!ready) {
+                        app.error = "story assets unavailable: " + client.error();
+                        return nullptr;
+                    }
+                }
+            }
         }
 #if !defined(__EMSCRIPTEN__)
         if (sid == ui::ScreenId::Update) {
