@@ -1,5 +1,10 @@
 # Spec: Substituição do FFmpeg pelo pl_mpeg no VideoPlayer
 
+> **Historical design spec, archived 2026-11-19 (issue #93).** Its "pending
+> implementation plan" status is stale: native movie playback was implemented, and
+> the `src/render/video_player.*` path it names no longer exists. Path moves are
+> mapped in `docs/PATHS.md`; this document is a record, not a work order.
+
 **Data:** 2026-07-15
 **Status:** Aprovado (pending implementation plan)
 **Biblioteca:** [phoboslab/pl_mpeg](https://github.com/phoboslab/pl_mpeg) — single-file C, MIT license

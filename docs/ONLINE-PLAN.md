@@ -1,8 +1,12 @@
-# Online plan
+# Online plan — implementation record
 
-The owner made online the priority on 2026-10-30. This is the plan for M6's online work, and it
-answers issue #3. Do the steps in order: each ends with something an agent can run and check, except
-where marked.
+The owner made online the priority on 2026-10-30. This document records the plan that built
+online play (issue #3) and the measurements taken with it. The numbered steps below are
+**history, not a work order**: steps 1–7 record completed implementation (the step 6 layout
+still awaits the owner's judgment), and step 8 is the owner's manual real-play check.
+Unbuilt ideas in "Later: the v2 lobby" are owner ideas, not assignments. Current
+bugs and work are tracked in GitHub issues; current architecture and status are in
+[`DIRECTION.md`](DIRECTION.md) and [`DEVELOPMENT.md`](../DEVELOPMENT.md).
 
 ## Decisions
 
@@ -84,7 +88,7 @@ are ignored, since an input delay and the first prediction also read as zeros.
 There are no acknowledgements: each side keeps resending its whole state until the other's state shows
 it arrived. The host picks the seed, and the selection screen decides everything else.
 
-## Steps
+## Steps (historical implementation record)
 
 ### 1. A battle that can rewind
 
@@ -320,7 +324,7 @@ changed address, host restart, server restart, expiry, host and join rate limits
 accepted and host refused, secret echo and wire layout, and the anti-amplification invariant. They
 do not exercise real routers, real NAT, the deployed service, or an on-path attacker.
 
-### 8. Real play (owner)
+### 8. Real play (owner's manual check, not an agent work order)
 
 Linux with Windows on real networks: 2 players, then 4, over LAN and internet. Check the feel at the
 default delay, wrong sounds after rollbacks, a dropped player, and whether punching works on real

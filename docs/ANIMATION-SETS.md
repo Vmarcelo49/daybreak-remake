@@ -5,8 +5,10 @@ historical candidate notes, **not successful live verification**. The user obser
 idle-looking aerial dash and the wrong-looking attack. Controlled debug observation
 subsequently reproduced airborne Run with no bound move, set0/fallback at tick114;
 move311/tag40 at tick115 did not establish visual identity. The user found tick121's
-early pose inconclusive. See [LIVE-DEBUG.md](LIVE-DEBUG.md) for the current evidence
-and remaining gates. The 300/311/current-Back contract is now scoped to Rena+0 only;
+early pose inconclusive. See [LIVE-DEBUG.md](LIVE-DEBUG.md) for the historical debug
+observations; that tool and its pilot gates were retired with the hand-written combat
+path. Current work is ordered by GitHub issues, not by those gates.
+The 300/311/current-Back observation was scoped to the retired Rena+0 pilot only;
 other combos retain their existing aerial340 binding, without a selector-fidelity claim.
 
 **Status:** the remake resolves source-supported states through the bound fighter's
@@ -15,8 +17,9 @@ gate. The bounded #31 candidate selects move 300 for ordinary jump attacks, 311 
 after air dash, and 330 for grounded dash attacks; each clip tag comes from the equipped
 character+weapon table. Rena's `FUN_00445ee0` admits 300 from jump rows 41/42, and the user has
 confirmed the original's horizontal slash and air-dash kick. The exact universal selector tree
-is still incomplete, so #31 remains open for manual confirmation and #66 retains the broader
-direction/cancel selectors. Move 340 remains bound for its separate contexts (329/333/44), not
+is still incomplete; the old #31 and #66 trackers were closed as superseded by the current
+plan, and their selector notes remain here as evidence. Move 340 remains bound for its separate
+contexts (329/333/44), not
 as the blanket ordinary-air choice. Projectile and TagOut selectors still report
 `anim_fallback()` rather than borrowing a guessed clip.
 Guard is not an unresolved selector at all: the source binds no move for a block, so the state

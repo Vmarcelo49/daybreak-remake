@@ -1,5 +1,10 @@
 # Animation-system work handoff — 2026-10-07
 
+> **Historical research handoff, not a work order.** It records what one 2026-10-07
+> investigation found and implemented; "remaining work" below is the state at that
+> time. Current animation work and bugs are on GitHub. The vendored reference core
+> in `src/battle/core/` is the only combat authority (see `docs/DIRECTION.md`).
+
 ## Update — urgent items 1–3 are now implemented (same day)
 
 The four urgent discoveries below were verified against the original and three of them are

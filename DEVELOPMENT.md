@@ -284,7 +284,8 @@ values and the camera all come from `src/battle/core/`.
 - `--script=<file>` drives P1 with the DX9 visual-suite format; without it P1 is live device
   input. `--script2=<file>` drives P2; without it P2 takes no input, which is what the DX9
   scene passes. The banked scripts are under `research/evidence/parity-baseline/scripts/`.
-- `--spawn` / `--spawn2` override the stage's `env.dat` spawns.
+- Spawns come from the stage's `env.dat`. The old `--spawn` / `--spawn2` overrides were removed
+  with the hand-written combat path and are no longer accepted by the binary.
 - `DAYBREAK_CAMINFO=1` prints the trace the banked DX9 logs hold, field for field, so
   `tests/compare_match_traces.py` can diff a run against
   `research/evidence/parity-baseline/logs/`.

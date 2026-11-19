@@ -729,10 +729,11 @@ NOT established, and previously overstated here:
   run is noted and adds nothing; the earlier sentence inferring a dirty baseline from it
   is withdrawn.
 
-Next step before any re-banking: reproduce the banked digest by matching the environment
-(recorded settings and build configuration), then attribute the difference with a proper
-bisect of the prior work — one variable at a time. Until then §3.1's digest must not be
-updated.
+Historical note, kept for provenance rather than as a work order: a re-banking would
+first have had to reproduce the banked digest by matching the environment (recorded
+settings and build configuration), then attribute the difference with a proper bisect
+of the prior work — one variable at a time, without updating §3.1's digest. The parity
+bank is now a frozen archive, so this document does not call for re-banking.
 
 ### 11.5 Native Linux remake captures (not original-game evidence)
 

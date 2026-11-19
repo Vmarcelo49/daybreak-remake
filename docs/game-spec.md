@@ -1,9 +1,11 @@
-# Higurashi Daybreak — game spec & build plan
+# Higurashi Daybreak — game spec
 
-> What the game is, how it plays, and in what order we rebuild it.
+> What the game is and how it plays. The old build order survives only in §4 as
+> a historical snapshot; it is not a work order.
 > Sources: original-game observation (owner), RE findings in
 > `docs/archive/reverse-engineering.md`, and the [Higurashi Daybreak Wiki](https://higurashidaybreak.fandom.com/wiki/Higurashi_Daybreak_Wiki).
-> Scope authority: `decisions.md` D6 (versus + LAN netplay are the focus).
+> D6 (`decisions.md`) was the 2026-10-01 scope anchor; current scope and status
+> are in [`DIRECTION.md`](DIRECTION.md) and [`AGENTS.md`](../AGENTS.md).
 
 ## 1. What the game is
 
@@ -30,8 +32,8 @@ Two teams of two fight in 3D stages modeled on series locations
   `collision_tama.x`.
 - **Boot flow**: the native foundation plays `movie/op.mpg` before the title
   and recovers the original held Enter/Alt skip. The Emscripten movie path is
-  still a deliberate browser-side stub; see `foundation/docs/MEDIA-INPUT.md` §3
-  and `foundation/docs/BUILD-web.md`.
+  still a deliberate browser-side stub; see `docs/MEDIA-INPUT.md` §3
+  and `docs/BUILD-web.md`.
   Menu text is Japanese; a community mod translates it:
   **Story · Versus · Netplay · Option · Controller · Exit**.
 - **Modes**: Story (preset teams, bracketed fights + movies), Versus
@@ -104,7 +106,7 @@ Options/controller setup are built only as far as versus needs them.
   revival and KO/down states round out the original's ~40 move ids. The
   "40+ animation states" are **not** a name table in the binary: every shipped
   `.X` names its sets `Anim-1`…`Anim-124` and the state→set mapping ships in
-  each character's `data/<char>/NN.dat` (see `foundation/docs/ANIMATION-SETS.md`).
+  each character's `data/<char>/NN.dat` (see `docs/ANIMATION-SETS.md`).
 
 ### 3.3 Camera
 
@@ -113,15 +115,14 @@ Always locked onto an enemy fighter. A **target button cycles** enemies;
 distance 289** offsets with the aim raised **138** units and sits **directly
 behind** the locked fighter (baseline orbit 0, not 45°), and spring-collides
 against `collision_camera.x` (fitted with 0.0 px residual —
-`foundation/src/gameplay/arena_camera.h:75-82`,
-`foundation/tests/arena_camera_test.cpp:604`). Projection is the original's
+`src/camera/arena_camera.h:75-82`,
+`tests/arena_camera_test.cpp:604`). Projection is the original's
 own: fov π/4, near 50, far 150000 from `0x6338ae`; the old 300/800 constants
 are a different projection's near/far offsets
-(`foundation/src/gameplay/arena_camera.h:110-112`), not a framing.
+(`src/camera/arena_camera.h:110-112`), not a framing.
 
 The **combat target is not the camera**: each fighter holds its own, from
-`foundation/src/gameplay/target_lock.h` (`FUN_00421e30`/`FUN_00421f30`'s
-`+0x304` and the `0xb4` ally hold), so two players can hold different targets
+the recovered `FUN_00421e30`/`FUN_00421f30` fields (`+0x304` and the `0xb4` ally hold; the old `target_lock.h` and its test were removed with the hand-written combat in M5, and the vendored core owns this state now), so two players can hold different targets
 while the camera follows one of them. Facing, shots and the melee victim read
 the lock; the camera's followed player is separate state.
 
@@ -153,7 +154,7 @@ the lock; the camera's followed player is separate state.
   `data/voice/<char>/<key>/%03d.wav` — they are not animation, aura or reload
   states. Animation is index-based: each rig names its sets `Anim-1`…`Anim-124`
   and the state→set mapping ships in each character's `data/<char>/NN.dat`
-  (see `foundation/docs/ANIMATION-SETS.md`). Tag/swap mechanics remain unresolved;
+  (see `docs/ANIMATION-SETS.md`). Tag/swap mechanics remain unresolved;
   those voice keys do not establish them.
 
 ### 3.5 Winning — the balloon
@@ -164,7 +165,7 @@ Each team has a **balloon** at the screen edge with its own **`LIMIT` readout**
 `FUN_00421930` @0x42194e-0x421955 and tests it in `FUN_00635d40`
 @0x6370dc-0x6370e3). Battle settings add a **per-team balloon-size handicap %**
 (40..200, step 20, default 100 — `FUN_0040acb0` @0x40af57-0x40afe2), and it IS
-the per-side LIMIT: the increment is not scaled by it (`gameplay/match_economy.h`,
+the per-side LIMIT: the increment is not scaled by it (`src/battle/match_economy.h`,
 `capacity(side)`/`limit()`).
 
 A KO credits the **victim's own team** with 20% plus an overkill term plus a
@@ -213,7 +214,7 @@ From the controller-setup capture (`docs/reference/controller-setup.webp`):
 
 1P = keyboard; P2–P4 = pads (buttons 1–8). The input layer is the foundation's
 **13-action** model (arrows + Z/X/C/A/S/D/Q/W,
-`foundation/src/input/input.h:19-33`), with the 1P scancodes pinned by
+`src/input/input.h:19-33`), with the 1P scancodes pinned by
 static_asserts (`input_sdl3.h:38`, `pin_tables.cpp:20-46`); P2–P4 pad layouts
 remain the unverified half. The original's internal 7-slot polling loop is
 deliberately not mirrored.
@@ -252,22 +253,24 @@ flags, never saves**. Full shot log: `docs/reference/README.md`.
 The table below records the ordered plan/status snapshot from the DX9-remake
 era; it is provenance, not the current project roadmap. The DX9 tree was deleted
 in the Phase 5 cutover (2026-10-02), and several statuses have since changed.
-For the current product and plan, use `DEVELOPMENT.md` and `docs/DIRECTION.md`.
+The table's **Work** column and the milestone cut below are part of that
+historical record: they assign no current work and impose no gate. For the
+current product and plan, use `DEVELOPMENT.md` and `docs/DIRECTION.md`.
 The historical RE findings are in `docs/archive/reverse-engineering.md`; the
 current camera implementation is in `src/camera/arena_camera.cpp`.
 
 | # | System | Now | Work |
 |---|---|---|---|
 | 1 | Melee + hit detection | ✅ weapon-move hit data wired | Damage and hitstun are read from character/weapon move phases where present; light 5 / heavy 12 / special 25 remain old port assumptions without selector/value evidence. **Remaining:** original input branches, FA/HA variants, LA/StepA inputs and per-character special behavior |
-| 2 | HP / KO / respawn / balloon | ✅ HP 100, KO, **airborne** respawn (`Fighter::respawn()`), Overkill +1/hit, per-team LIMIT, 20+bonus%/KO | Remaining: the KO move's own descent/recovery as the respawn clock (the port uses one 3 s KO clock — `match_economy.h` port rules), the random stage-bounds respawn point (the port keeps the spawn slot) and the between-rounds red-capacity creep (`FUN_00635d40` case 4 @0x63691c-0x63692b, multi-round only). The 3-beat result sequence and the loop back to selection landed with issues #13/#20 and are verified through repeated rounds by `foundation/docs/RELEASE-CHECKLIST.md` |
+| 2 | HP / KO / respawn / balloon | ✅ HP 100, KO, **airborne** respawn (`Fighter::respawn()`), Overkill +1/hit, per-team LIMIT, 20+bonus%/KO | Remaining: the KO move's own descent/recovery as the respawn clock (the port uses one 3 s KO clock — `match_economy.h` port rules), the random stage-bounds respawn point (the port keeps the spawn slot) and the between-rounds red-capacity creep (`FUN_00635d40` case 4 @0x63691c-0x63692b, multi-round only). The 3-beat result sequence and the loop back to selection landed with issues #13/#20 and are verified through repeated rounds by `docs/RELEASE-CHECKLIST.md` |
 | 3 | Projectiles + charge | ✅ port tiers, fractional stocks, reload gate, tama channel, sparks | Tap/yellow/red tiers are port rules; `shotA/B/C` labels have no established tier/animation mapping. **Fractional ammo stocks** (MAIN 6, CHARGE 2, fill = recharge readout), reload gating, `collision_tama.x` channel, hit sparks |
 | 4 | Movement full set | ✅ dash/backdash/sidestep + air dash, hold-jump flight | Double-tap dash (8-way + air), hold-jump fly timer, dash+attack and aerial variants |
 | 5 | Stamina + limit gauge | ✅ bar + 3 modes; aura/EX are placeholders | **Contextual** stamina drain + fast refill. Hypermode bar per §3.4: fill by damage dealt/taken per mode, S to activate (Kakera auto on death), 15/25 s durations, damage ×0.75/×1.5 (Oyashiro), ×0.20/×1.5 (Kakera), stun rules, Friendship recharge boost. Remaining: real aura VFX (cube stand-in), per-character EX content (move 503 is a conditional EX follow-up; its animation/string-key binding is unresolved), ゲージ増加量 battle setting |
 | 6 | Teams and partner control | ✅ 2v2 slots (issues #12/#13): four selection panels, four views, per-view cameras/HUDs, four-fighter VS/results; ❌ partner control | The tag/swap mechanic stays unresolved: the tag voice keys alone do not establish it (see §3.2 and `ROADMAP-PENDING.md` C1), so the port has no fighter swap |
-| 7 | Overkill | ✅ downed-hit **+1/hit** on the port's 3 s KO clock (`match_economy.*`, issue #11) | The original ends the window when the KO move's descent/recovery ends (the port's clock is a documented port rule) and the gray-lock cutoff presentation is unmodelled |
+| 7 | Overkill | ✅ downed-hit **+1/hit** on the port's 3 s KO clock (`src/battle/match_economy.*`, issue #11) | The original ends the window when the KO move's descent/recovery ends (the port's clock is a documented port rule) and the gray-lock cutoff presentation is unmodelled |
 | 8 | Bots | ✅ recovered decision state (`gameplay/bot_brain.*`, issue #14): tactic cells, timers, approach/retreat, melee/shoot/guard/special choices; the old frame-modulo sparring policy is gone | Difficulty tiers for empty versus slots and any original decision branch the corpus does not carry remain open (`ROADMAP-PENDING.md`, "COM decision state and tactics") |
 | 9 | Split-screen | ✅ one view per human controller (issue #12): the recovered 1/2/4-cell layouts (`FUN_006396f0.c:63-66`, :82-96; the old 256×448 reading came from the options-screen ctor `FUN_00402890`, not the split path), viewport + scissor per view, per-player ArenaCamera, per-view HUD | A human-less cell keeps the clear colour (port policy for the unidentified placeholder); `--local-players=N` is the device-free verification instrument |
-| 10 | Versus frontend | ✅ title, select, stage/settings, VS, battle, result and the loop back to select (`foundation/src/ui/screen_*`; issues #12/#13/#19/#20). Team → char → weapon/costume → hypermode → controller → ready → stage/settings → VS sting → result sequence → select, verified end to end on real assets by `foundation/docs/RELEASE-CHECKLIST.md` | Exact original navigation parity (cursor paths/one-frame quirks) remains open; this snapshot predates row 1 (character shadows) becoming live and should not be used as current renderer-options status. Punishment/titles are session flags, as the original |
+| 10 | Versus frontend | ✅ title, select, stage/settings, VS, battle, result and the loop back to select (`src/frontend/screen_*`; issues #12/#13/#19/#20). Team → char → weapon/costume → hypermode → controller → ready → stage/settings → VS sting → result sequence → select, verified end to end on real assets by `docs/RELEASE-CHECKLIST.md` | Exact original navigation parity (cursor paths/one-frame quirks) remains open; this snapshot predates row 1 (character shadows) becoming live and should not be used as current renderer-options status. Punishment/titles are session flags, as the original |
 | 11 | LAN netplay | ❌ (DirectPlay 8 documented, not portable) | Replace, don't port: delay-based (original uses input delay ~3) lockstep over UDP, default port **37564**, `addresslist.txt` server list, lobby (8 max, team/member lock, chat flag, host-start), char/stage sync, desync hash |
 | 12 | Options / controller setup | ✅ implemented (issue #19): fullscreen, native resolution, four volume sliders, keyboard/gamepad rebinding, all persisted in `$XDG_CONFIG_HOME/daybreak-decomp/settings.conf` | The port has live toon and character-shadow toggles; texture-resolution selection (row 2) and browser-side persistence (IndexedDB/OPFS) remain open. The original's 11 functions / 7 polling slots are deliberately not mirrored |
 | 13 | Story mode | ❌ (story scenes and ladder are not implemented; native opening-movie playback is separate and implemented, while the Emscripten movie path remains a browser-side stub) | Deferred: prologue/staffroll story flow + preset-team ladder, no branching/saves |
@@ -278,8 +281,12 @@ current camera implementation is in `src/camera/arena_camera.cpp`.
 - **Netplay-ready**: +11 (LAN lobby → synced versus).
 - **Complete enough**: +12, story playback (13).
 
-## 5. Non-goals (reaffirmed)
+## 5. Non-goals — historical record
 
-Online matchmaking beyond LAN, story branching/saves, localization
-(Japanese UI stays), replays/training/survival extras, graphics settings
-(fixed 800×600), mod support, anti-cheat.
+The 2026-10-01 non-goal list was: online matchmaking beyond LAN, story
+branching/saves, localization (Japanese UI stays), replays/training/survival
+extras, graphics settings (fixed 800×600), mod support and anti-cheat. Several
+items were later reversed by owner work: online play with room codes exists,
+menus and HUD switch language, and native resolution is selectable. This
+section records the original scope; it is not a current ban. Current scope is
+set by the owner through GitHub issues and `DIRECTION.md`.

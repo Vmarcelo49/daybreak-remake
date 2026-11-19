@@ -1,7 +1,7 @@
 # shaders — D3DX effects extracted from DaybreakDX.exe
 
 Relocated verbatim from the retired `mvp/shaders/` tree (see
-[`../../docs/decisions.md`](../../docs/decisions.md) D1). `mvp/` was deleted.
+[`../../../../docs/decisions.md`](../../../../docs/decisions.md) D1). `mvp/` was deleted.
 
 10 compiled D3DX effect blobs loaded by the original executable's
 `CreateAllShaders` (`FUN_0064ff80`). All start with the effect signature

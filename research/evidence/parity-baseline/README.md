@@ -92,6 +92,6 @@ These are limits of the old binary/CLI, not claims about the current product:
     run; host gamepad state was neutralized for captures.
 
 A missing capture is not evidence of a match. For current product status use
-[`remake/foundation/docs/RELEASE-CHECKLIST.md`](../../foundation/docs/RELEASE-CHECKLIST.md);
+[`docs/RELEASE-CHECKLIST.md`](../../../docs/RELEASE-CHECKLIST.md);
 for current animation selectors use
-[`remake/foundation/docs/ANIMATION-SETS.md`](../../foundation/docs/ANIMATION-SETS.md).
+[`docs/ANIMATION-SETS.md`](../../../docs/ANIMATION-SETS.md).

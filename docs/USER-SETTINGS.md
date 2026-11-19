@@ -99,7 +99,7 @@ pad2_guid =
   stage's receiver term subtracts the recovered 0.3 from its albedo where its own light
   depth is behind the map. Off is the shipped default and the state every banked capture
   was made in — a capture hashes exactly as it did before the pass existed — and the row
-  flips it live through the same per-frame path as `toon`. `foundation/docs/SHADOWS.md`
+  flips it live through the same per-frame path as `toon`. `docs/SHADOWS.md`
   carries the recovery.
 * `[render] toon` is the Options row 0 toggle: on means the character and weapon draws use
   the original's toon technique — an outline hull pass plus the effect's own

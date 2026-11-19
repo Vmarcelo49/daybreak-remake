@@ -108,3 +108,15 @@ current. Current documents use the new path; the historical work logs in
 | `docs/SCOREBOARD.md` | `docs/archive/SCOREBOARD.md` |
 | `docs/EXCEPTIONS.md` | `docs/archive/EXCEPTIONS.md` |
 | `docs/QUESTIONS.md` (historical entries) | `docs/archive/QUESTIONS.md`; current questions remain at `docs/QUESTIONS.md` |
+
+## Documents archived for issue #93 (2026-11-19)
+
+These records describe closed pilot/milestone work or a design whose implementation
+landed. They keep their original text plus an archive banner; current documents do
+not link to them as work orders.
+
+| Before | After |
+|---|---|
+| `docs/reports/knockdown-getup-2026-10-29.md` | `docs/archive/knockdown-getup-2026-10-29.md` |
+| `docs/reports/m2-trust-2026-10-30.md` | `docs/archive/m2-trust-2026-10-30.md` |
+| `docs/superpowers/specs/2026-07-15-pl-mpeg-video-player-design.md` | `docs/archive/2026-07-15-pl-mpeg-video-player-design.md` |

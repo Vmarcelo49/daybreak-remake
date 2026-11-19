@@ -322,8 +322,8 @@ draws the atlas-backed corner and per-fighter HUD through `src/hud/hud_atlas.*` 
    `FUN_00655830(x, y, local_30, local_28)` with `local_30 ∈ {0,2}` and `local_28 ∈ {0,1,2}`;
    the sprite is loaded into ECX earlier in the function and was not captured. The bracket/arrow
    cells are known (§3 P03) but which cell index is the red bracket is inferred from the atlas,
-   not from the code. **Next step:** disassemble 0x00643230 and capture the `mov ecx,` before each
-   `call 0x655830`.
+   not from the code. Unresolved evidence question: a separately authorised original-binary
+   read of 0x00643230 would capture the `mov ecx,` before each `call 0x655830`.
 7. **The `com` bar's source sprite and its `com` word.** The word `com` is art in
    `system.cnv` (the `1P 2P 3P 4P com` row, ~(396,297)-(435,310) in P01 is the blue variant);
    the print's `com` is white/pale. Which of the two sheets the battle path uses is unresolved.

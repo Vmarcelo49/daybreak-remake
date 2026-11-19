@@ -1,5 +1,10 @@
 # Knockdown, tech-roll and get-up system — recovered map and port gap (2026-10-29)
 
+> **Historical report, archived 2026-11-19 (issue #93).** It was written for the
+> closed Rena+0 pilot and its "nothing here is implemented yet" status is no longer
+> current. The vendored reference core in `src/battle/core/` is the combat authority.
+> Path moves are mapped in `docs/PATHS.md`.
+
 Scope: the shared post-hit ground system (every combo), as it bears on the pilot's
 "Rena+0 is perfect" claim. Research only; nothing here is implemented yet.
 

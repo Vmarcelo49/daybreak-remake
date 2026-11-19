@@ -1,6 +1,6 @@
 # Local live animation debugger (work in progress)
 
-> **Historical since M5 (2026-10-30).** The tool ran on the deleted hand-written combat and is gone; the last revision with it is `e9347627`. What it observed about the original stays valid evidence.
+> **Historical since M5 (2026-10-30).** The tool ran on the deleted hand-written combat and is gone; the last revision with it is `e9347627`. What it observed about the original stays valid evidence. The "next candidate" notes below were pilot-era work orders and assign nothing now; current work is on GitHub.
 
 The host owns this port-side development instrument. It does not attach the DSH
 GUI to the game. Enable the Linux development build with

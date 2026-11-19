@@ -1,5 +1,8 @@
 # Coordinator status — issue batch of 2026-10-06
 
+> **Historical record, not a work order.** This is a frozen snapshot of one closed
+> coordinator session: its dispatch waves, branches and per-issue states are what
+> happened then, not assignments now. Current work and bugs are on GitHub.
 > Owner: coordinator session. One line per issue, newest state wins. `main` is the
 > coordinator's alone; workers commit on their branch and never push/rebase/merge.
 
@@ -28,7 +31,7 @@ Base commit for the whole batch: `main` @ `a35e36d`.
 | #42 | audio | `fix/issue-42-vs-bgm-no-sfl` | verified + merged | **MERGED** `1e0005f` (worker `fa8f8b0`) |
 | #46 | gameplay/crash | `fix/issue-46-match-start-crash` | verified + merged | **MERGED** `b1bde91` (worker `dd8473a`) |
 | #28 | verification | `chore/issue-28-ci-cadence` | verified + merged | **MERGED** `006745b` (worker `ff3a194`) |
-| #37 | platform | decision recorded | **CLOSED** — D13 in `remake/docs/decisions.md` | `4cb3694` |
+| #37 | platform | decision recorded | **CLOSED** — D13 in `docs/decisions.md` | `4cb3694` |
 | #18 (+#31) | animation | `feat/issue-18-guard-jump-sets` | verified + merged | **MERGED** `b49b22b` (worker `11215aa`/`cf88879`) |
 | #29 | verification | `fix/issue-29-input-devices` | verified + merged | **MERGED** `6a0a99f` (worker `b1474cc`/`8c910a4`) |
 | #41 | frontend | `fix/issue-41-select-free-cursor` | verified + merged | **MERGED** `c8e5245` (worker `d028c71`/`0c11e4b`) |
