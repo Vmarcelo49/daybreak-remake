@@ -102,9 +102,12 @@ void test_malformed() {
     check(!net::decode_refusal({net::kLobbyPacket, 3, 200}, refusal), "an unknown refusal");
 }
 
-// A stub of server/rooms.go on a loopback socket, over the real clock. It keeps the little the lobby
-// reads: a host's client ID is given a code, the same one while its room's lifetime has not run out
-// since it last asked and a new one after that, and a join is refused unless its room still lives.
+// A stub of server/rooms.go and server/main.go on a loopback socket, over the real clock. It keeps
+// the little the lobby reads: a version-2 host request is given a room and a 16-byte renewal secret,
+// the same room while its lifetime has not run out since it last asked AND the request echoes the
+// secret (issue #126), and a new room with a new secret after that. A wrong or missing secret is
+// refused without touching the room. Version-1 host requests are refused; version-1 joins are not.
+// Legacy mode is the deployed 1.0.x server: version 1 only, no secret, 12-byte hosted answers.
 // The codes count up through the server's own alphabet, so a change is plain to see.
 //
 // The lifetime is the test's (roomLifetime is a minute, and two cases of real minutes is a slow
@@ -114,6 +117,10 @@ public:
     explicit StubRooms(unsigned lifetimeMs = 6000) : kLifetimeMs(lifetimeMs) {}
     const unsigned kLifetimeMs;
     static constexpr std::uint8_t kFailNoRoom[3] = {'R', 'x', 1};
+    static constexpr std::uint8_t kFailVersion[3] = {'R', 'x', 2};
+    static constexpr std::uint8_t kFailUnauthorized[3] = {'R', 'x', 4};
+    static constexpr size_t kSecretSize = 16;
+    static constexpr size_t kSecretOffset = 21;
 
     static unsigned now_ms() {
         static const auto epoch = std::chrono::steady_clock::now();
@@ -129,11 +136,27 @@ public:
     }
     unsigned hostRequests() const { return m_hostRequests; }
     unsigned joinRequests() const { return m_joinRequests; }
+    unsigned unauthorized() const { return m_unauthorized; }
+    unsigned versionRefusals() const { return m_versionRefusals; }
+    unsigned legacyHostRequests() const { return m_legacyHostRequests; }
+    unsigned legacyJoinRequests() const { return m_legacyJoinRequests; }
+    const std::vector<std::uint8_t>& lastRequest() const { return m_lastRequest; }
+    void set_legacy(bool legacy) { m_legacy = legacy; }
+    // Refuse every renewal of a live room, as a server would for a host that lost its secret.
+    void set_refuse_renewals(bool refuse) { m_refuseRenewals = refuse; }
+    // A server restart loses every room by design.
+    void restart() { m_rooms.clear(); }
     // rooms.find: a code answers only while its room lives.
     bool resolves(const std::string& code) const {
         for (const Room& room : m_rooms)
             if (room.code == code && now_ms() - room.lastSeen < kLifetimeMs) return true;
         return false;
+    }
+    // The secret issued for a live room, so a test can pin what the host echoes.
+    std::array<std::uint8_t, kSecretSize> secretOf(std::uint32_t clientId) const {
+        for (const Room& room : m_rooms)
+            if (room.clientId == clientId && now_ms() - room.lastSeen < kLifetimeMs) return room.secret;
+        return {};
     }
 
     // Answers everything waiting. It takes no time itself: the lobby's own silence is what ages a room.
@@ -142,14 +165,42 @@ public:
         std::vector<std::uint8_t> packet;
         while (m_socket.receive(from, packet)) {
             if (packet.size() != 48 || std::memcmp(packet.data(), "DBR1", 4) != 0) continue;
+            m_lastRequest = packet;
+            const unsigned version = packet[5] | static_cast<unsigned>(packet[6]) << 8;
             if (packet[4] == 'H') {
                 ++m_hostRequests;
-                const std::vector<std::uint8_t> out = answer_hosted(host(requested(packet), now_ms()));
-                m_socket.send(from, out.data(), out.size());
+                if (m_legacy) {
+                    if (version != 1) { ++m_versionRefusals; send(from, kFailVersion); continue; }
+                    ++m_legacyHostRequests;
+                    Room* live = live_room(requested(packet), now_ms());
+                    if (live) live->lastSeen = now_ms();
+                    else live = &create(requested(packet), now_ms());
+                    send(from, answer_hosted(*live));
+                } else {
+                    if (version != net::kServerVersion) { ++m_versionRefusals; send(from, kFailVersion); continue; }
+                    Room* live = live_room(requested(packet), now_ms());
+                    if (live) {
+                        std::array<std::uint8_t, kSecretSize> secret{};
+                        std::memcpy(secret.data(), packet.data() + kSecretOffset, kSecretSize);
+                        // No lastSeen refresh on a refusal, exactly as the server leaves the room.
+                        if (m_refuseRenewals || secret != live->secret) {
+                            ++m_unauthorized;
+                            send(from, kFailUnauthorized);
+                            continue;
+                        }
+                        live->lastSeen = now_ms();
+                    } else {
+                        // No live room: a fresh room and secret, whatever secret the request carries.
+                        live = &create(requested(packet), now_ms());
+                    }
+                    send(from, answer_hosted(*live));
+                }
             } else if (packet[4] == 'J') {
                 ++m_joinRequests;
-                if (!resolves(std::string(packet.data() + 17, packet.data() + 21)))
-                    m_socket.send(from, kFailNoRoom, sizeof kFailNoRoom);
+                const bool versionOk = m_legacy ? version == 1 : (version == 1 || version == net::kServerVersion);
+                if (!versionOk) { ++m_versionRefusals; send(from, kFailVersion); continue; }
+                if (m_legacy) ++m_legacyJoinRequests;
+                if (!resolves(std::string(packet.data() + 17, packet.data() + 21))) send(from, kFailNoRoom);
             }
         }
     }
@@ -159,20 +210,26 @@ private:
         std::string code;
         std::uint32_t clientId = 0;
         unsigned lastSeen = 0;
+        std::array<std::uint8_t, kSecretSize> secret{};
     };
+
+    void send(const net::Address& to, const std::uint8_t* bytes, size_t size) { m_socket.send(to, bytes, size); }
+    void send(const net::Address& to, const std::vector<std::uint8_t>& bytes) { send(to, bytes.data(), bytes.size()); }
+    template <size_t N>
+    void send(const net::Address& to, const std::uint8_t (&bytes)[N]) { send(to, bytes, N); }
 
     static std::uint32_t requested(const std::vector<std::uint8_t>& packet) {
         return static_cast<std::uint32_t>(packet[7]) | static_cast<std::uint32_t>(packet[8]) << 8 |
                static_cast<std::uint32_t>(packet[9]) << 16 | static_cast<std::uint32_t>(packet[10]) << 24;
     }
-    // protocol.go's answerHosted: the prefix, kindHosted, the code, then six bytes of public endpoint.
-    // Only the code is read here, so the endpoint stays zero.
+    // protocol.go's answerHosted: prefix, kindHosted, code, six bytes of public endpoint, then the
+    // secret in version 2. Only the code and secret are read here, so the endpoint stays zero.
     std::vector<std::uint8_t> answer_hosted(const Room& room) const {
-        std::vector<std::uint8_t> out;
-        out.resize(2 + net::kRoomCodeLength + 6, 0);
+        std::vector<std::uint8_t> out(2 + net::kRoomCodeLength + 6 + (m_legacy ? 0 : kSecretSize), 0);
         out[0] = 'R';
         out[1] = 'h';
         for (size_t i = 0; i < room.code.size(); ++i) out[2 + i] = static_cast<std::uint8_t>(room.code[i]);
+        if (!m_legacy) std::memcpy(out.data() + 2 + net::kRoomCodeLength + 6, room.secret.data(), kSecretSize);
         return out;
     }
     // protocol.go's codeAlphabet: no 0, 1, I or O, which read alike when shared aloud.
@@ -183,26 +240,36 @@ private:
         for (size_t i = 0; i < code.size(); ++i, count /= kLength) code[i] = kAlphabet[count % kLength];
         return code;
     }
-    // rooms.host: the same room while its last sighting is inside the lifetime, a new one otherwise.
-    const Room& host(std::uint32_t clientId, unsigned now) {
+    Room* live_room(std::uint32_t clientId, unsigned now) {
         for (Room& room : m_rooms)
-            if (room.clientId == clientId && now - room.lastSeen < kLifetimeMs) {
-                room.lastSeen = now;
-                return room;
-            }
+            if (room.clientId == clientId && now - room.lastSeen < kLifetimeMs) return &room;
+        return nullptr;
+    }
+    // rooms.host's creation path. The secret is a deterministic pattern here, not crypto/rand: the
+    // test needs to know it, and the server's randomness is its own test's business.
+    Room& create(std::uint32_t clientId, unsigned now) {
         // Reserved first: the room returned below must not be invalidated by the next one.
         if (m_rooms.size() == m_rooms.capacity()) m_rooms.reserve(m_rooms.capacity() ? m_rooms.capacity() * 2 : 8);
         ++m_codes;
-        m_rooms.push_back({next_code(m_codes), clientId, now});
+        Room room{next_code(m_codes), clientId, now, {}};
+        for (size_t i = 0; i < room.secret.size(); ++i) room.secret[i] = static_cast<std::uint8_t>(m_codes + i);
+        m_rooms.push_back(room);
         return m_rooms.back();
     }
 
     net::UdpSocket m_socket;
     std::string m_error;
     std::vector<Room> m_rooms;  // never erased: an expired room is simply not found
+    std::vector<std::uint8_t> m_lastRequest;
     unsigned m_codes = 0;
     unsigned m_hostRequests = 0;
     unsigned m_joinRequests = 0;
+    unsigned m_unauthorized = 0;
+    unsigned m_versionRefusals = 0;
+    unsigned m_legacyHostRequests = 0;
+    unsigned m_legacyJoinRequests = 0;
+    bool m_legacy = false;
+    bool m_refuseRenewals = false;
 };
 
 // The host asks the server, which answers, over the truly opened sockets. The server looks first, so
@@ -262,6 +329,7 @@ void test_room_survives_a_match() {
         after_a_match(true, before, after, server);
         check(after == before, "the code changed over a match: " + before + " -> " + after);
         check(server.resolves(before), "the server no longer resolves the original code: " + before);
+        check(server.unauthorized() == 0, "a keepalive renewal was refused as unauthorized");
     }
     {
         StubRooms server;
@@ -324,6 +392,153 @@ void test_keepalive_is_a_no_op_elsewhere() {
         server.pump();
     }
     check(!local.uses_server() && local.room_code().empty(), "a host without a server kept something alive");
+}
+
+// Issue #126: the wire layout the client speaks — a 48-byte version-2 request whose first ask has
+// no secret, and whose every later ask echoes the secret the server issued, at offsets 21..36.
+void test_secret_echo_and_wire_layout() {
+    StubRooms server;
+    check(server.open(), "the stub server did not open");
+    net::UdpSocket hostSocket;
+    std::string error;
+    check(hostSocket.open(0, error), "open: " + error);
+    auto host = net::Lobby::host(hostSocket, sample_plan(), 42, server.address());
+
+    host.poll(16);
+    server.pump();
+    const auto first = server.lastRequest();
+    check(first.size() == 48, "the request is not 48 bytes");
+    check(first[4] == 'H', "not a host request");
+    check((first[5] | static_cast<unsigned>(first[6]) << 8) == net::kServerVersion, "the host did not speak version 2");
+    bool zero = true;
+    for (size_t i = StubRooms::kSecretOffset; i < StubRooms::kSecretOffset + StubRooms::kSecretSize; ++i) zero = zero && first[i] == 0;
+    check(zero, "the first ask carried a secret it could not have yet");
+    drain_as_lobby(host);
+    const std::string code = host.room_code();
+    check(!code.empty(), "the host never got a code");
+    const auto issued = server.secretOf(host.plan().clientIds[0]);
+    check(issued != std::array<std::uint8_t, StubRooms::kSecretSize>{}, "the stub issued no secret");
+
+    host.poll(1000);
+    server.pump();
+    const auto second = server.lastRequest();
+    check(std::memcmp(second.data() + StubRooms::kSecretOffset, issued.data(), StubRooms::kSecretSize) == 0,
+          "the renewal did not echo the issued secret");
+    check(server.unauthorized() == 0, "the echoed secret was refused");
+    drain_as_lobby(host);
+    check(host.room_code() == code, "an authorized renewal changed the code");
+}
+
+// A restarted host is a new lobby with a new random client ID: a new host, not a renewal of the
+// room it can no longer prove. The old room lives out its lifetime at the server.
+void test_host_restart_gets_a_fresh_room() {
+    StubRooms server;
+    check(server.open(), "the stub server did not open");
+    net::UdpSocket hostSocket;
+    std::string error;
+    check(hostSocket.open(0, error), "open: " + error);
+    std::string before;
+    {
+        auto first = net::Lobby::host(hostSocket, sample_plan(), 42, server.address());
+        serve_until_code(first, server, 3000);
+        before = first.room_code();
+        check(!before.empty(), "the first host never got a code");
+    }
+    auto second = net::Lobby::host(hostSocket, sample_plan(), 42, server.address());
+    serve_until_code(second, server, 3000);
+    check(!second.room_code().empty() && second.room_code() != before, "a restarted host did not get a fresh room");
+    check(server.resolves(second.room_code()), "the fresh room does not resolve");
+    check(server.unauthorized() == 0, "a restarted host was refused");
+}
+
+// A server restart loses every room. The host keeps asking with the secret it holds; with no live
+// room that is a new host, and the fresh code and secret in the answer are simply taken.
+void test_server_restart_reissues() {
+    StubRooms server;
+    check(server.open(), "the stub server did not open");
+    net::UdpSocket hostSocket;
+    std::string error;
+    check(hostSocket.open(0, error), "open: " + error);
+    auto host = net::Lobby::host(hostSocket, sample_plan(), 42, server.address());
+    serve_until_code(host, server, 3000);
+    const std::string before = host.room_code();
+    check(!before.empty(), "the host never got a code");
+
+    server.restart();
+    serve_until_code(host, server, 3000, before);
+    const std::string after = host.room_code();
+    check(!after.empty() && after != before, "the host did not take the fresh room after a restart");
+    for (int i = 0; i < 20; ++i) {
+        host.poll(100);
+        server.pump();
+    }
+    check(host.room_code() == after, "the fresh room did not renew with the fresh secret");
+    check(server.unauthorized() == 0, "the fresh secret was refused");
+}
+
+// A refused renewal is not a refusal a player is closed out with: the lobby keeps its code and
+// keeps asking, and the room — whose lastSeen the server did not refresh — renewals work again on.
+void test_unauthorized_renewal_is_not_a_refusal() {
+    StubRooms server;
+    check(server.open(), "the stub server did not open");
+    net::UdpSocket hostSocket;
+    std::string error;
+    check(hostSocket.open(0, error), "open: " + error);
+    auto host = net::Lobby::host(hostSocket, sample_plan(), 42, server.address());
+    serve_until_code(host, server, 3000);
+    const std::string code = host.room_code();
+    check(!code.empty(), "the host never got a code");
+
+    server.set_refuse_renewals(true);
+    for (int i = 0; i < 20; ++i) {
+        host.poll(100);
+        server.pump();
+    }
+    check(server.unauthorized() >= 2, "the stub never refused a renewal");
+    check(host.room_code() == code, "the host dropped its code on a refused renewal");
+    check(host.refused() == net::Refusal::None, "a refused renewal closed the lobby");
+    const unsigned refused = server.unauthorized();
+
+    server.set_refuse_renewals(false);
+    for (int i = 0; i < 20; ++i) {
+        host.poll(100);
+        server.pump();
+    }
+    check(host.room_code() == code, "the room did not survive the refused renewals");
+    check(server.unauthorized() == refused, "renewals were still refused");
+}
+
+// The deployed 1.0.x server refuses version 2. A lobby falls back to version 1 for its lifetime,
+// host and joiner alike, so nothing breaks before the server is upgraded (issue #126's migration).
+void test_v1_fallback_against_a_legacy_server() {
+    StubRooms server;
+    server.set_legacy(true);
+    check(server.open(), "the stub server did not open");
+    net::UdpSocket hostSocket, joinerSocket;
+    std::string error;
+    check(hostSocket.open(0, error) && joinerSocket.open(0, error), "open: " + error);
+
+    auto host = net::Lobby::host(hostSocket, sample_plan(), 42, server.address());
+    serve_until_code(host, server, 3000);
+    check(!host.room_code().empty(), "the host never fell back to the legacy server");
+    check(server.versionRefusals() >= 1, "the legacy stub never refused version 2");
+    check(server.legacyHostRequests() >= 1, "the host never spoke version 1");
+    check(host.refused() == net::Refusal::None, "the fallback surfaced a refusal");
+    const std::string code = host.room_code();
+    for (int i = 0; i < 20; ++i) {
+        host.poll(100);
+        server.pump();
+    }
+    check(host.room_code() == code, "the legacy room did not renew");
+    check(server.unauthorized() == 0, "a legacy renewal was refused as unauthorized");
+
+    auto joiner = net::Lobby::join_code(joinerSocket, server.address(), code, 42);
+    for (unsigned waited = 0; waited < 3000 && server.legacyJoinRequests() == 0; waited += 100) {
+        joiner.poll(100);
+        server.pump();
+    }
+    check(server.legacyJoinRequests() >= 1, "the joiner never fell back to version 1");
+    check(joiner.refused() == net::Refusal::None, "the joiner's fallback surfaced a refusal");
 }
 
 // Runs lobbies against each other over localhost until they settle.
@@ -466,6 +681,11 @@ int main() {
     test_room_survives_a_match();
     test_keepalive_is_a_no_op_elsewhere();
     test_server_requests_are_paced();
+    test_secret_echo_and_wire_layout();
+    test_host_restart_gets_a_fresh_room();
+    test_server_restart_reissues();
+    test_unauthorized_renewal_is_not_a_refusal();
+    test_v1_fallback_against_a_legacy_server();
     if (failures) {
         std::printf("net_lobby_test: %d failure(s)\n", failures);
         return 1;

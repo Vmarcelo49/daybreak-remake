@@ -253,6 +253,73 @@ Result: `rendezvous_server_test` passes, and `net_play_check` plays 4 peers by r
 with equal `stateHash`, and refuses a wrong code. Limits: localhost has no router, so punching itself has not been
 exercised. Symmetric NAT cannot be punched, and needs a relay. IPv4 only.
 
+#### Rendezvous host renewal: trust model and residual risks (issue #126)
+
+The source review behind issue #126 found that the server renewed a room's host endpoints from the
+client-supplied 32-bit ID alone. That ID is not a secret: `encode_plan` (`src/net/lobby.cpp`) sends it
+to every room member in match-plan packets. A member who learned the ID could send a host request and
+redirect the room's rendezvous entry until the real host renewed. This was a source-backed concern,
+not a demonstrated exploit; no packet was ever sent to the deployed server, and none of the tests
+below use anything but in-process state or a loopback socket.
+
+**Decision (owner approved Option B, 2026-11-19).** Rooms are authenticated. The server issues a
+random 128-bit renewal secret when it creates a room and returns it to the host alone in the hosted
+answer; the host echoes it in the 16 unused padding bytes of every later host request. Renewing a
+live room requires the matching secret, compared in constant time; a wrong or missing secret is
+answered with `failUnauthorized` and changes no state, not even the room's last-seen time. With no
+live room for that ID, any request starts a fresh room and secret — that is the server-restart and
+post-expiry path. A host that loses its in-memory secret is refused until its room expires (60 s),
+then gets a fresh room and code, which its client takes without a prompt. Secrets rotate only when a
+room is replaced, so a lost answer cannot lock a host out early. Host requests also have a per-IP
+budget of 240/min (a host asks about once a second; failed renewals count), on top of the existing
+20/min join budget. The request stays 48 bytes and the hosted answer grows from 12 to 28 bytes, so
+the server still cannot amplify a forged sender and the secret is never sent to joiners.
+
+**Migration.** `protocolVersion` is now 2. A version-1 host request is refused with `failVersion`,
+which released 1.0.x clients already display as the "different version of the game" lobby message;
+they must update to host again. This deliberately changes released-client behavior: hosting on the
+current 1.0.x build needs an update. Version-1 **joins are still accepted**, because a join only
+reads a room and is budgeted, so a released client can still join a game and play direct. An updated
+client tries version 2 first and, on `failVersion`, drops to version 1 for that lobby, so it keeps
+working against the 1.0.x server until the new server is deployed. Neither the client fallback nor
+any of this work deploys or contacts the public service.
+
+**Trust model.** The secret is a bearer token: whoever holds it can renew the room. The server trusts
+the observed UDP source address as the host's public endpoint and never relays a game packet; peers
+still introduce each other in the lobby and connect directly (no-game-packet-relay design preserved).
+The secret is only ever sent to the host, in an answer to the address the server observed, and no
+other state in a room is authoritative for identity. Client IDs, room codes and endpoints are not
+credentials. Once a match starts, the lobby's keepalive keeps echoing the secret so the room cannot
+expire mid-match (issue #110).
+
+**Residual risks, stated plainly.**
+
+- A bearer secret raises the bar from "any room member who knows the client ID" to "someone who has
+  observed the host's traffic to the server." It does **not** provide cryptographic authentication
+  of the host's identity, and it is not a defense against on-path attackers: anyone who captures the
+  secret from the host's datagrams can renew the room until the host renews or it expires.
+- UDP source addresses can be spoofed. The server trusts the observed source for the public
+  endpoint and only checks the secret, so spoofed packets that carry a captured secret can still
+  affect the room; rate limiting bounds floods, not a determined on-path attacker.
+- The client trusts any packet arriving from the configured server's address. A spoofed
+  `failVersion` answer can make an updated client fall back to version 1; that is the same class of
+  UDP spoofing risk, not something this change fixes. Falling back does not weaken a version-2 room
+  at the server: a version-1 request can never renew it.
+- Against a server still running the 1.0.x code, every room — including those of updated clients that
+  fell back — is as redirectable as before this change. The fix takes effect only where the new
+  server runs; this work performs no deployment.
+- The secret is in process memory and in one short UDP datagram; it is not encrypted on the wire and
+  no transport confidentiality is claimed. The room code remains a meet-up hint, not a credential.
+- The secret is 128 bits and guesses are infeasible in principle; the per-IP budget only bounds
+  strictly local floods, and a distributed flood is limited instead by room creation and the same
+  secret entropy. No claim of DoS prevention is made.
+
+**Verification scope.** Go unit tests and the C++ `net_lobby_test` cover, entirely in-process or on
+loopback: unauthorized renewal rejected with no state or last-seen change, legitimate renewal from a
+changed address, host restart, server restart, expiry, host and join rate limits, version-1 join
+accepted and host refused, secret echo and wire layout, and the anti-amplification invariant. They
+do not exercise real routers, real NAT, the deployed service, or an on-path attacker.
+
 ### 8. Real play (owner)
 
 Linux with Windows on real networks: 2 players, then 4, over LAN and internet. Check the feel at the

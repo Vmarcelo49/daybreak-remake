@@ -16,11 +16,14 @@ constexpr unsigned kServerMs = 1000;
 constexpr unsigned kOpeningMs = 3000;
 enum Kind : std::uint8_t { KindHello = 1, KindPlan = 2, KindRefused = 3, KindBye = 4, KindLinkPing = 5, KindLinkPong = 6, KindOpen = 7 };
 
-// server/protocol.go is the other side of these.
+// server/protocol.go is the other side of these. The versions live in lobby.h so a test can pin them.
 constexpr std::uint8_t kServerMagic[4] = {'D', 'B', 'R', '1'};
-constexpr std::uint16_t kServerVersion = 1;
 constexpr size_t kServerRequestSize = 48;
 constexpr std::uint8_t kServerHost = 'H', kServerJoin = 'J', kServerHosted = 'h', kServerRoom = 'j', kServerJoiner = 'n', kServerError = 'x';
+// The renewal secret rides in the request's padding, so the request stays 48 bytes and the server
+// cannot amplify a forged sender (issue #126).
+constexpr size_t kServerSecretOffset = 21;
+static_assert(kServerSecretOffset + kServerSecretSize <= kServerRequestSize, "the secret must fit the request's padding");
 
 
 template <class T>
@@ -385,11 +388,17 @@ void Lobby::send_to_server() {
     std::vector<std::uint8_t> out(kServerRequestSize, 0);
     std::memcpy(out.data(), kServerMagic, sizeof kServerMagic);
     out[4] = m_isHost ? kServerHost : kServerJoin;
-    out[5] = static_cast<std::uint8_t>(kServerVersion);
-    out[6] = static_cast<std::uint8_t>(kServerVersion >> 8);
+    out[5] = static_cast<std::uint8_t>(m_serverVersion);
+    out[6] = static_cast<std::uint8_t>(m_serverVersion >> 8);
     for (size_t i = 0; i < 4; ++i) out[7 + i] = static_cast<std::uint8_t>(m_clientId >> (8 * i));
     put_server_endpoint(out.data() + 11, m_private);
-    if (!m_isHost) std::memcpy(out.data() + 17, m_wantedCode.data(), std::min(m_wantedCode.size(), kRoomCodeLength));
+    if (m_isHost) {
+        // Zero on the first ask: the server issues the secret with the room, and every later ask
+        // echoes it to prove the renewal is ours (issue #126). A legacy server gets no secret.
+        if (m_serverVersion == kServerVersion) std::memcpy(out.data() + kServerSecretOffset, m_serverSecret.data(), kServerSecretSize);
+    } else {
+        std::memcpy(out.data() + 17, m_wantedCode.data(), std::min(m_wantedCode.size(), kRoomCodeLength));
+    }
     m_socket->send(m_server, out.data(), out.size());
 }
 
@@ -398,13 +407,28 @@ void Lobby::handle_server(const std::vector<std::uint8_t>& packet) {
     const std::uint8_t kind = packet[1];
     if (kind == kServerError) {
         if (packet[2] == 1) m_refused = Refusal::NoSuchRoom;
-        else if (packet[2] == 2) m_refused = Refusal::WrongVersion;
+        else if (packet[2] == 2) {
+            // The deployed 1.0.x server refuses version 2: speak its version for this lobby rather
+            // than break hosting before the server is upgraded (issue #126's migration). Refused at
+            // version 1 too means neither side can agree, which is the refusal a player should see.
+            if (m_serverVersion == kServerVersion) m_serverVersion = kServerLegacyVersion;
+            else m_refused = Refusal::WrongVersion;
+        }
         else if (packet[2] == 3) m_refused = Refusal::TooManyTries;
-    } else if (m_isHost && kind == kServerHosted && packet.size() == 2 + kRoomCodeLength + 6) {
+        // failUnauthorized (4) is not a refusal: keep the code shown and keep asking. Once the room
+        // expires, the next ask creates a fresh room and secret, which the hosted answer below takes.
+    } else if (m_isHost && kind == kServerHosted &&
+               (packet.size() == 2 + kRoomCodeLength + 6 || packet.size() == 2 + kRoomCodeLength + 6 + kServerSecretSize)) {
         const std::string code(packet.begin() + 2, packet.begin() + 2 + kRoomCodeLength);
         if (std::all_of(code.begin(), code.end(), [](char c) { return c >= '2' && c <= 'Z'; })) m_code = code;
         m_public = get_server_endpoint(packet.data() + 2 + kRoomCodeLength);
         m_plan.publics[0] = m_public;
+        // A version-2 answer carries the renewal secret after the public endpoint. A fresh secret
+        // with a fresh code is normal after a server restart or an expiry, and is simply taken.
+        if (packet.size() == 2 + kRoomCodeLength + 6 + kServerSecretSize)
+            std::memcpy(m_serverSecret.data(), packet.data() + 2 + kRoomCodeLength + 6, kServerSecretSize);
+        else
+            m_serverSecret = {};
     } else if (m_isHost && kind == kServerJoiner && packet.size() == 2 + 12) {
         if (m_openings.size() < 8)
             m_openings.push_back({get_server_endpoint(packet.data() + 2), get_server_endpoint(packet.data() + 8), kOpeningMs});

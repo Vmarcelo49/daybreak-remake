@@ -98,16 +98,34 @@ func handle(conn *net.UDPConn, known *rooms, packet []byte, from netip.AddrPort,
 	public := makeEndpoint(ip, from.Port())
 	send := func(to netip.AddrPort, answer []byte) { conn.WriteToUDPAddrPort(answer, to) }
 
-	if req.version != protocolVersion {
-		send(from, answerError(failVersion))
-		return
-	}
 	switch req.kind {
 	case kindHost:
-		if hosted := known.host(req.clientID, public, req.private, now); hosted != nil {
-			send(from, answerHosted(hosted.code, public))
+		// Hosting requires the authenticated protocol: a version-1 request carries no renewal
+		// secret, and the client ID alone is public (issue #126, owner-approved Option B
+		// 2026-11-19). A released client maps this refusal to its visible "different version"
+		// message and updates; joins below still accept version 1 so it can keep joining.
+		if req.version != protocolVersion {
+			send(from, answerError(failVersion))
+			return
+		}
+		if !known.allowHost(ip, now) {
+			send(from, answerError(failTooManyTries))
+			return
+		}
+		hosted, why := known.host(req.clientID, req.secret, public, req.private, now)
+		if why != 0 {
+			send(from, answerError(why))
+			return
+		}
+		if hosted != nil {
+			send(from, answerHosted(hosted.code, public, hosted.secret))
 		}
 	case kindJoin:
+		// A join only reads a room and is budgeted, so the released protocol stays welcome here.
+		if req.version != protocolVersion && req.version != legacyVersion {
+			send(from, answerError(failVersion))
+			return
+		}
 		if !known.allowJoin(ip, now) {
 			send(from, answerError(failTooManyTries))
 			return

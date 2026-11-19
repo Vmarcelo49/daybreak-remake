@@ -31,6 +31,12 @@ constexpr std::uint8_t kLobbyPacket = 'L';
 constexpr std::uint8_t kGamePacket = 'G';
 constexpr std::uint8_t kOutcomePacket = 'O';
 constexpr std::uint8_t kServerPacket = 'R';
+// The rendezvous protocol (server/protocol.go). Version 2 authenticates room renewal with a
+// server-issued secret, because the client ID alone is public to every room member (issue #126).
+// Version 1 is the released 1.0.x server, which a lobby falls back to when it refuses 2.
+constexpr std::uint16_t kServerVersion = 2;
+constexpr std::uint16_t kServerLegacyVersion = 1;
+constexpr size_t kServerSecretSize = 16;  // 128 bits, echoed in the request's padding (issue #126)
 constexpr size_t kRoomCodeLength = 4;
 constexpr size_t kMaxNameLength = 12;
 constexpr std::uint16_t kDefaultPort = 37564;  // the original's (docs/game-spec.md)
@@ -195,6 +201,12 @@ private:
     };
     std::vector<Opening> m_openings;
     std::uint32_t m_clientId = 0;
+    // The renewal secret the server issued for our room, echoed in every host request so that only
+    // we can renew it (issue #126). Zero until the first hosted answer; a legacy server issues none.
+    std::array<std::uint8_t, kServerSecretSize> m_serverSecret{};
+    // The version this lobby speaks to the server: kServerVersion, or kServerLegacyVersion after the
+    // server refused it. Per lobby, so re-entering online tries the authenticated protocol again.
+    std::uint16_t m_serverVersion = kServerVersion;
     Address m_server, m_public, m_private;
     std::vector<Address> m_hostCandidates;
     std::string m_code, m_wantedCode;

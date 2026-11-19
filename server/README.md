@@ -29,12 +29,19 @@ the SERVER row of the online menu.
 
 ## What it keeps
 
-In memory, and only until a minute after the host last asked: each room's code, an ID the client made up, and the
-host's public and private addresses. Addresses are not logged.
+In memory, and only until a minute after the host last asked: each room's code, an ID the client made up, the
+host's public and private addresses, and a random 128-bit renewal secret issued to the host alone (issue #126).
+Addresses and secrets are not logged. Renewing a live room requires that secret, so knowing the client ID — which
+every room member sees — is not enough to redirect it. With no live room, any request starts a fresh room and secret,
+which is what happens after a server restart or an expiry.
 
 ## Limits
 
-- 20 joins per minute per IP address, against guessing codes.
+- 20 joins per minute and 240 host requests per minute per IP address, against guessing codes and renewal secrets.
+- Hosting needs protocol version 2; version-1 hosts are refused, but version-1 joins are still accepted so released
+  clients can join and play. An updated client falls back to version 1 for its lobby if the server refuses version 2.
+- The renewal secret is a bearer token: someone who observes the host's traffic to the server can still renew the
+  room. UDP spoofing and on-path capture are not fixed. See `docs/ONLINE-PLAN.md` for the full trust model.
 - IPv4 only.
 - Routers that give each destination a different port, which is symmetric NAT, cannot be punched through. The
   game says which players could not connect, and a relay would be the fix.
