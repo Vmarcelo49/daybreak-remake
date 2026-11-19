@@ -147,16 +147,30 @@ gate runs both.** Every test has a hard timeout, so a hang fails rather than hol
   asset-backed sweep), so the denominator is unchanged at 57 and the with-install count
   above is re-measured.
 
-**CI runs on a `VERSION` change, and nowhere else.** The workflows that ran on every push
-were removed on 2026-10-29 (owner decision: every push bought a hosted run). The two that
-remain are the release pipeline: `.github/workflows/build.yml` builds, tests and packages
-Linux and Windows and then builds the update manifest, and `determinism.yml` compares the
-math digests of a Linux build and a Windows one on real runners. Both trigger on a `VERSION`
-change on `main` (`gh workflow run build.yml` runs one by hand), so an ordinary push costs
-nothing. `ctest` is still something a person runs before a commit, and the runners have no
-game data — every asset-backed test skips there — so the checklist above is the gate. The
-Web matrix the old `gate` job drove went with the old workflows: build it with
-`./build.sh web` when that target is actually being touched.
+**Version-triggered CI and the local release authority are different things.** The
+workflows that ran on every push were removed on 2026-10-29 (owner decision: every push
+bought a hosted run). The two version-triggered workflows remain: `.github/workflows/build.yml`
+builds, tests and packages Linux and Windows and then builds the update manifest, and
+`determinism.yml` compares the math digests of a Linux build and a Windows one on real
+runners. Both trigger on a `VERSION` change on `main` (`gh workflow run build.yml` runs one
+by hand). They are data-free package/build checks; the runners have no game data, so every
+asset-backed test skips there. **The install-backed local gates below (§2b, §3) — not those
+hosted jobs — are the authority for the playable release claim.** The Web matrix the old
+`gate` job drove went with the old workflows: build it with `./build.sh web` when that
+target is actually being touched.
+
+A separate per-change signal, `.github/workflows/native-check.yml`, runs on a
+`pull_request` targeting `main` (plus a manual trigger), path-filtered to build/test inputs
+including `assets/**`, `tools/**`, `webdelivery/**` and `package/**`; direct `main` pushes
+and `VERSION` are deliberate exclusions to avoid duplicate hosted runs. It builds Linux
+without release flags and runs an explicit data-free test selection through
+`scripts/native_check.py`, which fails on zero matches, missing tests, skips and failures.
+It packages nothing, uploads nothing, needs no game data and proves no gameplay; a green
+run says only that the native build compiled and those tests executed and passed. It does
+not replace this checklist, §2b's install-backed gates or the version-triggered jobs. Its
+**local** measurement (83 s of build+test time on this machine, not hosted job time),
+hard 25-minute job cap and the runner-billing prerequisite are in `DEVELOPMENT.md`
+§"Continuous integration"; no hosted run was dispatched.
 
 ## 2b. Automated gates (run these before claiming the section below)
 

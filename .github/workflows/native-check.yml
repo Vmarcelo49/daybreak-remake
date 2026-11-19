@@ -1,0 +1,87 @@
+# Cheap, data-free native feedback for ordinary code changes (issue #127).
+# This is NOT a release gate: no packaging, no artifacts, no game data, no
+# install-backed tests and no original-runtime or gameplay claim. A green run
+# means the native tree compiled and an explicit set of data-free tests ran.
+# build.yml and determinism.yml stay untouched; they are the version-triggered
+# release checks. The install-backed local checklist is the playable authority.
+#
+# Budget: one ubuntu-24.04 job per PR targeting main, with concurrency cancelling
+# superseded runs on the same ref. Direct pushes to main are deliberately NOT
+# auto-triggered (they would duplicate the PR run on every merge); use the manual
+# trigger below if one needs checking. third_party and the pinned SDL3 build are
+# cached exactly as in build.yml. Availability still depends on the account's
+# runner billing status — see DEVELOPMENT.md "Continuous integration".
+name: Native check
+
+on:
+  pull_request:
+    branches: [main]
+    # Build/test inputs, including the non-src inputs the build reads: CMake's
+    # caption_fonts/install rules read assets/** and package/**, tools/ has a
+    # built target, and web_delivery_test imports webdelivery/**. VERSION is
+    # deliberately excluded: a version bump already runs the release workflows.
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - 'build.sh'
+      - 'scripts/fetch_deps.sh'
+      - 'scripts/native_check.py'
+      - 'assets/**'
+      - 'tools/**'
+      - 'webdelivery/**'
+      - 'package/**'
+      - '.github/workflows/native-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    # Hard end-to-end cap: configure, build, tests. Individual CTest cases also
+    # carry their own CMake timeouts, so a hang fails rather than holds the job.
+    timeout-minutes: 25
+    env:
+      CMAKE_PREFIX_PATH: ${{ github.workspace }}/.sdl3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install the system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxi-dev libxss-dev libxtst-dev libxfixes-dev libxkbcommon-dev libwayland-dev wayland-protocols \
+            libegl1-mesa-dev libasound2-dev libpulse-dev libdecor-0-dev libudev-dev mesa-vulkan-drivers
+      - uses: actions/cache@v4
+        with:
+          path: third_party
+          key: third-party-${{ hashFiles('scripts/fetch_deps.sh') }}
+      - uses: actions/cache@v4
+        id: sdl3
+        with:
+          path: .sdl3
+          key: sdl3-linux-${{ hashFiles('scripts/fetch_deps.sh') }}
+      # Ubuntu 24.04 packages no SDL3. Same pin and the same cache key as build.yml.
+      - name: Build SDL3
+        if: steps.sdl3.outputs.cache-hit != 'true'
+        run: |
+          version=$(sed -n 's/^SDL3_VERSION=//p' scripts/fetch_deps.sh)
+          curl -fsSL "https://github.com/libsdl-org/SDL/releases/download/release-$version/SDL3-$version.tar.gz" | tar -xz -C "$RUNNER_TEMP"
+          cmake -S "$RUNNER_TEMP/SDL3-$version" -B "$RUNNER_TEMP/sdl3-build" -GNinja -DCMAKE_BUILD_TYPE=Release -DSDL_TESTS=OFF
+          cmake --build "$RUNNER_TEMP/sdl3-build"
+          cmake --install "$RUNNER_TEMP/sdl3-build" --prefix "$GITHUB_WORKSPACE/.sdl3"
+      - run: ./build.sh deps
+      - name: Native build (no release flags, no packaging)
+        run: ./build.sh linux
+      # The wrapper refuses zero matches, any skip and any missing selected test;
+      # CTest's own nonzero exit flows straight into the job result.
+      - name: Data-free native tests
+        run: python3 scripts/native_check.py build/linux

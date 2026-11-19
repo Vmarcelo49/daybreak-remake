@@ -18,7 +18,7 @@ at runtime has not been verified.
 | Story mode | Implemented: dialogue, ladder, retry, game over, endings and staff roll. |
 | Language | Menus and HUD in English or Japanese. Story dialogue is still Japanese. |
 | Texture packs | Optional PNG packs are read from beside the executable. No pack is published yet. |
-| Linux, Windows | Build and package. CI builds both when `VERSION` changes. |
+| Linux, Windows | Build and package. Release CI builds both when `VERSION` changes; ordinary changes get a path-filtered native build/test check. |
 | Web | Builds, fights and finishes a match; the round's end is part of the match group since #88. A manual, bounded build-only check covers compilation and linking; no push-triggered web job ([`docs/BUILD-web.md`](docs/BUILD-web.md)). |
 | Multiplayer | Local, LAN and online for 2 to 4 players, with rollback and Linux and Windows together. In testing: first real-network playtest 2026-11-04. |
 | macOS | Not attempted. |
@@ -164,6 +164,41 @@ timeout; it uploads no artifact and proves no browser behaviour. Run the release
 by hand with `gh workflow run build.yml`, or the web check with
 `gh workflow run web-build-check.yml` (both also work locally; see
 [`docs/BUILD-web.md`](docs/BUILD-web.md)).
+These version-triggered jobs are build, package and data-free-test checks; they are
+**not** the playable authority. That authority is the install-backed local checklist
+([`docs/RELEASE-CHECKLIST.md`](docs/RELEASE-CHECKLIST.md), §2b and §3), which a runner
+without game data cannot perform.
+
+A third workflow covers **ordinary changes**:
+[`.github/workflows/native-check.yml`](.github/workflows/native-check.yml) runs on a
+`pull_request` targeting `main` (plus a manual trigger), path-filtered to build/test
+inputs: `src/**`, `tests/**`, `cmake/**`, `CMakeLists.txt`, `build.sh`,
+`scripts/fetch_deps.sh`, `scripts/native_check.py`, `assets/**`, `tools/**`,
+`webdelivery/**`, `package/**` and the workflow itself. The four non-src patterns
+are real inputs: CMake's caption-font and install rules read `assets/**` and `package/**`,
+`tools/` has a built target, and `web_delivery_test` imports `webdelivery/**`.
+`VERSION` is a deliberate exclusion — a bump already triggers both release
+workflows. Direct pushes to `main` are also deliberately not auto-triggered: that
+would duplicate the PR run on every merge; use the manual trigger when needed.
+It builds Linux once with no release flags, then runs an explicit set of data-free
+tests through [`scripts/native_check.py`](scripts/native_check.py). The wrapper
+refuses a filter that matches zero tests, a missing/renamed test, any skip (exit 77)
+and any failure: CTest alone prints "No tests were found!!!" for an empty filter and
+"100% tests passed" for a skipped suite. It packages nothing, uploads nothing,
+reads no game data and makes no install-backed or gameplay claim — green means only
+that the native tree compiled and the selected data-free tests executed and passed.
+
+Cost and limits: on this machine, from a tracked-only data-free tree with a warm
+third-party cache and system SDL3, configure+build took **79 s** and the 13-test
+guard **4 s** (CTest's own total: 4.21 s) — about **83 s of local build+test time**.
+That is not the hosted job time: a hosted run also checks out, installs apt packages,
+restores caches and may build the pinned SDL3, and no run was dispatched, so the
+hosted duration is unmeasured. A cold cache adds that SDL3 source build (same step
+and cache key as `build.yml`). One ubuntu-24.04 runner per run, with a hard
+25-minute job cap, and concurrency cancels superseded runs on the same ref. Runner
+availability is a prerequisite, not a given: the release jobs in issue #127 did not
+start because of the account's GitHub billing lock, and this check needs the same
+access. No workflow was dispatched and no repository setting was changed to add it.
 
 ### The Linux release package
 
