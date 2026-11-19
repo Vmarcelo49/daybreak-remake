@@ -244,6 +244,72 @@ std::string installedVersion(const fs::path& root) {
     return manifest.version;
 }
 
+// Expected bytes for every file the committed update must leave in place: the new package
+// files, the game data and player file that were never part of the package, and the new
+// manifest as staged from the archive. Built from the test inputs, not from the tree under
+// test, so a comparison here is never circular.
+std::vector<std::pair<std::string, std::string>> expectedBytes(
+    const std::vector<std::pair<std::string, std::string>>& files,
+    const std::string& manifestText) {
+    std::vector<std::pair<std::string, std::string>> expected = files;
+    expected.push_back({"data/game.dat", "game data"});
+    expected.push_back({"player-notes.txt", "player notes"});
+    expected.push_back({update::kPackageManifestName, manifestText});
+    return expected;
+}
+
+// Empty when every protected file still matches; otherwise the first path that changed.
+std::string changedFile(const fs::path& root,
+                        const std::vector<std::pair<std::string, std::string>>& expected) {
+    for (const auto& item : expected) {
+        if (fileContents(root / item.first) != item.second) return item.first;
+    }
+    return {};
+}
+
+// A real Windows lock on a backup the updater has already renamed aside. FILE_SHARE_DELETE
+// is deliberately absent, so DeleteFileW — the call behind the updater's real removeFile —
+// fails. The lock is taken by failAt(1), after operation 0 has renamed DaybreakRemake.exe
+// aside: the share mode that blocks delete also blocks rename, so taking it earlier would
+// break the replacement being tested. GENERIC_READ, not FILE_READ_ATTRIBUTES alone, because
+// Wine only enforces the missing FILE_SHARE_DELETE when the held handle has data access.
+class BackupFileLock {
+public:
+    BackupFileLock() = default;
+    ~BackupFileLock() { release(); }
+    BackupFileLock(const BackupFileLock&) = delete;
+    BackupFileLock& operator=(const BackupFileLock&) = delete;
+    BackupFileLock(BackupFileLock&&) = delete;
+    BackupFileLock& operator=(BackupFileLock&&) = delete;
+
+    bool grab(const fs::path& path, std::string* error) {
+        if (held()) {
+            *error = "backup lock is already held";
+            return false;
+        }
+        handle_ = CreateFileW(path.c_str(), GENERIC_READ,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                              FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (handle_ == INVALID_HANDLE_VALUE) {
+            *error = "cannot open the renamed backup for locking: error " +
+                     std::to_string(GetLastError());
+            return false;
+        }
+        return true;
+    }
+
+    void release() {
+        if (!held()) return;
+        CloseHandle(handle_);
+        handle_ = INVALID_HANDLE_VALUE;
+    }
+
+    bool held() const { return handle_ != INVALID_HANDLE_VALUE; }
+
+private:
+    HANDLE handle_ = INVALID_HANDLE_VALUE;
+};
+
 // MayStillRun is deliberately distinct: the caller must not inspect, recover, clean the
 // fixture, or start another child while a probe could still be writing into it.
 enum class ProbeOutcome { Ok, Failed, MayStillRun, NotStarted };
@@ -467,6 +533,96 @@ int runUpdateApplyWindowsTests(bool injectFailure) {
                                "windows: an injected failure fails the apply");
             update_test::check(installedVersion(root) == "1.0.0",
                                "windows: the rollback restores the old manifest");
+        }
+    }
+    {
+        // Issue #120: a real Windows lock on the already-renamed backup must defer
+        // committed cleanup without losing the journal, and recovery must retry until
+        // the lock is gone.
+        fs::path root;
+        if (freshRoot("root-cleanup-lock", &root)) {
+            const fs::path backup = root / "DaybreakRemake.exe.old";
+            const fs::path workspace = root / update::kWorkspaceDirectory / "2.0.0";
+            BackupFileLock lock;
+            std::string lockError;
+            update::ApplySettings settings = settingsFor(root, archive);
+            settings.failAt = [&](int operation) {
+                if (operation == 1) lock.grab(backup, &lockError);
+                return true;
+            };
+            const update::ApplyResult result = update::apply(settings);
+            update_test::check(lock.held(),
+                               "windows: apply's fail-point takes a real lock on the "
+                               "renamed backup: " + lockError);
+            if (lock.held()) {
+                const auto expected = expectedBytes(files, manifestText);
+                // The updater's own warning, not a probe, proves its real removeFile hit
+                // the lock: it names the backup and carries the OS error.
+                update_test::check(result.status == update::ApplyStatus::Ok &&
+                                       result.committed,
+                                   "windows: deferred cleanup still reports a committed "
+                                   "update");
+                update_test::check(result.cleanupWarning.find("startup retry") !=
+                                           std::string::npos &&
+                                       result.cleanupWarning.find(
+                                           "DaybreakRemake.exe.old") != std::string::npos &&
+                                       result.cleanupWarning.find("(error ") !=
+                                           std::string::npos,
+                                   "windows: apply warns with the backup name and the OS "
+                                   "failure: " + result.cleanupWarning);
+                std::string changed = changedFile(root, expected);
+                update_test::check(changed.empty(),
+                                   "windows: installed files, data, notes and manifest stay "
+                                   "byte-identical after deferred cleanup (changed: " +
+                                       changed + ")");
+                update_test::expect(installedVersion(root), "2.0.0",
+                                    "windows: the committed new version stays installed");
+                update_test::check(fs::exists(backup),
+                                   "windows: the locked backup survives the committed "
+                                   "apply");
+                update_test::check(fileContents(workspace / "journal")
+                                           .find("state = committed") != std::string::npos,
+                                   "windows: the committed journal survives the deferred "
+                                   "cleanup");
+
+                const bool first = update::recoverOnStartup(root);
+                const bool second = update::recoverOnStartup(root);
+                update_test::check(!first && !second,
+                                   "windows: repeated startup recovery keeps the retry "
+                                   "record while the file is locked");
+                update_test::check(fs::exists(backup) &&
+                                       fileContents(workspace / "journal")
+                                               .find("state = committed") !=
+                                           std::string::npos,
+                                   "windows: a locked recovery preserves both backup and "
+                                   "journal");
+                changed = changedFile(root, expected);
+                update_test::check(changed.empty(),
+                                   "windows: locked recovery leaves every protected file "
+                                   "byte-identical (changed: " + changed + ")");
+
+                lock.release();
+                const bool recovered = update::recoverOnStartup(root);
+                const bool repeated = update::recoverOnStartup(root);
+                update_test::check(recovered,
+                                   "windows: recovery after release removes the leftover "
+                                   "backups and workspace");
+                update_test::check(!repeated,
+                                   "windows: another recovery after cleanup is harmless");
+                update_test::check(!fs::exists(backup) &&
+                                       !fs::exists(root / "SDL3.dll.old") &&
+                                       !fs::exists(root / "assets/font.otf.old") &&
+                                       !fs::exists(root / update::kWorkspaceDirectory),
+                                   "windows: released cleanup consumes every backup and "
+                                   "the workspace");
+                update_test::expect(installedVersion(root), "2.0.0",
+                                    "windows: the new version stays installed after retry");
+                changed = changedFile(root, expected);
+                update_test::check(changed.empty(),
+                                   "windows: successful retry leaves installed files, data, "
+                                   "notes and manifest byte-identical (changed: " + changed +
+                                       ")");
+            }
         }
     }
     {
