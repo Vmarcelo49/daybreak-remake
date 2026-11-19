@@ -2,9 +2,11 @@
 """The real game binary must finish or roll back a crashed update (issue #100, step 4).
 
 Copies the built binary into a synthetic install (no game data), plants the `applying`
-journal and the `.old` file an interrupted apply leaves, and runs it with `--list` — the
-one mode that reaches the recovery call and exits before opening assets. A second run in
-a folder with no `package-manifest.txt` proves a development tree is left alone.
+journal and a backup of the kind an interrupted apply leaves, and runs it with `--list` —
+the one mode that reaches the recovery call and exits before opening assets. Both the
+legacy format-1 journal (with a `<target>.old` backup) and the format-2 journal (with an
+explicit workspace backup path) must recover. A second run in a folder with no
+`package-manifest.txt` proves a development tree is left alone.
 
     update_recovery_test.py <daybreak binary>
 """
@@ -16,10 +18,20 @@ import sys
 import tempfile
 from pathlib import Path
 
-JOURNAL = """format = 1
+JOURNAL_LEGACY = """format = 1
 state = applying
 version = 2.0.0
 manifest = {manifest_hash}
+[operations]
+replace foo.txt
+"""
+
+JOURNAL_V2 = """format = 2
+state = applying
+version = 2.0.0
+manifest = {manifest_hash}
+[backups]
+backup/foo.txt\tfoo.txt
 [operations]
 replace foo.txt
 """
@@ -31,12 +43,19 @@ def write(path, data, mode=0o644):
     path.chmod(mode)
 
 
-def plant(root, with_manifest):
-    """Leave the install exactly as a crash between the journal and the commit would."""
+def plant(root, with_manifest, version=1, orphan=False):
+    """Leave the install as a crash between the journal and the commit would."""
     write(root / "foo.txt", b"new contents\n")
-    write(root / "foo.txt.old", b"old contents\n")
+    if version == 1:
+        write(root / "foo.txt.old", b"old contents\n")
+    else:
+        write(root / ".daybreak-update" / "1.0.0" / "backup" / "foo.txt",
+              b"old contents\n")
+        if orphan:
+            write(root / "foo.txt.old", b"user orphan\n")
+    journal = JOURNAL_LEGACY if version == 1 else JOURNAL_V2
     write(root / ".daybreak-update" / "1.0.0" / "journal",
-          JOURNAL.format(manifest_hash="a" * 64).encode())
+          journal.format(manifest_hash="a" * 64).encode())
     if with_manifest:
         binary = (root / "daybreak").read_bytes()
         manifest = (
@@ -67,21 +86,35 @@ def main():
         root.mkdir()
         shutil.copy2(binary, root / "daybreak")
 
-        plant(root, with_manifest=True)
-        result = run(root / "daybreak", root)
-        if "recovered an interrupted update" not in result.stdout:
-            print("update_recovery_test: the game did not log the recovery:\n"
-                  + result.stdout + result.stderr, file=sys.stderr)
-            return 1
-        if (root / "foo.txt").read_bytes() != b"old contents\n":
-            print("update_recovery_test: the replaced file was not restored", file=sys.stderr)
-            return 1
-        if (root / "foo.txt.old").exists():
-            print("update_recovery_test: the .old file was not cleaned up", file=sys.stderr)
-            return 1
-        if (root / ".daybreak-update").exists():
-            print("update_recovery_test: the workspace was not removed", file=sys.stderr)
-            return 1
+        for version in (1, 2):
+            plant(root, with_manifest=True, version=version, orphan=(version == 2))
+            result = run(root / "daybreak", root)
+            if "recovered an interrupted update" not in result.stdout:
+                print("update_recovery_test: the game did not log the recovery for "
+                      "format %d:\n" % version + result.stdout + result.stderr,
+                      file=sys.stderr)
+                return 1
+            if (root / "foo.txt").read_bytes() != b"old contents\n":
+                print("update_recovery_test: the replaced file was not restored for "
+                      "format %d" % version, file=sys.stderr)
+                return 1
+            if version == 1 and (root / "foo.txt.old").exists():
+                print("update_recovery_test: the .old file was not cleaned up",
+                      file=sys.stderr)
+                return 1
+            if version == 2:
+                if (root / ".daybreak-update" / "1.0.0" / "backup" / "foo.txt").exists():
+                    print("update_recovery_test: the journal's backup was not consumed",
+                          file=sys.stderr)
+                    return 1
+                if (root / "foo.txt.old").read_bytes() != b"user orphan\n":
+                    print("update_recovery_test: a legacy orphan was touched by "
+                          "format-2 recovery", file=sys.stderr)
+                    return 1
+            if (root / ".daybreak-update").exists():
+                print("update_recovery_test: the workspace was not removed for "
+                      "format %d" % version, file=sys.stderr)
+                return 1
 
         # A development tree has no package manifest: recovery must not touch it.
         plant(root, with_manifest=False)
@@ -93,8 +126,8 @@ def main():
                 not (root / ".daybreak-update" / "1.0.0" / "journal").exists():
             print("update_recovery_test: a development tree was modified", file=sys.stderr)
             return 1
-    print("update_recovery_test: the game rolls back an interrupted update, and only in "
-          "an installed package")
+    print("update_recovery_test: the game rolls back both journal formats, leaves legacy "
+          "orphans alone, and only recovers in an installed package")
     return 0
 
 

@@ -1,6 +1,7 @@
 #include "update/updater.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -10,6 +11,7 @@
 #include <set>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #include "platform/http.h"
@@ -148,6 +150,9 @@ enum class OperationKind { Add, Replace, Delete };
 struct Operation {
     OperationKind kind = OperationKind::Add;
     std::string path;
+    // Workspace-relative backup path in format 2. Empty for Add (no backup) and for
+    // format 1, whose backups were the legacy <target>.old paths (issue #119).
+    std::string backup;
 };
 
 const char* operationName(OperationKind kind) {
@@ -162,11 +167,17 @@ const char* operationName(OperationKind kind) {
 std::string renderJournal(const char* state, const std::string& version,
                           const std::string& manifestSha,
                           const std::vector<Operation>& operations) {
-    std::string text = "format = 1\n";
+    std::string text = "format = 2\n";
     text += "state = ";
     text += state;
-    text += "\nversion = " + version + "\nmanifest = " + manifestSha +
-            "\n[operations]\n";
+    text += "\nversion = " + version + "\nmanifest = " + manifestSha + "\n[backups]\n";
+    for (const Operation& operation : operations) {
+        if (operation.backup.empty()) continue;
+        // TAB is a control character and cannot occur in a validated package path, so the
+        // backup/target pair stays unambiguous even when a path contains spaces.
+        text += operation.backup + "\t" + operation.path + "\n";
+    }
+    text += "[operations]\n";
     for (const Operation& operation : operations) {
         text += operationName(operation.kind);
         text += " " + operation.path + "\n";
@@ -181,9 +192,13 @@ bool parseJournal(const std::string& text, std::string* state,
     if (!manifest_text::splitLines(text, &lines, error)) return false;
     if (lines.size() < 5) return fail(error, "the journal is truncated");
     std::string format;
-    if (!manifest_text::headerValue(lines[0], "format", &format) || format != "1") {
-        return fail(error, "the journal's format is not 1");
+    if (!manifest_text::headerValue(lines[0], "format", &format) ||
+        (format != "1" && format != "2")) {
+        return fail(error, "the journal's format is not 1 or 2");
     }
+    // Journals left by older releases have no backup records: their only possible backup
+    // was <target>.old. Keep recovering those instead of stranding a crashed install.
+    const bool explicitBackups = format == "2";
     if (!manifest_text::headerValue(lines[1], "state", state) ||
         (*state != "applying" && *state != "committed")) {
         return fail(error, "the journal's state is not applying or committed");
@@ -196,8 +211,37 @@ bool parseJournal(const std::string& text, std::string* state,
         !manifest_text::isLowerHex(*manifestSha, 64)) {
         return fail(error, "the journal has no manifest hash");
     }
-    if (lines[4] != "[operations]") return fail(error, "the journal has no operations");
-    for (std::size_t index = 5; index < lines.size(); ++index) {
+    const char* expectedSection = explicitBackups ? "[backups]" : "[operations]";
+    if (lines[4] != expectedSection) {
+        return fail(error, std::string("the journal has no ") + expectedSection + " section");
+    }
+
+    std::map<std::string, std::string> backupByTarget;
+    std::size_t index = 5;
+    if (explicitBackups) {
+        const std::string prefix = std::string(kBackupDirectory) + "/";
+        for (; index < lines.size() && lines[index] != "[operations]"; ++index) {
+            const std::string& line = lines[index];
+            const std::size_t tab = line.find('\t');
+            if (tab == std::string::npos) {
+                return fail(error, "malformed journal backup line");
+            }
+            const std::string backup = line.substr(0, tab);
+            const std::string target = line.substr(tab + 1);
+            std::string pathError;
+            if (!paths::validRelative(target, &pathError)) return fail(error, pathError);
+            if (!paths::validRelative(backup, &pathError) ||
+                backup.rfind(prefix, 0) != 0) {
+                return fail(error, "the journal names a backup outside its workspace");
+            }
+            if (!backupByTarget.emplace(target, backup).second) {
+                return fail(error, "the journal names a backup twice for " + target);
+            }
+        }
+        if (index >= lines.size()) return fail(error, "the journal has no operations");
+        ++index;
+    }
+    for (; index < lines.size(); ++index) {
         const std::string& line = lines[index];
         const std::size_t space = line.find(' ');
         if (space == std::string::npos) return fail(error, "malformed journal line");
@@ -217,7 +261,90 @@ bool parseJournal(const std::string& text, std::string* state,
         if (!paths::validRelative(operation.path, &pathError)) {
             return fail(error, pathError);
         }
+        if (explicitBackups) {
+            const auto found = backupByTarget.find(operation.path);
+            if (operation.kind == OperationKind::Add) {
+                if (found != backupByTarget.end()) {
+                    return fail(error, "an added file has a backup in the journal");
+                }
+            } else {
+                if (found == backupByTarget.end()) {
+                    return fail(error, "the journal has no backup for " + operation.path);
+                }
+                operation.backup = found->second;
+                backupByTarget.erase(found);
+            }
+        }
         operations->push_back(operation);
+    }
+    if (!backupByTarget.empty()) {
+        return fail(error, "the journal names a backup with no operation");
+    }
+    return true;
+}
+
+// symlink_status reports ENOENT in the system category, so compare the value rather than
+// the error code against a generic-category errc.
+bool missing(const std::error_code& code) {
+    return code.value() == ENOENT;
+}
+
+// A plain directory, never a symlink or junction: a planted link would move the workspace
+// (and therefore its backups and journal) outside the install's filesystem.
+bool plainDirectoryOrMissing(const std::filesystem::path& path, std::string* error) {
+    std::error_code code;
+    const std::filesystem::file_status status = std::filesystem::symlink_status(path, code);
+    if (missing(code)) return true;
+    if (code) return fail(error, "cannot inspect " + path.string() + ": " + code.message());
+    if (std::filesystem::exists(status) &&
+        (!std::filesystem::is_directory(status) || std::filesystem::is_symlink(status))) {
+        return fail(error, "the update workspace is not a plain directory: " + path.string());
+    }
+    return true;
+}
+
+// No-follow existence check: a dangling symlink or a junction at a backup path is still an
+// entry that must stop the transaction, not something for rename to replace (issue #119).
+bool entryExists(const std::filesystem::path& path, std::error_code* code) {
+    std::error_code local;
+    const std::filesystem::file_status status = std::filesystem::symlink_status(path, local);
+    if (code != nullptr) *code = local;
+    return !local && std::filesystem::exists(status);
+}
+
+// Journal paths use '/'; rebuild component by component so Windows APIs see native
+// separators rather than a mixed path built from a single u8path string.
+std::filesystem::path joinRelative(const std::filesystem::path& base,
+                                   const std::string& relative) {
+    std::filesystem::path result = base;
+    for (const std::filesystem::path& component : std::filesystem::u8path(relative)) {
+        result /= component;
+    }
+    return result;
+}
+
+std::filesystem::path backupFor(const std::filesystem::path& root,
+                                const std::filesystem::path& workspace,
+                                const Operation& operation) {
+    if (!operation.backup.empty()) {
+        return joinRelative(workspace, operation.backup);
+    }
+    // Only a format-1 journal can reach this branch. Older releases derived <target>.old;
+    // a format-2 transaction never creates or consumes a path outside its workspace.
+    std::filesystem::path aside = root / std::filesystem::u8path(operation.path);
+    aside += ".old";
+    return aside;
+}
+
+bool backupUsable(const std::filesystem::path& path, const Operation& operation,
+                  std::string* error) {
+    if (operation.backup.empty()) return true;  // legacy format: unchanged behaviour
+    std::error_code code;
+    const std::filesystem::file_status status = std::filesystem::symlink_status(path, code);
+    if (missing(code)) return true;  // the rename never happened
+    if (code) return fail(error, "cannot inspect " + path.string() + ": " + code.message());
+    if (!std::filesystem::is_regular_file(status) || std::filesystem::is_symlink(status)) {
+        return fail(error, "the journal's backup is not a plain file: " + path.string());
     }
     return true;
 }
@@ -324,29 +451,31 @@ bool rollback(const std::filesystem::path& root, const std::filesystem::path& wo
               const std::vector<Operation>& operations, std::string* error) {
     for (auto it = operations.rbegin(); it != operations.rend(); ++it) {
         const std::filesystem::path target = root / std::filesystem::u8path(it->path);
-        std::filesystem::path aside = target;
-        aside += ".old";
+        const std::filesystem::path aside = backupFor(root, workspace, *it);
         if (it->kind == OperationKind::Add) {
             if (!platform::removeFile(target, error)) return false;
-        } else if (platform::exists(aside)) {
-            if (!platform::removeFile(target, error)) return false;
-            if (!platform::renameIntoPlace(aside, target, error)) return false;
+        } else {
+            if (!backupUsable(aside, *it, error)) return false;
+            if (entryExists(aside, nullptr)) {
+                if (!platform::removeFile(target, error)) return false;
+                if (!platform::renameIntoPlace(aside, target, error)) return false;
+            }
         }
     }
     removeWorkspace(root, workspace);
     return true;
 }
 
-// Deletes the .old files a committed apply left behind. A failure (a locked file on
-// Windows) keeps the workspace so the next start retries instead of losing the journal.
+// Deletes the backups a committed apply left behind. A failure (a locked file on Windows)
+// keeps the journal *and* the backups together so the next start can retry (issue #120).
 bool finishCommitted(
     const std::filesystem::path& root, const std::filesystem::path& workspace,
     const std::vector<Operation>& operations, std::string* error,
     const std::function<bool(const std::filesystem::path&, std::string*)>& removeBackup = {}) {
     for (const Operation& operation : operations) {
         if (operation.kind == OperationKind::Add) continue;
-        std::filesystem::path aside = root / std::filesystem::u8path(operation.path);
-        aside += ".old";
+        const std::filesystem::path aside = backupFor(root, workspace, operation);
+        if (!backupUsable(aside, operation, error)) return false;
         if (removeBackup ? !removeBackup(aside, error)
                          : !platform::removeFile(aside, error)) {
             return false;
@@ -482,6 +611,24 @@ ApplyResult apply(const ApplySettings& settings) {
         return result;
     }
 
+    // Never write through a planted link, and never overwrite an earlier transaction's
+    // journal: a pending recovery owns that workspace until startup has consumed it.
+    const std::filesystem::path workspaceRoot = root / kWorkspaceDirectory;
+    if (!plainDirectoryOrMissing(workspaceRoot, &result.error) ||
+        !plainDirectoryOrMissing(workspace, &result.error)) {
+        return result;
+    }
+    std::error_code journalCode;
+    if (entryExists(journalPath, &journalCode)) {
+        workspaceGuard.keep = true;
+        result.error = "an earlier update is still pending; restart the game to finish it";
+        return result;
+    }
+    if (journalCode && !missing(journalCode)) {
+        result.error = "cannot inspect " + journalPath.string() + ": " +
+                       journalCode.message();
+        return result;
+    }
     if (!platform::makeDirectories(workspace, &result.error)) return result;
 
     // Before the download: archive plus twice a conservative unpack. The package manifest
@@ -603,6 +750,18 @@ ApplyResult apply(const ApplySettings& settings) {
         result.error = "the archive is for another platform";
         return result;
     }
+    // The updater's own workspace is never package content: letting a manifest name it
+    // would aim a target straight at the journal or the backup mirror (issue #119).
+    const std::string workspacePrefix =
+        paths::foldCase(std::string(kWorkspaceDirectory) + "/");
+    for (const PackageEntry& entry : newManifest.entries) {
+        const std::string folded = paths::foldCase(entry.path);
+        if (folded == paths::foldCase(kWorkspaceDirectory) ||
+            folded.rfind(workspacePrefix, 0) == 0) {
+            result.error = "refusing to update the updater's own workspace: " + entry.path;
+            return result;
+        }
+    }
     if (!verifyStaged(staged, newManifest, &result.error)) return result;
 
     // The archive may not carry a file the manifest does not list, or omit one it does.
@@ -684,6 +843,44 @@ ApplyResult apply(const ApplySettings& settings) {
               [](const Operation& left, const Operation& right) {
                   return left.path < right.path;
               });
+    for (Operation& operation : operations) {
+        if (operation.kind != OperationKind::Add) {
+            // The backup mirrors the target inside our workspace. Package paths have
+            // already been checked for case collisions and file/directory conflicts.
+            operation.backup = std::string(kBackupDirectory) + "/" + operation.path;
+        }
+    }
+
+    // Still before the first rename: an occupied backup path is a refusal, never something
+    // to replace. no-follow also catches a dangling symlink or a junction planted there.
+    for (const Operation& operation : operations) {
+        if (operation.backup.empty()) continue;
+        const std::filesystem::path backup = joinRelative(workspace, operation.backup);
+        std::error_code code;
+        if (entryExists(backup, &code)) {
+            // Drop only what we downloaded/staged; the occupied path is not ours to delete.
+            std::error_code ignored;
+            std::filesystem::remove_all(archivePath, ignored);
+            std::filesystem::remove_all(staged, ignored);
+            workspaceGuard.keep = true;
+            result.error = "backup path already exists: " + backup.string() +
+                           "; refusing to overwrite " + operation.path;
+            return result;
+        }
+        if (code && !missing(code)) {
+            result.error = "cannot inspect " + backup.string() + ": " + code.message();
+            return result;
+        }
+    }
+    for (const Operation& operation : operations) {
+        if (operation.backup.empty()) continue;
+        const std::filesystem::path parent =
+            joinRelative(workspace, operation.backup).parent_path();
+        if (!plainDirectoryOrMissing(parent, &result.error) ||
+            !platform::makeDirectories(parent, &result.error)) {
+            return result;
+        }
+    }
 
     if (settings.phase) settings.phase(ApplyPhase::Installing);
     const std::string manifestSha =
@@ -720,10 +917,9 @@ ApplyResult apply(const ApplySettings& settings) {
         const std::filesystem::path target =
             root / std::filesystem::u8path(operation.path);
         if (operation.kind != OperationKind::Add) {
-            std::filesystem::path aside = target;
-            aside += ".old";
             if (platform::exists(target) &&
-                !platform::renameAside(target, aside, &result.error)) {
+                !platform::renameAside(target, backupFor(root, workspace, operation),
+                                       &result.error)) {
                 return applyFailed(result.error);
             }
         }
@@ -758,7 +954,8 @@ ApplyResult apply(const ApplySettings& settings) {
     platform::writeFileAtomically(
         journalPath, renderJournal("committed", version, manifestSha, operations),
         &ignored);
-    // A leftover .old that cannot be deleted yet (Windows) is retried on the next start.
+    // A backup that cannot be deleted yet (Windows) is retried on the next start with its
+    // journal, so recovery can still attribute it to this transaction (issue #120).
     std::string cleanupError;
     if (!finishCommitted(root, workspace, operations, &cleanupError,
                          settings.removeCommittedBackup)) {
@@ -784,14 +981,28 @@ bool recoverOnStartup(const std::filesystem::path& root) {
     std::vector<std::filesystem::path> workspaces;
     for (std::filesystem::directory_iterator it(workspaceRoot, code), end; !code && it != end;
          it.increment(code)) {
-        if (it->is_directory(code) && !code) workspaces.push_back(it->path());
+        // A planted junction must not send recovery into a directory outside the install.
+        const std::filesystem::file_status status = it->symlink_status(code);
+        if (!code && std::filesystem::is_directory(status) &&
+            !std::filesystem::is_symlink(status)) {
+            workspaces.push_back(it->path());
+        }
     }
     for (const std::filesystem::path& workspace : workspaces) {
+        const std::filesystem::path journalPath = workspace / "journal";
+        std::error_code journalCode;
+        const std::filesystem::file_status journalStatus =
+            std::filesystem::symlink_status(journalPath, journalCode);
+        if (journalCode || std::filesystem::is_symlink(journalStatus)) continue;
         std::string text;
-        if (!readFile(workspace / "journal", &text)) {
+        if (!std::filesystem::exists(journalStatus)) {
             // A workspace without a journal never reached the first rename.
             removeWorkspace(root, workspace);
             acted = true;
+            continue;
+        }
+        if (!std::filesystem::is_regular_file(journalStatus) ||
+            !readFile(journalPath, &text)) {
             continue;
         }
         std::string state;
@@ -802,7 +1013,7 @@ bool recoverOnStartup(const std::filesystem::path& root) {
         bool committed = state == "committed";
         if (!committed) {
             // A crash between the manifest rename and the journal update leaves the new
-            // manifest in place: that is the commit, and the .old files can go.
+            // manifest in place: that is the commit, and the journal's backups can go.
             std::string current;
             committed = readFile(root / kPackageManifestName, &current) &&
                         sha256Hex(current.data(), current.size()) == manifestSha;

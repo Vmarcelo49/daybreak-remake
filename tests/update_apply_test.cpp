@@ -67,7 +67,28 @@ std::map<std::string, std::string> snapshot(const fs::path& root) {
 void expectSameFiles(const std::map<std::string, std::string>& before,
                      const std::map<std::string, std::string>& after,
                      const std::string& what) {
-    check(before == after, what + " leaves every file byte-identical");
+    std::string difference;
+    for (const auto& item : before) {
+        const auto found = after.find(item.first);
+        if (found == after.end()) {
+            difference = item.first + " disappeared";
+            break;
+        }
+        if (found->second != item.second) {
+            difference = item.first + " changed";
+            break;
+        }
+    }
+    if (difference.empty()) {
+        for (const auto& item : after) {
+            if (before.count(item.first) == 0) {
+                difference = item.first + " appeared";
+                break;
+            }
+        }
+    }
+    check(before == after, what + " leaves every file byte-identical" +
+                               (difference.empty() ? "" : " (" + difference + ")"));
 }
 
 struct Context {
@@ -313,7 +334,8 @@ void testFaultInjection(const Context& context, int operations) {
 
 void testCommittedCleanupRetry(const Context& context) {
     const fs::path root = freshRoot(context, "cleanup-retry");
-    const fs::path aside = root / "assets/font.otf.old";
+    const fs::path aside = root / update::kWorkspaceDirectory / "2.0.0" /
+                           update::kBackupDirectory / "assets/font.otf";
     bool failedInApply = false;
     const update::ApplyResult result = runApply(
         context, "good", root, {}, {}, {}, {},
@@ -325,7 +347,7 @@ void testCommittedCleanupRetry(const Context& context) {
             }
             return update::platform::removeFile(path, error);
         });
-    check(failedInApply, "apply reaches committed cleanup and fails old-file deletion");
+    check(failedInApply, "apply reaches committed cleanup and fails backup deletion");
     check(result.status == update::ApplyStatus::Ok && result.committed,
           "deferred cleanup does not turn the committed update into failure");
     check(result.cleanupWarning.find("startup retry") != std::string::npos &&
@@ -345,9 +367,10 @@ void testCommittedCleanupRetry(const Context& context) {
         check(false, "persistent recovery failure test requires a non-root user");
         return;
     }
-    const fs::perms originalPermissions = fs::status(root / "assets").permissions();
+    const fs::path backupDirectory = aside.parent_path();
+    const fs::perms originalPermissions = fs::status(backupDirectory).permissions();
     std::error_code permissionError;
-    fs::permissions(root / "assets", fs::perms::none, fs::perm_options::replace,
+    fs::permissions(backupDirectory, fs::perms::none, fs::perm_options::replace,
                     permissionError);
     if (permissionError) {
         check(false, "test setup makes the backup directory unwritable: " +
@@ -356,7 +379,7 @@ void testCommittedCleanupRetry(const Context& context) {
     }
     const bool firstRecovery = update::recoverOnStartup(root);
     const bool secondRecovery = update::recoverOnStartup(root);
-    fs::permissions(root / "assets", originalPermissions, fs::perm_options::replace,
+    fs::permissions(backupDirectory, originalPermissions, fs::perm_options::replace,
                     permissionError);
     if (permissionError) {
         check(false, "test setup restores backup directory permissions: " +
@@ -380,6 +403,194 @@ void testCommittedCleanupRetry(const Context& context) {
     check(!fs::exists(aside) && !fs::exists(root / ".daybreak-update"),
           "successful retry removes the backup and workspace");
     expect(installedVersion(root), "2.0.0", "successful cleanup preserves the new version");
+}
+
+// Issue #119: a literal <target>.old beside a package file is not ours unless a legacy
+// format-1 journal says so. Format 2 must leave it alone on success and on every failure.
+void testLegacyOrphans(const Context& context, int operations) {
+    const auto plant = [](const fs::path& root) {
+        for (const char* name : {"assets/font.otf.old", "lib/libold.so.old",
+                                 "README.txt.old", "package-manifest.txt.old"}) {
+            std::ofstream(root / name, std::ios::binary) << "legacy orphan " << name;
+        }
+    };
+    {
+        const fs::path root = freshRoot(context, "orphan-good");
+        plant(root);
+        const auto before = snapshot(root);
+        const update::ApplyResult result = runApply(context, "good", root);
+        check(result.status == update::ApplyStatus::Ok,
+              "a legacy .old orphan does not block an update: " + result.error);
+        const auto after = snapshot(root);
+        for (const auto& item : before) {
+            if (item.first.find(".old") == std::string::npos) continue;
+            check(after.count(item.first) != 0 && after.at(item.first) == item.second,
+                  "a successful apply leaves " + item.first + " byte-identical");
+        }
+    }
+    for (int failAt = 0; failAt < operations; ++failAt) {
+        const fs::path root = freshRoot(context, "orphan-fault");
+        plant(root);
+        const auto before = snapshot(root);
+        const update::ApplyResult result = runApply(
+            context, "good", root, [failAt](int operation) { return operation != failAt; });
+        check(result.status == update::ApplyStatus::Failed,
+              "an injected failure beside legacy orphans fails at " +
+                  std::to_string(failAt));
+        expectSameFiles(before, snapshot(root),
+                        "rollback at " + std::to_string(failAt) + " beside legacy orphans");
+    }
+    for (int crashAt = 0; crashAt < operations; ++crashAt) {
+        const fs::path root = freshRoot(context, "orphan-crash");
+        plant(root);
+        const auto before = snapshot(root);
+        const pid_t child = fork();
+        if (child == 0) {
+            runApply(context, "good", root, [crashAt](int operation) {
+                if (operation == crashAt) _exit(99);
+                return true;
+            });
+            _exit(0);
+        }
+        int status = 0;
+        waitpid(child, &status, 0);
+        check(WIFEXITED(status) && WEXITSTATUS(status) == 99,
+              "the orphan child crashed at operation " + std::to_string(crashAt));
+        update::recoverOnStartup(root);
+        expectSameFiles(before, snapshot(root),
+                        "recovery at " + std::to_string(crashAt) +
+                            " beside legacy orphans");
+    }
+}
+
+void testBackupCollision(const Context& context) {
+    const fs::path root = freshRoot(context, "backup-collision");
+    const fs::path backup = root / update::kWorkspaceDirectory / "2.0.0" /
+                            update::kBackupDirectory / "assets/font.otf";
+    fs::create_directories(backup.parent_path());
+    std::ofstream(backup, std::ios::binary) << "pre-existing backup";
+    const auto before = snapshot(root);
+    const update::ApplyResult result = runApply(context, "good", root);
+    check(result.status == update::ApplyStatus::Failed,
+          "an occupied backup path refuses the apply: " + result.error);
+    check(result.error.find("backup path already exists") != std::string::npos &&
+              result.error.find("assets/font.otf") != std::string::npos,
+          "the refusal names the backup and its target: " + result.error);
+    expectSameFiles(before, snapshot(root), "a refused backup collision");
+    check(fs::exists(backup), "the pre-existing backup-path file survives the refusal");
+    expect(installedVersion(root), "1.0.0", "the old manifest survives the refusal");
+}
+
+#ifndef _WIN32
+void testBackupSymlinkCollision(const Context& context) {
+    const fs::path root = freshRoot(context, "backup-symlink");
+    const fs::path backup = root / update::kWorkspaceDirectory / "2.0.0" /
+                            update::kBackupDirectory / "assets/font.otf";
+    fs::create_directories(backup.parent_path());
+    fs::create_symlink(root / "nowhere", backup);  // deliberately dangling
+    const auto before = snapshot(root);
+    const update::ApplyResult result = runApply(context, "good", root);
+    check(result.status == update::ApplyStatus::Failed,
+          "a no-follow check refuses a symlink at a backup path: " + result.error);
+    check(fs::is_symlink(fs::symlink_status(backup)),
+          "the planted dangling symlink is not replaced");
+    expectSameFiles(before, snapshot(root), "a symlink backup collision");
+}
+#endif
+
+void testPendingJournal(const Context& context) {
+    const fs::path root = freshRoot(context, "pending");
+    const fs::path workspace = root / update::kWorkspaceDirectory / "2.0.0";
+    fs::create_directories(workspace);
+    const std::string journal = "format = 1\nstate = applying\nversion = 2.0.0\nmanifest = " +
+                                std::string(64, 'a') + "\n[operations]\n";
+    std::ofstream(workspace / "journal") << journal;
+    const auto before = snapshot(root);
+    const update::ApplyResult result = runApply(context, "good", root);
+    check(result.status == update::ApplyStatus::Failed &&
+              result.error.find("earlier update is still pending") != std::string::npos,
+          "a pending journal refuses a new apply: " + result.error);
+    expectSameFiles(before, snapshot(root), "a refused pending journal");
+    check(fs::exists(workspace / "journal"), "the pending journal is kept for recovery");
+}
+
+std::string journalFor(const std::string& format, const std::string& state,
+                       const std::string& manifestHash) {
+    return "format = " + format + "\nstate = " + state +
+           "\nversion = 2.0.0\nmanifest = " + manifestHash + "\n";
+}
+
+void testJournalRecovery(const Context& context) {
+    {
+        // A journal an older release could leave behind still rolls its .old file back.
+        const fs::path root = freshRoot(context, "journal-v1");
+        const fs::path workspace = root / update::kWorkspaceDirectory / "2.0.0";
+        fs::create_directories(workspace);
+        std::ofstream(root / "foo.txt") << "new contents\n";
+        std::ofstream(root / "foo.txt.old") << "old contents\n";
+        std::ofstream(workspace / "journal")
+            << journalFor("1", "applying", std::string(64, 'a')) +
+                   "[operations]\nreplace foo.txt\n";
+        check(update::recoverOnStartup(root), "a legacy applying journal is recovered");
+        expect(readFile(root / "foo.txt"), "old contents\n",
+               "legacy recovery restores the .old file");
+        check(!fs::exists(root / "foo.txt.old"), "legacy recovery consumes its own backup");
+        check(!fs::exists(root / update::kWorkspaceDirectory),
+              "legacy recovery removes the workspace");
+    }
+    {
+        // Format 2 consumes only the backup it names; a legacy orphan at the same target
+        // stays a user file even though the journal mentions that target.
+        const fs::path root = freshRoot(context, "journal-v2");
+        const fs::path workspace = root / update::kWorkspaceDirectory / "2.0.0";
+        const fs::path backupDir = workspace / update::kBackupDirectory;
+        fs::create_directories(backupDir);
+        std::ofstream(backupDir / "foo.txt") << "old contents\n";
+        std::ofstream(root / "foo.txt") << "new contents\n";
+        std::ofstream(root / "foo.txt.old") << "user orphan\n";
+        std::ofstream(workspace / "journal")
+            << journalFor("2", "applying", std::string(64, 'a')) +
+                   "[backups]\nbackup/foo.txt\tfoo.txt\n[operations]\nreplace foo.txt\n";
+        check(update::recoverOnStartup(root), "a format-2 applying journal is recovered");
+        expect(readFile(root / "foo.txt"), "old contents\n",
+               "format-2 recovery restores only its recorded backup");
+        expect(readFile(root / "foo.txt.old"), "user orphan\n",
+               "format-2 recovery never adopts a legacy orphan");
+        check(!fs::exists(root / update::kWorkspaceDirectory),
+              "format-2 recovery removes the workspace");
+    }
+    {
+        // Committed cleanup removes the recorded backup but leaves an orphan untouched.
+        const fs::path root = freshRoot(context, "journal-v2-committed");
+        const fs::path workspace = root / update::kWorkspaceDirectory / "2.0.0";
+        const fs::path backupDir = workspace / update::kBackupDirectory;
+        fs::create_directories(backupDir);
+        std::ofstream(backupDir / "foo.txt") << "old contents\n";
+        std::ofstream(root / "foo.txt") << "new contents\n";
+        std::ofstream(root / "foo.txt.old") << "user orphan\n";
+        std::ofstream(workspace / "journal")
+            << journalFor("2", "committed", std::string(64, 'a')) +
+                   "[backups]\nbackup/foo.txt\tfoo.txt\n[operations]\nreplace foo.txt\n";
+        check(update::recoverOnStartup(root), "a format-2 committed journal is cleaned");
+        expect(readFile(root / "foo.txt"), "new contents\n",
+               "committed recovery keeps the installed version");
+        check(!fs::exists(backupDir / "foo.txt"), "committed recovery consumes its backup");
+        expect(readFile(root / "foo.txt.old"), "user orphan\n",
+               "committed recovery leaves the legacy orphan alone");
+    }
+    {
+        // A journal whose backup escapes the workspace is not attributable to it.
+        const fs::path root = freshRoot(context, "journal-v2-bad");
+        const fs::path workspace = root / update::kWorkspaceDirectory / "2.0.0";
+        fs::create_directories(workspace);
+        std::ofstream(workspace / "journal")
+            << journalFor("2", "committed", std::string(64, 'a')) +
+                   "[backups]\n../../outside\tfoo.txt\n[operations]\nreplace foo.txt\n";
+        const auto before = snapshot(root);
+        check(!update::recoverOnStartup(root), "a malformed backup mapping is refused");
+        expectSameFiles(before, snapshot(root), "a malformed journal changes nothing");
+        check(fs::exists(workspace / "journal"), "the malformed journal is left for inspection");
+    }
 }
 
 void testCrashRecovery(const Context& context, int operations) {
@@ -479,6 +690,13 @@ int main(int argc, char** argv) {
     const int operations = operationCount(context);
     testFaultInjection(context, operations);
     testCommittedCleanupRetry(context);
+    testLegacyOrphans(context, operations);
+    testBackupCollision(context);
+#ifndef _WIN32
+    testBackupSymlinkCollision(context);
+#endif
+    testPendingJournal(context);
+    testJournalRecovery(context);
     testCrashRecovery(context, operations);
     testEndToEnd(context, keyHex);
 

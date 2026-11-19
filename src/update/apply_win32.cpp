@@ -90,9 +90,8 @@ std::wstring quote(const std::wstring& argument) {
 
 bool renameAside(const std::filesystem::path& path,
                  const std::filesystem::path& aside, std::string* error) {
-    if (GetFileAttributesW(aside.c_str()) != INVALID_FILE_ATTRIBUTES) {
-        if (!removeFile(aside, error)) return false;
-    }
+    // No REPLACE_EXISTING and no pre-delete: an entry at the backup path belongs to
+    // something else (issue #119). The updater picks an unused path and preflights it.
     return moveWithRetry(path, aside, MOVEFILE_WRITE_THROUGH, error);
 }
 

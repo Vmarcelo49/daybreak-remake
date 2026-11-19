@@ -265,22 +265,36 @@ the copyrighted game data:
   `hd-textures/` and `daybreak[0-9][0-9].dat` are refused by both manifest parsers, in any
   case, so a release can never step on the game's files or a texture pack.
 * **Journal.** `<workspace>/journal` is written atomically (temp file, fsync, rename,
-  directory fsync) before the first rename, listing every operation. Its states are
-  `applying` and `committed`; it also records the new manifest's sha256.
-* **Per file:** the existing file is renamed to `<path>.old`, then the staged file is
-  renamed into place (parent directories created). Deletions become `.old` too, so a
-  rollback can restore them. Windows uses `MoveFileExW` without `REPLACE_EXISTING` and
-  retries `ERROR_ACCESS_DENIED`/`ERROR_SHARING_VIOLATION` for up to five seconds, because
-  antivirus scanners and the still-exiting old process hold fresh `.exe`/`.dll` files.
+  directory fsync) before the first rename. Format 2 lists every operation *and* an explicit
+  `[backups]` section pairing each workspace-relative backup path with its target path; its
+  states are `applying` and `committed`, and it records the new manifest's sha256. A journal
+  left by an older release (format 1) is still parsed and recovered; it has no backup
+  records, so recovery derives the legacy `<target>.old` paths for that journal only.
+* **Per file:** the existing file is renamed to
+  `<workspace>/backup/<target-relative-path>` — a mirror inside the updater's own workspace,
+  on the same filesystem so the rename is still atomic. The staged file is then renamed into
+  place (parent directories created). Deletions are backed up the same way. An occupied
+  backup path is refused *before* the first rename (a no-follow check also catches a planted
+  symlink or junction), and neither platform's `renameAside` removes or replaces an existing
+  entry. Windows uses `MoveFileExW` without `REPLACE_EXISTING` and retries
+  `ERROR_ACCESS_DENIED`/`ERROR_SHARING_VIOLATION` for up to five seconds, because antivirus
+  scanners and the still-exiting old process hold fresh `.exe`/`.dll` files.
 * **The commit point is the new `package-manifest.txt`**, replaced by an atomic rename;
   only then is the journal marked `committed`.
-* **Any failure before the commit rolls the journal back**, restoring every `.old` and
-  removing every added file, so the old version is exactly as it was.
+* **Any failure before the commit rolls the journal back**, restoring only the backups that
+  journal names and removing every added file, so the old version is exactly as it was.
 * **Startup recovery** (`update::recoverOnStartup`) runs first thing on native builds. With
-  no journal it is one `stat` and does nothing. `applying` rolls back — unless the installed
-  manifest already matches the journal's hash, in which case the commit happened and the
-  `.old` files are cleaned. `committed` just cleans up. A `.old` that cannot be deleted yet
-  on Windows is retried on the next start.
+  no journal it only stats the workspace and does nothing. `applying` rolls back — unless
+  the installed manifest already matches the journal's hash, in which case the commit
+  happened and the recorded backups are cleaned. `committed` just cleans up. A backup that
+  cannot be deleted yet on Windows is retried on the next start, with journal and backups
+  retained together (issue #120). Recovery ignores malformed backup mappings and linked
+  workspaces rather than guessing which files might belong to a transaction.
+* **Legacy `.old` orphans are left alone.** Releases 1.0.0/1.0.1 (bug #120) can leave an
+  unrecorded `DaybreakRemake.exe.old` behind. A format-2 transaction neither refuses nor
+  adopts or deletes a file at `<target>.old`, even when its journal names that target: the
+  new backup lives at a different path. Only a present, parseable format-1 journal may
+  consume a legacy `.old` file (issues #100/#119).
 * **Relaunch** starts the new entry point with the original arguments plus
   `--updated-from=<old>`; the game logs that flag and ignores it (migrations hook in later).
   Linux `execv`s the launcher, Windows `CreateProcessW`s it and lets the caller exit.
@@ -290,7 +304,7 @@ throwaway keys. Nothing on a player's machine can add one. While the list is emp
 check reports "untrusted"; a build with `DAYBREAK_RELEASE_BUILD` defined fails to compile
 with an empty list (a static assertion) and the logic suite also asserts it at run time.
 
-What is verified today: `update_apply_test` (120 checks) runs the whole chain against the
+What is verified today: `update_apply_test` runs the whole chain against the
 step-2 loopback server with archives built by the real release tools — every outcome, the
 collision and game-area refusals, a read-only root, the space hook, cancel at each phase, a
 layout change, a missing old manifest, an injected failure at **every** operation with a

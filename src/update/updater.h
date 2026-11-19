@@ -25,6 +25,10 @@ inline constexpr const char* kDefaultManifestUrl =
     "https://github.com/Vmarcelo49/daybreak-remake/releases/latest/download/"
     "update-manifest.txt";
 inline constexpr const char* kWorkspaceDirectory = ".daybreak-update";
+// Transaction backups are mirrored under <workspace>/<kBackupDirectory>/<target path>. The
+// workspace is ours and on the install's filesystem, so a crash can be repaired from the
+// journal alone — including by a future launcher that cannot load the game (issues #119/#118).
+inline constexpr const char* kBackupDirectory = "backup";
 
 enum class CheckStatus { UpToDate, Available, Skipped, ManualOnly, Failed };
 

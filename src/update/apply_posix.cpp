@@ -24,6 +24,17 @@ bool fail(std::string* error, const std::string& message) {
 bool renameAside(const std::filesystem::path& path,
                  const std::filesystem::path& aside, std::string* error) {
     std::error_code code;
+    const std::filesystem::file_status status = std::filesystem::symlink_status(aside, code);
+    if (code && code.value() != ENOENT) {
+        return fail(error, "cannot inspect " + aside.string() + ": " + code.message());
+    }
+    // plain rename() would silently replace a regular file at the backup path; #119 is
+    // exactly that data loss. The updater also preflights this, but the primitive must not
+    // destroy an unexpected entry even if called directly.
+    if (!code && std::filesystem::exists(status)) {
+        return fail(error, "cannot rename " + path.string() + " aside: " +
+                               aside.string() + " already exists");
+    }
     std::filesystem::rename(path, aside, code);
     if (code) {
         return fail(error, "cannot rename " + path.string() + " aside: " + code.message());

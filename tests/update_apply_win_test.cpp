@@ -228,6 +228,13 @@ update::ApplySettings settingsFor(const fs::path& root,
     return settings;
 }
 
+// Format-2 backups are mirrored inside the transaction workspace (issue #119), never at
+// the legacy <target>.old path next to the installed file.
+fs::path backupPath(const fs::path& root, const std::string& target) {
+    return root / update::kWorkspaceDirectory / "2.0.0" / update::kBackupDirectory /
+           fs::u8path(target);
+}
+
 std::string fileContents(const fs::path& path) {
     std::ifstream input(path, std::ios::binary);
     return std::string((std::istreambuf_iterator<char>(input)),
@@ -376,6 +383,7 @@ int runUpdateWindowsRenameProbe() {
         std::fprintf(stderr, "update_selftest: rename probe refused: %s\n", error.c_str());
         return 2;
     }
+    // A direct primitive check: this is a probe scratch name, not a package backup path.
     fs::path aside = self;
     aside += L".old";
     if (!update::platform::renameAside(self, aside, &error)) {
@@ -423,7 +431,7 @@ int runUpdateWindowsInterruptProbe() {
     }
     update::ApplySettings settings = settingsFor(root, archive);
     // failAt runs after the journal is written and after operation 0 replaced the exe and
-    // left its .old backup, but before apply's own rollback path can run. Dying here is a
+    // left its workspace backup, but before apply's own rollback path can run. Dying here is a
     // real interrupted transaction, not recovery invoked after an in-process failure.
     settings.failAt = [](int operation) -> bool {
         if (operation == 1) ExitProcess(kInterruptExitCode);
@@ -502,6 +510,26 @@ int runUpdateApplyWindowsTests(bool injectFailure) {
         }
     }
     {
+        // Issue #119: orphan .old files from releases with bug #120 are not package state.
+        fs::path root;
+        if (freshRoot("root-legacy-orphan", &root)) {
+            writeFile(root / "DaybreakRemake.exe.old", "user orphan exe backup");
+            writeFile(root / "assets/font.otf.old", "user orphan font backup");
+            update::ApplySettings settings = settingsFor(root, archive);
+            const update::ApplyResult result = update::apply(settings);
+            update_test::check(result.status == update::ApplyStatus::Ok,
+                               "windows: legacy .old orphans do not block an update: " +
+                                   result.error);
+            update_test::check(fileContents(root / "DaybreakRemake.exe.old") ==
+                                   "user orphan exe backup" &&
+                                   fileContents(root / "assets/font.otf.old") ==
+                                       "user orphan font backup",
+                               "windows: legacy .old orphans survive byte-for-byte");
+            update_test::check(!fs::exists(root / update::kWorkspaceDirectory),
+                               "windows: a clean apply removes the backup workspace");
+        }
+    }
+    {
         fs::path root;
         if (freshRoot("root-collision", &root)) {
             writeFile(root / "player-notes.txt", "different player notes");
@@ -541,7 +569,7 @@ int runUpdateApplyWindowsTests(bool injectFailure) {
         // the lock is gone.
         fs::path root;
         if (freshRoot("root-cleanup-lock", &root)) {
-            const fs::path backup = root / "DaybreakRemake.exe.old";
+            const fs::path backup = backupPath(root, "DaybreakRemake.exe");
             const fs::path workspace = root / update::kWorkspaceDirectory / "2.0.0";
             BackupFileLock lock;
             std::string lockError;
@@ -565,7 +593,7 @@ int runUpdateApplyWindowsTests(bool injectFailure) {
                 update_test::check(result.cleanupWarning.find("startup retry") !=
                                            std::string::npos &&
                                        result.cleanupWarning.find(
-                                           "DaybreakRemake.exe.old") != std::string::npos &&
+                                           "DaybreakRemake.exe") != std::string::npos &&
                                        result.cleanupWarning.find("(error ") !=
                                            std::string::npos,
                                    "windows: apply warns with the backup name and the OS "
@@ -610,8 +638,8 @@ int runUpdateApplyWindowsTests(bool injectFailure) {
                 update_test::check(!repeated,
                                    "windows: another recovery after cleanup is harmless");
                 update_test::check(!fs::exists(backup) &&
-                                       !fs::exists(root / "SDL3.dll.old") &&
-                                       !fs::exists(root / "assets/font.otf.old") &&
+                                       !fs::exists(backupPath(root, "SDL3.dll")) &&
+                                       !fs::exists(backupPath(root, "assets/font.otf")) &&
                                        !fs::exists(root / update::kWorkspaceDirectory),
                                    "windows: released cleanup consumes every backup and "
                                    "the workspace");
@@ -669,7 +697,7 @@ int runUpdateApplyWindowsTests(bool injectFailure) {
         }
         if (owned) {
             const fs::path target = root / "DaybreakRemake.exe";
-            const fs::path backup = root / "DaybreakRemake.exe.old";
+            const fs::path backup = backupPath(root, "DaybreakRemake.exe");
             update_test::check(fileContents(target) == "new exe",
                                "windows: the crash leaves the synthetic replacement on disk");
             update_test::check(fileContents(backup) == "old exe",
