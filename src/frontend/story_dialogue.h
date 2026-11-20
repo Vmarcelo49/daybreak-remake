@@ -22,10 +22,15 @@ class StoryDialogue {
 public:
     enum class Result { Running, ScriptEnded, InterludeEnded };
 
-    explicit StoryDialogue(std::vector<StoryCommand> commands) { load(std::move(commands)); }
+    explicit StoryDialogue(std::vector<StoryCommand> commands, const std::string& scriptPath = {}) {
+        load(std::move(commands), scriptPath);
+    }
 
     // Starts a script: the commands up to its first line of text run now (FUN_0040f970).
-    void load(std::vector<StoryCommand> commands);
+    // `scriptPath` names the install file the commands came from; #99's display-time lookup
+    // keys the translation by that path and each Text command's ordinal. Empty keeps the
+    // original line, which is what synthetic device-free tests want.
+    void load(std::vector<StoryCommand> commands, const std::string& scriptPath = {});
 
     // One frame. `advance` is the confirm button, `skip` the start button, which ends the
     // script at once (FUN_0040eb30:82-99).
@@ -58,6 +63,7 @@ private:
     Result updateInterlude(bool advance);
 
     std::vector<StoryCommand> commands_;
+    std::string scriptPath_;
     size_t next_ = 0;
     std::string background_, pendingBackground_;
     bool backgroundPending_ = false;

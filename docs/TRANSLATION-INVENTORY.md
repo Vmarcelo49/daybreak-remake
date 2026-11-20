@@ -32,8 +32,8 @@ English labels (`CHARACTER SELECT`, `PAUSE`, `STAMINA`, `OVER KILL!!`) can stay.
 
 | Source | Text | About |
 |---|---|---|
-| `data/scenario/D*.txt` | Story dialogue | 983 lines |
-| `data/scenario/win/*.txt` | Victory quotes | 570 files |
+| `data/scenario/D*.txt` | Story dialogue | 983 lines — now translated; see #99 below |
+| `data/scenario/win/*.txt` | Victory quotes | 570 files, 1,291 lines — now translated; see #99 below |
 | Runtime captions | The port's own result and pause text | Not counted |
 | `DaybreakDX.exe` | The earned titles, read from its table (VA `0x6b7308`) | Not counted |
 | Movies | `prologue`, `e00`..`e09`, the staff rolls. Any burned-in text stays | Not checked |
@@ -57,17 +57,68 @@ literal bilingual captions. These checks do not cover every state or detect all 
 | `teamselect/add0`, `add1` unlock notices | Excluded: no screen loads them; all story teams are available. |
 | Original network/chat name-entry sheets | Excluded: `SoftKeyboard` can load these sheets, but no screen instantiates it; the online UI uses its own text editor. |
 | Result earned titles | All 41 indices have English locale entries; Japanese mode retains the installed executable's titles. A test checks every lookup and a report capture shows four fitting in the column; the other labels have not been visually reviewed. |
-| Runtime result and pause captions | Port-owned captions are English in both modes; earned titles are translated. Victory quotes are story text, handled by the follow-up below. |
+| Runtime result and pause captions | Port-owned captions are English in both modes; earned titles are translated. The victory quote band is story text and is covered by #99 below. |
+| Story dialogue and victory quotes (issue #99) | English mode shows translated lines from the shipped `assets/locale/story_en.json`; Japanese mode shows the install's own lines. The EN/JP toggle is shared with the sheets. Coverage and evidence are recorded below. |
 | Original title logo | **Owner-approved exception:** retain the original Japanese game logo as branding in English mode. |
 | Movies and voices | **Owner-approved exception:** keep Japanese text burned into original movies. Japanese speech and dialogue subtitles are also outside this issue. |
 
-## Follow-up: dialogue and win screens (owner decision, far future)
+## Issue #99: dialogue and win screens (owner decision 2026-11-19)
 
-The story-mode visual novel text and the win-screen victory quotes are outside issue #96 and are
-tracked in #99: `data/scenario/D*.txt` dialogue (983 lines) and
-`data/scenario/win/*.txt` victory quotes (570 files). Voices stay Japanese. This is not scheduled;
-when it starts, the UI translation tests above show the pattern (cell or key manifest, real-asset
-check, paired-language capture), and the caption renderer already draws UTF-8.
+The full English translation **ships in the repository**, as one tracked file:
+`assets/locale/story_en.json`, a flat JSON map of 2,274 ASCII keys to ASCII English values. The
+lead reviewed it before integration: 0 missing or extra keys, 0 non-ASCII or empty values, and 0
+escape-token mismatches against the 690 CP932 source files. No game data, Japanese original,
+script or install file enters git, and no file in the install is modified.
+
+### The one route
+
+- `ui::setSheetLanguage` stays the single EN/JP mode owner. On a successful switch it also calls
+  `ui::setStoryTranslationLanguage` (`src/ui/story_locale.*`), so `--language`, the saved setting
+  and the Options row change menus and story together. Japanese mode loads no translation at all.
+- A key is `<path under data/scenario/>#<0-based text ordinal>`: `D01-0.txt#0` for dialogue,
+  `win/05-08-4.txt#0` for a victory quote. The ordinal is the index among Text commands (or quote
+  lines) in file order — the unit both parsers already emit — so nothing re-reads a script at
+  display time.
+- `StoryDialogue::runUntilText` substitutes the caption line; the result screen substitutes the
+  picked quote-band line. Both call `ui::storyDisplayText(path, ordinal, original)`, which returns
+  the English value when active or `original` in Japanese mode, on a missing key, and after a
+  missing or malformed file. A missing key is reported once per key, then falls back silently.
+- Values keep their `\n`, `\cRRGGBB` and `\e` escapes byte for byte; the existing caption walkers
+  already draw them. No rendering code changed, and timing/voices/art still come from the install.
+
+### Coverage
+
+| Source | Source lines | Shipped entries | Evidence |
+|---|---:|---:|---|
+| `data/scenario/D*.txt` — 120 scripts | 983 dialogue lines | 983 | source-key sweep against the install (tier 4) |
+| `data/scenario/win/*.txt` — 570 scripts | 1,291 quote lines | 1,291 | source-key sweep against the install (tier 4) |
+| **Total** | **2,274** | **2,274** | `story_translation_test` checks every shipped key resolves |
+
+`story_translation_test` is device-free and game-data-free: it parses the shipped file, checks
+that every value is non-empty ASCII, checks that all 2,274 keys resolve, and checks sampled
+dialogue and win lines in both modes plus a synthetic script with a missing key.
+`story_script_test` adds the install-backed check (tier 4) that all 983 real dialogue commands
+and 1,291 real quote entries have an entry. These checks prove key resolution, not that every
+translated caption fits its box or reads well; visual sampling remains a human step.
+
+A paired headless capture of the same script (`--screen=storyadv --story=D01-0 --headless
+--no-audio --size=800x600 --frames=120 --out=<file>`) shows the opening English line in English
+mode and the install's Japanese line in Japanese mode (tier 5, capture of our own build — not a
+live run). Caption boxes keep the original's 32-cell wrap, so a long English line can break
+mid-word; that is a layout limitation of the unchanged caption path, not a lookup failure.
+
+Seven keys carry the review's `BOTH:` prefix for dual-speaker lines (flagged in the review notes).
+They ship verbatim and are drawn as-is; the caption UI has no separate dual-speaker treatment.
+
+### Deliberate omissions (owner-approved)
+
+- **Voices stay Japanese.** Voice files are data, not translated; the dialogue captions are their
+  subtitles. No audio was changed.
+- **Burned-in movie text stays Japanese.** The prologue, `e00`..`e09` and the staff rolls keep
+  their original pixels (the #96 decision).
+- **The original title logo stays Japanese** as branding in English mode.
+- The exclusions already recorded for #96 (unreachable disconnect prompt, unlock notices,
+  original network/chat name-entry sheets) remain excluded.
 
 ## What the data implies
 

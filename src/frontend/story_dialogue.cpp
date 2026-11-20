@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <utility>
 
+#include "ui/story_locale.h"
+
 namespace ui {
 namespace {
 
@@ -57,8 +59,9 @@ std::vector<std::string> storyVisibleRows(const std::string& line, int revealed)
     return rows;
 }
 
-void StoryDialogue::load(std::vector<StoryCommand> commands) {
+void StoryDialogue::load(std::vector<StoryCommand> commands, const std::string& scriptPath) {
     commands_ = std::move(commands);
+    scriptPath_ = scriptPath;
     next_ = 0;
     // FUN_0040f970 resets moves and draw order; the portraits stay until a script replaces them.
     order_ = {0, 1, 2, 3, 4, 5};
@@ -76,7 +79,9 @@ bool StoryDialogue::runUntilText() {
         const StoryCommand& c = commands_[next_++];
         switch (c.type) {
         case StoryCommand::Type::Text:
-            line_ = c.text;
+            // #99: translate at display time only. The install's script bytes are never written,
+            // and the caption walkers still receive the original escape sequences.
+            line_ = storyDisplayText(scriptPath_, c.textOrdinal, c.text);
             lineBytes_ = cp932Length(line_);
             revealed_ = 0;
             waiting_ = true;

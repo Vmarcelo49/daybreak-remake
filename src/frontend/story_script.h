@@ -18,6 +18,9 @@ struct StoryCommand {
     // Text: the line, with its \n, \cRRGGBB and \e escapes still in it.
     // Background, Character, Voice: the path, directory prefix included. Bgm: a name under data/bgm/.
     std::string text;
+    // Text only: 0-based index among Text commands in file order. #99's locale keys use this
+    // ordinal, so the lookup never has to re-read the script to find which line is on screen.
+    int textOrdinal = -1;
     int slot = 0;        // Character, Move, Front: 0..5
     bool hasX = false;   // Character: a zero third field keeps the slot's x
     int x = 0;           // Character

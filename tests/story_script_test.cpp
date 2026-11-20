@@ -9,7 +9,9 @@
 
 #include "assets/asset_source.h"
 #include "assets/cnv.h"
+#include "frontend/result_quote.h"
 #include "frontend/story_script.h"
+#include "ui/story_locale.h"
 
 #define CHECK(condition) do { if (!(condition)) { std::fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #condition); ++g_failures; } } while (0)
 
@@ -47,9 +49,11 @@ static void testGrammar() {
     CHECK(commands[5].type == Type::Front && commands[5].slot == 1);
     CHECK(commands[6].type == Type::Voice && commands[6].text == "data/voice/scenario/D41/D41-001-06.wav");
     CHECK(commands[7].type == Type::Text && commands[7].text == "first\\nsecond");
+    CHECK(commands[7].textOrdinal == 0);  // #99: dialogue keys count Text commands
     CHECK(commands[8].type == Type::Move && commands[8].slot == 2 && commands[8].delta == -20 && commands[8].frames == 20);
     CHECK(commands[9].type == Type::Sleep && commands[9].milliseconds == 500);
     CHECK(commands[10].text == "cut here");
+    CHECK(commands[10].textOrdinal == 1);
 }
 
 // A pack image is found by the game's path, case-blind and whatever the extension asked for.
@@ -117,11 +121,14 @@ static std::string asCnv(std::string path) {
     return path.substr(0, dot) + ".cnv";
 }
 
+static void testShippedWinQuotes(const fs::path& install);
+
 // Exit 77 when there is no install, the convention of the asset-backed tests.
 static bool testShippedScripts() {
     const fs::path install = findInstall();
     auto& assets = fnd::assets::assetSource();
     if (install.empty() || !assets.openInstall(install.string())) return false;
+    CHECK(ui::setStoryTranslationLanguage("en"));  // #99: every source line must have an entry
 
     int texts = 0, voices = 0, characters = 0, scripts = 0;
     for (int id = 1; id <= 60; ++id) {
@@ -133,11 +140,14 @@ static bool testShippedScripts() {
             ++scripts;
             const auto commands = ui::parseStoryScript(
                 xm::sjisToUtf8(std::string(bytes.begin(), bytes.end())));
+            int fileTexts = 0;
             for (const StoryCommand& c : commands) {
                 bool found = true;
                 switch (c.type) {
                 case Type::Text:
+                    CHECK(c.textOrdinal == fileTexts++);
                     ++texts;
+                    CHECK(!ui::storyTranslation(ui::storyTranslationKey(path, c.textOrdinal)).empty());
                     // A keyword the parser does not know would land here as dialogue.
                     found = c.text[0] < 'A' || c.text[0] > 'z';
                     break;
@@ -164,7 +174,36 @@ static bool testShippedScripts() {
     CHECK(texts == 983);
     CHECK(voices == 983);
     CHECK(characters == 1222);
+    testShippedWinQuotes(install);
     return true;
+}
+
+// The other half of the shipped translation's source set: every win script's quote lines.
+static void testShippedWinQuotes(const fs::path& install) {
+    auto& assets = fnd::assets::assetSource();
+    std::vector<std::string> paths;
+    for (const std::string& key : assets.listDir("data/scenario/win")) paths.push_back(key);
+    if (paths.empty()) {  // a loose install with no bundle index
+        for (const auto& entry : fs::directory_iterator(install / "data/scenario/win"))
+            if (entry.path().extension() == ".txt")
+                paths.push_back("data/scenario/win/" + entry.path().filename().string());
+    }
+    int quotes = 0;
+    for (const std::string& path : paths) {
+        std::vector<uint8_t> bytes;
+        CHECK(assets.read(path, bytes));
+        const auto entries = ui::parseResultQuotes(
+            xm::sjisToUtf8(std::string(bytes.begin(), bytes.end())));
+        for (size_t i = 0; i < entries.size(); ++i) {
+            // parseResultQuotes emits one entry per quote line, in the same order as the
+            // translation map's 0-based quote ordinals.
+            CHECK(!ui::storyTranslation(ui::storyTranslationKey(path, (int)i)).empty());
+            ++quotes;
+        }
+    }
+    std::printf("win files=%zu quotes=%d\n", paths.size(), quotes);
+    CHECK(paths.size() == 570);
+    CHECK(quotes == 1291);
 }
 
 int main() {

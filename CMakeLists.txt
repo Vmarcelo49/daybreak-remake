@@ -122,6 +122,7 @@ add_library(ui STATIC
     src/hud/hud_atlas.cpp
     src/ui/text.cpp
     src/ui/sheet_locale.cpp
+    src/ui/story_locale.cpp
     src/hud/fallback.cpp
     src/frontend/screen.cpp
     src/frontend/screen_opening.cpp
@@ -1161,6 +1162,13 @@ if(NOT EMSCRIPTEN AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(locale_coverage_test PRIVATE ui assets glm)
     add_test(NAME locale_coverage_test COMMAND locale_coverage_test)
 
+    # Issue #99: the shipped story map and its locale lookup. Device-free and game-data-free;
+    # the English mode needs the sheet font, hence the same copy step as locale_sheets_test.
+    add_executable(story_translation_test tests/story_translation_test.cpp)
+    target_link_libraries(story_translation_test PRIVATE ui assets glm)
+    add_dependencies(story_translation_test caption_fonts)
+    add_test(NAME story_translation_test COMMAND story_translation_test)
+
     add_executable(locale_sheets_test tests/locale_sheets_test.cpp)
     target_link_libraries(locale_sheets_test PRIVATE ui assets glm)
     add_dependencies(locale_sheets_test caption_fonts)
@@ -1304,6 +1312,7 @@ endforeach()
 
 set(DAYBREAK_AREA_FRONTEND
     english_captions_test locale_screen_check locale_coverage_test locale_sheets_test
+    story_translation_test
     title_camera_test screen_stack_test frontend_config_test frontend_lifecycle_test
     result_title_test result_screen_test participant_layout_test select_menu_test
     update_notice_test update_screens_test

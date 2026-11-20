@@ -1,5 +1,7 @@
 #include "ui/sheet_locale.h"
 
+#include "ui/story_locale.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -400,6 +402,8 @@ bool setSheetLanguage(const std::string& language, std::string& error) {
     if (language.empty() || language == "ja") {
         gLabels.clear();
         gLanguage.clear();
+        // One mode toggle for menus and story: #99's Japanese mode must never load a translation.
+        setStoryTranslationLanguage(language);
         return true;
     }
     const std::string text = readLocaleFile(language + ".txt");
@@ -441,6 +445,9 @@ bool setSheetLanguage(const std::string& language, std::string& error) {
     gGlyphs.clear();
     gLabels = std::move(labels);
     gLanguage = language;
+    // A missing story file is non-fatal here: the sheet labels still switch, and the dialogue
+    // falls back to the install's own text through storyDisplayText.
+    setStoryTranslationLanguage(language);
     return true;
 }
 

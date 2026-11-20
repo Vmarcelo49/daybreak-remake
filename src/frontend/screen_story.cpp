@@ -37,6 +37,10 @@ std::vector<StoryCommand> loadScript(const std::string& path, std::string& error
     return parseStoryScript(xm::sjisToUtf8(std::string(bytes.begin(), bytes.end())));
 }
 
+std::string activeScriptPath(const FrontendState& state) {
+    return state.story.active ? state.story.scriptPath() : state.storyScript;
+}
+
 // FUN_006492f0: the enemies, stage and rules of the current fight.
 void prepareStoryFight(FrontendState& state) {
     const StoryLadder& story = state.story;
@@ -69,12 +73,11 @@ class StoryScreen final : public Screen {
 public:
     StoryScreen(SpriteRenderer& batch, FrontendState& state, std::string& error)
         : batch_(batch), state_(state), error_(error),
-          dialogue_(loadScript(state.story.active ? state.story.scriptPath() : state.storyScript, error)) {
+          dialogue_(loadScript(activeScriptPath(state), error), activeScriptPath(state)) {
         if (!error.empty()) return;
         if (!uploadCnvSheet(batch, "data/talk/window", window_, error)) return;
         if (!caption_.load(batch, kFontCell, error, kStoryFont, nullptr)) return;
-        std::printf("[story] script %s\n", state.story.active ? state.story.scriptPath().c_str()
-                                                              : state.storyScript.c_str());
+        std::printf("[story] script %s\n", activeScriptPath(state).c_str());
         prepareAssets();
     }
 
@@ -132,7 +135,7 @@ private:
         // FUN_0040eb30:120-127: team 1 ships no e01.mpg and goes straight to its staff roll.
         if (story.fight >= kStoryFights) return story.team == 1 ? ScreenId::StaffRoll : ScreenId::StoryEnding;
         std::string failure;
-        dialogue_.load(loadScript(story.scriptPath(), failure));
+        dialogue_.load(loadScript(story.scriptPath(), failure), story.scriptPath());
         if (!failure.empty()) {
             error_ = failure;
             return ScreenId::Title;

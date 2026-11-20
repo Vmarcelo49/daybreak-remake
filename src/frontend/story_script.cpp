@@ -38,6 +38,7 @@ std::vector<int> numbersAfterFirst(const std::string& text) {
 std::vector<StoryCommand> parseStoryScript(const std::string& utf8) {
     std::vector<StoryCommand> commands;
     std::string characterDir, voiceDir;
+    int textOrdinal = 0;
     std::istringstream lines(utf8);
     std::string line;
     while (std::getline(lines, line)) {
@@ -83,6 +84,7 @@ std::vector<StoryCommand> parseStoryScript(const std::string& utf8) {
             continue;
         } else {
             command.text = firstField(line);
+            command.textOrdinal = textOrdinal++;
         }
         commands.push_back(std::move(command));
     }

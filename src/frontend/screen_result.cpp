@@ -8,6 +8,7 @@
 #include "frontend/result_quote.h"
 #include "ui/text.h"
 #include "ui/caption.h"
+#include "ui/story_locale.h"
 
 namespace ui {
 
@@ -88,7 +89,9 @@ public:
                     xm::sjisToUtf8(std::string(bytes.begin(), bytes.end())));
                 const int pick = resultQuoteEntryIndex((int)entries_.size(), side, state.matchFrame);
                 if (pick >= 0) {
-                    quote_.text = entries_[(size_t)pick].text;
+                    // #99: the quote line is story text too. The ordinal counts quote lines in
+                    // file order, which is the same index parseResultQuotes gives each entry.
+                    quote_.text = storyDisplayText(quotePath_, pick, entries_[(size_t)pick].text);
                     quote_.voice = entries_[(size_t)pick].voice;
                 }
             }
