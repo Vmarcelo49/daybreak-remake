@@ -360,3 +360,288 @@ What it needs that does not exist yet:
 - Keeping the state hash coherent needs broad edits to the core.
 - Original-runtime parity stays `not verified`. A game that stays in sync online proves agreement
   between peers, not agreement with the original.
+
+---
+
+## Proposal (NOT a work order): Online v2 phasing for issue #92 — owner decision requested, 2026-11-19
+
+> **Marker.** Everything above this line is the implementation record and the owner's 2026-10-31
+> idea; it is unchanged by this section. Everything below is a **proposal**, written on 2026-11-19
+> at the owner's request to scope [issue #92](https://github.com/Vmarcelo49/daybreak-remake/issues/92)
+> so the owner can decide phasing. It is **not** a work order, not an amendment to steps 1–8, and
+> not authorization to write code. No decision is taken here: the three owner questions get a
+> **recommendation and rationale each**, and the owner decides. Lead reviews before any commit.
+
+### P0. Precedence and what this document is
+
+Step 8 — the owner's manual real-network playtest (Linux with Windows, 2 then 4 players, LAN and
+internet, feel/rollbacks/drop/punching) — **stays the priority**. v2 is a *later phase*: this
+section proposes only how to slice issue #92 when the owner decides to start it; it does not move
+step 8, close an issue, deploy a server, or change `docs/decisions.md` (no D-numbers added) or
+`AGENTS.md`. Nothing here contacts the deployed rendezvous server; every test described is
+in-process or on a loopback socket, with a locally launched server whose address is overridden to
+`127.0.0.1`. The default `kDefaultServer` in `src/settings/user_settings.h` is the deployed service
+and is never used by a v2 test.
+
+**Why appended here, not a new `ONLINE-V2-PLAN.md`.** Issue #92 and the "Later: the v2 lobby"
+section already live in this file, and the issue names that section as its source. Appending one
+clearly marked proposal keeps the lineage in one document and makes it impossible to read the
+proposal as a new work order or as a rewrite of the record. A separate file would duplicate
+"Later: the v2 lobby" and invite two documents drifting apart. If the owner later promotes this to
+a binding plan, split it into its own file *then*, as an explicit act.
+
+### P1. Grounding: what exists today (all from the record and the current tree)
+
+- The room/ready flow of step 6 is the entry point: `OnlineMenuScreen` and `OnlineLobbyScreen`
+  in `src/frontend/screen_online.cpp` build the panels with `PanelScreen`/`say()`; the host picks
+  seed/token and the selection screen decides the match. The lobby holds names, ping, ready signs,
+  a Ready button and Leave, and starts selection by itself once all are ready.
+- `net::Lobby` (`src/net/lobby.{h,cpp}`) resends whole state on one UDP socket (`net::UdpSocket`),
+  tags packets by first byte (`kLobbyPacket`, `kGamePacket`, `kOutcomePacket`, `kServerPacket`),
+  and talks to the rendezvous server with a fixed **48-byte** request. A name is encoded with
+  `put_name`/`Reader::name` as **12 bytes, plain ASCII only** (`0x20..0x7e`); this matters for chat.
+- The server (`server/{main,rooms,protocol}.go`) knows only a code, the host's public/private
+  endpoints, and (since #126) a 128-bit renewal secret in the host request's padding. It keeps no
+  room metadata, lists, or match state. `protocolVersion = 2`, `legacyVersion = 1`: v1 **hosts**
+  get `failVersion`, v1 **joins** are still accepted; `net_lobby_test.cpp` and `server_test.go`
+  pin the secret echo, the fallback, and the `len(answer) <= requestSize` anti-amplification
+  invariant.
+- Text input already reaches the C++ side as UTF-8: `appEvent` appends `event->text.text` to
+  `TextKeys::typed` (`src/app/frame_loop.inc`), and `syncTextEntry` calls `SDL_StartTextInput` /
+  `SDL_StopTextInput` from `Screen::wantsText()`. `TextEdit::apply` (`src/frontend/text_edit.h`)
+  then filters each byte through an ASCII `allowed` set and `toupper`, which is why names and
+  fields are ASCII today. The transport carries UTF-8; the editor discards it.
+- Direct-IP join already works (`beginOnlineJoin` → `Lobby::join`), and room-code join works
+  (`beginOnlineCode` → `Lobby::join_code`). Both are unaffected by anything proposed here.
+
+### P2. The owner's three questions — recommendations (owner decides)
+
+**Q1 — Which pieces come first: server-dependent public rooms/matchmaking, or server-independent
+LAN rooms?**
+*Recommendation:* **LAN rooms + the room-list/room-settings UI shell first; public rooms +
+matchmaking second; chat last (see Q2).** Rationale: the room-list screen, the Create/Join buttons
+and the public/private + online/LAN settings are a *shared prerequisite* for both paths. Building
+them against a server-independent backend lets the owner judge the layout early — exactly as step 6
+left the layout to the owner's judgment — and yields an independently useful LAN-party feature
+(D6 explicitly keeps LAN netplay in scope). It also avoids gating the first v2 slice on rendezvous
+protocol decisions. Public rooms then drop into the same UI and are testable against a **local**
+server on loopback; production use still needs a separate, owner-controlled server deployment,
+which this plan does not do. *Tradeoff, stated for the owner:* if the headline internet room list
+is the priority, reversing slices 1 and 2 is defensible — public rooms are also loopback-testable
+and do not wait on a real deployment for development. This is a recommendation, not a decision.
+
+**Q2 — Chat in the first v2 release, or after the room list?**
+*Recommendation:* **after the room list.** Rationale: chat is self-contained — it rides the
+existing per-room UDP socket, not the server — but it is the highest-risk surface: a new numbered
+message protocol, strict UTF-8 validation on untrusted bytes, SDL IME text entry whose candidate
+window behaviour needs a human at a real keyboard, and a one-line history. Keeping it in its own
+slice protects the working room/ready/select flow and keeps the first release small while step 8
+real-play remains the priority. It also lets the owner sign off the v2 room-screen layout (names
+left, chat right, big Ready) in slice 1/2 before chat is drawn into it. *Alternative:* shipping chat
+with the first release is possible but couples four independent risks to the room-list rollout; if
+the owner chooses that, chat becomes part of slice 3 moving earlier, with the same acceptance
+criteria.
+
+**Q3 — Host ping in the list, or the cheap server-ping stand-in?**
+*Recommendation:* **server ping, labelled honestly as "server ping" (RTT to the rendezvous
+server), for the first v2 release; do not add the router-opening step.** Rationale: a true host
+ping means contacting a host you have not joined and asking it to open its router for a stranger —
+a new unsolicited-inbound path with NAT-traversal and abuse/privacy implications, and it duplicates
+the full-mesh probing step 7 already performs *after* joining. The server RTT is cheap (the list
+request/answer can carry a timestamp echo) and is a reasonable quality proxy. Label it as server
+ping in the UI so no player reads it as a measured host RTT. Revisit only if step 8 shows players
+actually need host-side latency. This does not weaken the in-room ping already shown in the lobby
+(`MatchPlan::pingMs`); it only changes what the *pre-join list* displays.
+
+### P3. Proposed slices
+
+Each slice is independently useful and can be reviewed/committed on its own. Scope estimates are
+orders of magnitude for the owner's phasing judgment, not commitments. "Synthetic" means
+device-free C++/Go unit tests or a loopback socket with a locally launched peer/server — **never**
+the deployed service.
+
+#### Slice 1 — Room-list shell, room settings, and LAN rooms (server-independent)
+
+- **Delivers:** a room-list screen on entering online, with helper buttons Create Room, Join Room
+  (room number **or** direct IP) and Matchmaking (UI present; Matchmaking is inert until slice 2,
+  with a clear "needs server" hint). Room settings: public/private and online/LAN. For online/LAN,
+  "LAN" hosts a room **without** announcing to a server; for online/public, hosting announces as
+  today. LAN rooms are discovered by broadcast (design in P4.D) and populate the same list.
+  Direct-IP join remains the fallback and the only way into a private room. The existing lobby
+  screen is reused unchanged behind the list.
+- **Independently useful:** LAN parties get discoverable rooms with no IP typing and explicit
+  privacy/scope settings; the room-list UI exists and can be owner-reviewed before any server work.
+- **Dependencies:** none on slice 2/3. Reuses `OnlineMenuScreen`/`OnlineLobbyScreen`, `PanelScreen`,
+  `Lobby::host/join`, and the `[network]` settings. Introduces a discovery backend seam (injectable
+  so tests never need a real broadcast interface).
+- **Estimated scope:** client small–medium (one new `RoomListScreen`, a settings row pair, a
+  discovery module); UI medium (needs `frontend-design`, see P5); server **none**; tests small
+  (device-free discovery/dedupe/expiry tests, menu-flow script on loopback).
+- **Acceptance criteria:** (a) entering online shows a list; a synthetic LAN announce appears,
+  dedupes by host/client ID, and expires after a timeout; (b) clicking a discovered room performs
+  the same `beginOnlineJoin("IP:PORT")` path as manual direct-IP; (c) private rooms are never
+  announced; (d) "LAN" hosting makes zero server requests; (e) an owner-visible layout review gate,
+  as in step 6. Synthetic: all of the above with an injected discovery source and loopback — no
+  router, no deployed server. Real LAN broadcast stays a manual check.
+
+#### Slice 2 — Public rooms and matchmaking on the rendezvous server
+
+- **Delivers:** the server keeps a *listed* flag per room, answers a paged room list, and answers a
+  matchmaking query; the client requests pages, assembles the list, and the helper buttons become
+  live. The list shows `Room <ID> <Current/Max> <server ping>` with the honest server-ping label
+  (Q3). Matchmaking picks a listed, non-full, non-started room and joins by code via the existing
+  flow, or hosts a new public room if none is suitable.
+- **Independently useful:** internet room browsing and one-click matchmaking — the headline of
+  #92 — with no change to how a match is played.
+- **Dependencies:** slice 1's room-list UI and settings (or a minimal equivalent carried in this
+  slice). Server work must preserve every #126 property (P4.A) and the 48B invariant (P4.B).
+- **Estimated scope:** server medium (room metadata, list/match request kinds, paging and rate
+  budgets); client medium (list request/assembly, matchmaking action); UI small (fills slice 1's
+  rows); tests medium (Go list/match tests including anti-amplification, C++ list-assembly tests,
+  an end-to-end loopback run with a locally launched server).
+- **Acceptance criteria:** (a) a list outgrows 48B and arrives as several ≤48B answer packets, each
+  tied to its own 48B request — the existing `len(answer) <= requestSize` test still passes and is
+  extended to list/match answers; (b) the client assembles pages by (generation, page index),
+  discards a list whose generation changed mid-assembly, and re-requests lost pages; (c) private
+  and non-accepting rooms are omitted; (d) matchmaking joins a suitable room by the existing
+  code flow, or hosts when none exists; (e) #126's renewal-secret and v1-join tests pass unchanged;
+  (f) a full loopback run (local server bound to `127.0.0.1`) shows a room created in one client in
+  another client's list. No traffic to `kDefaultServer`.
+
+#### Slice 3 — Room screen and chat (server-independent transport)
+
+- **Delivers:** the v2 room screen (names left, chat right, large Ready button at bottom; selection
+  still follows automatically when everyone is ready) and chat: `T` starts typing, `Enter` sends,
+  `Esc` cancels, English and Japanese, one line of history.
+- **Independently useful:** better in-room UX and text chat in **any** room (LAN or online),
+  with no server dependency for chat itself.
+- **Dependencies:** none on slice 2 for transport (chat is peer-to-peer over the lobby socket);
+  the room-screen layout ideally follows the owner's sign-off from slices 1/2.
+- **Estimated scope:** client medium (numbered chat channel + strict UTF-8 validator + history);
+  UI medium–large (new room screen; needs `frontend-design`); server **none**; tests medium
+  (UTF-8 validator fuzz cases, numbered-message ordering/dedupe, IME-facing text-edit tests, a
+  two-instance loopback chat run).
+- **Acceptance criteria:** (a) messages are numbered, deduped and ordered per sender, with bounded
+  resend/ACK; (b) invalid UTF-8 is dropped before it reaches the renderer and cannot crash or
+  garble the screen; (c) Japanese text typed through an SDL text-input event survives into a sent
+  message end-to-end on loopback; (d) `T`/`Enter`/`Esc` behave as specified and Up recalls the one
+  history line; (e) names remain the existing ASCII (no protocol change to names in this slice).
+  A real IME/candidate-window check remains a manual gate (P5).
+
+### P4. Cross-cutting protocol design (must hold in every slice)
+
+#### A. Preserve #126's authenticated renewal (non-negotiable)
+
+The 128-bit server-issued renewal secret stays in the 16 unused padding bytes (offset 21) of every
+**host** request; renewal keeps constant-time comparison, `failUnauthorized` with **no state or
+last-seen change**, secret rotation only when a room is replaced, per-IP host budget (240/min), and
+the v1-join fallback (v1 joins accepted, v1 hosts refused). The list/matchmaking work is **additive
+request kinds**, not a change to those paths: existing clients never send them, and the renewal
+secret is **never** put in a list, joiner, or matchmaking answer. "Public/listed" is a new flag on
+the host request (in the still-spare padding *after* the secret, offsets 37–47), not a reuse of the
+secret. A "no longer accepting players" bit on the renewal lets the server omit started/full rooms
+from the list without the server learning match state. If a clean version bump is preferred, keep
+accepting v2 hosts and v1/v2 joins — do **not** regress the #126 migration. Re-run
+`rendezvous_server_test`/`server_test.go` and `net_lobby_test` unchanged as the first gate on any
+server edit.
+
+#### B. 48-byte request / anti-amplification and the multi-packet list framing
+
+The invariant in `server/protocol.go` is: **a response to an unvalidated source is never larger
+than its 48-byte request**, so a forged sender gains nothing. A list is larger than 48B, so it
+cannot be one answer. Two framings were considered; recommendation is the first.
+
+- **Recommended — client-paged requests (stateless, no new secret).** Keep the request exactly 48B
+  with a new kind `kindList`. Reuse the 4-byte code field (offset 17) as `generation:2 + page:2`;
+  the rest of the layout, including `clientID` and the private endpoint, is unchanged. Page 0 is
+  answered with `answerList`: prefix, kind, generation, page index, page count, entry count, then N
+  entries, where each entry is ≤8B (4B code, packed current/max, a ping field, a flags byte). With
+  an 8B header and ≤8B entries, one answer stays **≤48B**. The client sends page 0, reads page
+  count/generation, then sends one request per remaining page; a generation that changed between
+  pages yields a small "stale" error and the client restarts from page 0. Lost pages are recovered
+  by re-sending that page's 48B request after a timeout (no server-side state, no ACK scheme).
+  Because **every** answer is ≤48B and is produced by exactly one 48B request, total answer bytes
+  never exceed total request bytes — the existing anti-amplification test extends directly to
+  list answers. Matchmaking is a separate small `kindMatch` answer (one room code, ≤48B, like
+  `answerRoom`), so it needs no paging. Cap listed rooms (e.g. 32) and pages (e.g. 8); sort by fill
+  then ping for stable ordering; give list/match their own per-IP budgets alongside join/host.
+- **Alternative if fewer client datagrams matter more — stateless cookie.** A first 48B list
+  request gets a small cookie answer (≤48B); the client echoes the cookie in a second 48B request,
+  proving it can receive at that source, and the server then bursts the full list. A forged sender
+  cannot receive the cookie, so it gets at most 48B. This adds a server MAC secret and a round trip,
+  and requires a careful argument that the *validated* burst is not amplification; it is safer to
+  avoid unless paging proves too chatty. Either way, the 48B request size is never changed.
+- **Server ping source:** put a client timestamp in the list request and echo it in `answerList`,
+  giving an RTT sample per page without a separate protocol. Display as "server ping" (Q3).
+
+#### C. Chat transport, UTF-8, SDL IME, one-line history
+
+- **Transport:** a new packet tag (e.g. `kChatPacket = 'C'`) on the existing room UDP socket —
+  peer-to-peer, no server. Each message is `{sender clientId, monotonic per-sender sequence, byte
+  length, UTF-8 bytes}`. Unlike lobby state, chat is **not** "resend the whole state": the sender
+  resends only unacknowledged messages, and receivers ACK a highest-contiguous sequence plus a
+  small bitmap, with a bounded window (e.g. last 32 messages). Deduplicate by (sender, sequence);
+  order per sender by sequence, interleave senders by arrival. Cap message bytes (e.g. 512) and a
+  per-tick byte budget.
+- **UTF-8 validation:** validate every received message with a strict decoder before it reaches the
+  renderer — reject overlong encodings, surrogates, values above U+10FFFF and truncated sequences;
+  drop invalid messages (log once, never display). This is a robustness/UI-safety measure, not a
+  confidentiality claim. **Names stay plain ASCII** (`Reader::name`, 12 bytes) in this slice; widening
+  names to UTF-8 is a separate protocol/version change, not smuggled into chat.
+- **SDL text input / IME:** the event path already carries UTF-8 (`event->text.text` →
+  `TextKeys::typed`) and toggles `SDL_StartTextInput` via `wantsText()`. Add a chat-specific editor
+  that consumes **code points, not bytes** (the current `TextEdit::apply` filters bytes through an
+  ASCII `allowed` set and would drop Japanese). Keep `wantsText()` true while composing, pass
+  `SDL_TEXTEDITING` composition through to a pre-edit display, and call `SDL_SetTextInputArea` near
+  the chat box so IME candidate windows appear in the right place. `T` activates, `Enter` sends,
+  `Esc` cancels. A real IME needs a human check; synthetic tests feed UTF-8 through `--text-keys` /
+  injected `TextKeys`.
+- **One line of history:** keep the last sent line and recall it with Up. Interpretation flagged
+  for the owner: "a line of history" is read as *recall the previous sent line*, not a scrollback
+  buffer; confirm before implementing.
+
+#### D. LAN discovery and its interaction with direct-IP join
+
+Broadcast a small, fixed-format LAN announce on a dedicated UDP port (e.g. derived from the game
+port) containing a magic/version, host name, room code, current/max, and a LAN host endpoint. Hosts
+in LAN mode emit it at a bounded rate (e.g. 1/s); the client listens, ignores its own announce,
+dedupes by host/client ID, and drops entries not refreshed within a few seconds. Announces are
+**discovery only**: clicking a LAN room calls the existing `beginOnlineJoin("IP:PORT")` with the
+advertised endpoint, so no join/transport code changes and direct-IP join remains the manual
+fallback and the only route into a private room. Private rooms are never announced. Real broadcast
+cannot be tested on loopback, so inject a discovery backend: unit tests supply synthetic announces
+and assert parse/dedupe/expiry/list population device-free; real LAN broadcast is a manual check.
+No server and no deployed service are involved in LAN mode.
+
+### P5. Skills, gates, and synthetic testability
+
+- **frontend-design skill:** load it before implementing the UI in **slices 1, 2 (list rows/buttons)
+  and 3 (room screen)** — the team uses it for distinctive UI. This proposal does not load or use
+  it; it only flags the need.
+- **Unrelated standing gates:** a **real-Mac tester** and a **real-Windows run** remain separate
+  gates (macOS is not built; Windows cross-build/real-machine determinism is step 5). Neither is a
+  v2 acceptance item and neither is touched by this plan.
+- **Synthetic/loopback everywhere:** Go unit tests for server list/match and anti-amplification;
+  C++ device-free tests for list assembly, chat ordering/UTF-8 and discovery dedupe/expiry;
+  `netctl`/`online_flow_check`-style runs with a **local** server bound to `127.0.0.1`. Real routers,
+  real NAT, a real IME and real LAN broadcast are manual checks, owned by step 8/the owner, not by
+  an agent against the deployed service.
+
+### P6. Residual risks and what this plan does NOT claim
+
+- The paged list keeps the 48B invariant but is eventually consistent: entries can change between
+  pages; the generation scheme detects this rather than preventing it. Chattiness of many small
+  page requests is bounded by caps and per-IP budgets, not eliminated. Matchmaking is first-fit,
+  not balanced, and reveals only listed rooms.
+- UDP spoofing remains: a captured renewal secret still enables renewal against #126's known
+  limitations, and list/match answers are unauthenticated hints. This plan neither fixes nor worsens
+  those risks; the cookie alternative in P4.B is the only new trust surface and is optional.
+- Chat adds untrusted UTF-8 to the render path; validation is necessary but IME/candidate behaviour
+  varies by OS and IME and needs human verification. Symmetric NAT and a relay remain out of scope.
+- Production public rooms/matchmaking require the owner to deploy an updated rendezvous server;
+  this plan does not deploy one and this work sends nothing to the deployed service.
+- **No gameplay or original-runtime verification is claimed.** "Built" is not "verified"; a capture
+  is not a live run (D9); a skip is not a pass. Staying in sync online proves peer agreement, not
+  agreement with the original (whose netplay this port does not speak). All evidence tiers for any
+  future v2 work will be stated at the time; none is asserted by this document.
+
