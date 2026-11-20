@@ -94,5 +94,6 @@ Linux needs glibc 2.38 or newer, such as Ubuntu 24.04, and a Vulkan driver. Your
 ## SHA-256
 
 ```
-PENDING — filled from the release archives before publishing.
+08ad33686e9f8468c703b53d8134dbd278d6e6838e41855893dab8f3d726f803  daybreak-1.1.0-linux-x86_64.tar.gz
+9d4ccc1ff4e22493f619af57527c0b6a362873be7a54551194e6589b31ebe590  daybreak-1.1.0-88add744-windows-x86_64.zip
 ```
